@@ -16,8 +16,9 @@ public class App {
     public static void main(String[] args) {
         System.out.println("hello");
         long startTime = System.nanoTime();
-        String[][] df = new DF(';',"C:/Users/ozhukov/Desktop/b.csv").df;
-        System.out.println(df[1][1]);
+//        String[][] df = new DF(';',"C:/Users/ozhukov/Desktop/b.csv","UTF-8").df;
+        String[][] df = new DF("C:/Users/ozhukov/Desktop/Sinistre_Historique_ICICDDP19.xlsx",1).df;
+        System.out.println(df[3][3]);
         double elapsedTime = round((System.nanoTime() - startTime)/1e7f)/100.0;
         System.out.println(elapsedTime);
     }
