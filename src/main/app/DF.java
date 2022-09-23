@@ -1,64 +1,31 @@
 package main.app;
 
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Streams;
+import com.monitorjbl.xlsx.StreamingReader;
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
-//import org.dhatim.fastexcel.reader.ReadableWorkbook;
-//import org.dhatim.fastexcel.reader.Row;
-//import org.dhatim.fastexcel.reader.Sheet;
+
 
 import java.io.*;
-import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.time.LocalDateTime;
-import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.Iterator;
-import java.util.stream.Stream;
+import java.io.InputStream;
 
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFName;
-import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.dhatim.fastexcel.reader.ReadableWorkbook;
-import org.dhatim.fastexcel.reader.Sheet;
-
-import static java.lang.String.valueOf;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 
 public class DF {
     private char delim;
     private String path;
     public String[][] df;
     String[] header;
-    public DF (char delim, String path) {
-        CsvParserSettings settings = new CsvParserSettings();
-        settings.setDelimiterDetectionEnabled(true, delim);
-        settings.trimValues(true);
-        try(Reader inputReader = new InputStreamReader(Files.newInputStream(
-                new File(path).toPath()), StandardCharsets.UTF_8)){
-            CsvParser parser = new CsvParser(settings);
-            List<String[]> parsedRows = parser.parseAll(inputReader);
-            df = new String[parsedRows.size()][parsedRows.get(0).length];
 
-            int i = 0;
-            for (String[] parsedRow : parsedRows) {
-                int j = 0;
-                for (String s : parsedRow) {
-                    df[i][j] = s;
-                    j++;
-                }
-                i++;
-            }
-        } catch (IOException e) {
-            // handle exception
-        }
-    }
-    public DF (char delim, String path, String encoding) {
+    public DF (String path, char delim, String encoding) {
+        if (encoding.equals("default")) encoding = "UTF-8";
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
         settings.trimValues(true);
@@ -66,11 +33,13 @@ public class DF {
                 new File(path).toPath()), encoding)){
             CsvParser parser = new CsvParser(settings);
             List<String[]> parsedRows = parser.parseAll(inputReader);
-            df = new String[parsedRows.size()][parsedRows.get(0).length];
-
+            Iterator<String[]> rows = parsedRows.iterator();
+            header = rows.next();
+            df = new String[parsedRows.size()-1][parsedRows.get(0).length];
             int i = 0;
-            for (String[] parsedRow : parsedRows) {
+            while(rows.hasNext()) {
                 int j = 0;
+                String[] parsedRow = rows.next();
                 for (String s : parsedRow) {
                     df[i][j] = s;
                     j++;
@@ -81,192 +50,60 @@ public class DF {
             // handle exception
         }
     }
-    public DF (String path, int sheet_n) {
-        File excelFile = new File(path);
-        FileInputStream fis = null;
-        try {
-            fis = new FileInputStream(excelFile);
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
+    public DF (String path, Object sheet_n) throws IOException {
+
+        InputStream is = Files.newInputStream(new File(path).toPath());
+        Workbook workbook = StreamingReader.builder()
+            .rowCacheSize(1)      // number of rows to keep in memory (defaults to 10)
+            .bufferSize(4096)     // buffer size to use when reading InputStream to file (defaults to 1024)
+            .open(is);
+
+        if(sheet_n.getClass().getName().equals("java.lang.Integer")) {
+            sheet_n = workbook.getSheetName((int) sheet_n);
         }
+        Sheet sheet = workbook.getSheet((String) sheet_n);
 
-        XSSFWorkbook workbook = null;
-        try {
-            workbook = new XSSFWorkbook(fis);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        Iterator<Row> rowIter = sheet.rowIterator();    // make row iterator
+        Row row = rowIter.next();                       // take first row
+        header = new String[row.getLastCellNum()];      // init header array
+        int col_count = 0;                              // from 0
+        for (Cell c : row) {                            // iterate
+            header[col_count] = c.getStringCellValue(); // fill header
+            col_count++;                                // count columns
         }
-        XSSFSheet sheet = workbook.getSheetAt(sheet_n);
-        int rows = Iterables.size(sheet);
-        Row row = sheet.getRow(0);
-        int cols = Iterables.size(row);
+        System.out.println(sheet.getLastRowNum());
+        System.out.println(col_count);
+        df = new String[sheet.getLastRowNum()][col_count]; // -1 header
 
-        header = new String[cols];
-        Iterator<Cell> cellIterator = row.cellIterator();
-        int i = 0;
-        int j = 0;
-        while (cellIterator.hasNext()) {
-            Cell cell = cellIterator.next();
-            header[j] = cell.toString();
-            j++;
-        }
-
-        df = new String[cols][rows-1];
-        FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
-
-        Iterator<Row> rowIt = sheet.iterator();
-        row = rowIt.next();
-        while (rowIt.hasNext()) {
-            row = rowIt.next();
-            cellIterator = row.cellIterator();
-            j = 0;
-            while (cellIterator.hasNext()) {
-                Cell cell = cellIterator.next();
-                try {
-                    evaluator.evaluate(cell);
-                } catch (Exception e) {
-                    String f = cell.getCellFormula();
-                    cell.setCellType(CellType.STRING);
-                    cell.setCellValue(f);
+        int l = 0,k = 0;
+        while(rowIter.hasNext()) {
+            row = rowIter.next();
+            k = 0;
+            for (Cell c : row) {
+                if(c.getCellTypeEnum().name().equals("FORMULA")) {
+                    if(c.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
+                        df[l][k] = c.getCellFormula();      // bad formula
+                    } else {
+                        df[l][k] = c.getStringCellValue();  // good formula
+                    }
+                } else {
+                    df[l][k] = c.getStringCellValue();      // no formula
                 }
-                switch (cell.getCellTypeEnum()) {
-                    case BOOLEAN:
-                        df[j][i] = valueOf(cell.getBooleanCellValue());
-                        break;
-                    case NUMERIC:
-                        df[j][i] = valueOf(cell.getNumericCellValue());
-                        break;
-                    case STRING:
-                        df[j][i] = cell.getStringCellValue();
-                        break;
-                    case BLANK:
-                        break;
-                    case ERROR:
-                        System.out.print("error" + cell.getErrorCellValue() + " / ");
-                        break;
-                    case FORMULA:
-                        switch (cell.getCachedFormulaResultTypeEnum()) {
-                            case BOOLEAN:
-                                df[j][i] = valueOf(cell.getBooleanCellValue());
-                                break;
-                            case NUMERIC:
-                                df[j][i] = valueOf(cell.getNumericCellValue());
-                                break;
-                            case STRING:
-                                df[j][i] = cell.getStringCellValue();
-                                break;
-                            case BLANK:
-                                break;
-                        }
-                        break;
-                }
-                j++;
+                k++;
             }
-            i++;
-        }
-        try {
-            workbook.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            fis.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            l++;
         }
     }
-    public DF (String path, String sheet_n) {
-        File excelFile = new File(path);
-        FileInputStream fis = null;
-        try {
-            fis = new FileInputStream(excelFile);
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
-        }
-        XSSFWorkbook workbook = null;
-        try {
-            workbook = new XSSFWorkbook(fis);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        int x = workbook.getSheetIndex(sheet_n);
-        XSSFSheet sheet = workbook.getSheetAt(x);
 
-        int rows = Iterables.size(sheet);
-        Row row = sheet.getRow(0);
-        int cols = Iterables.size(row);
-
-        header = new String[cols];
-        Iterator<Cell> cellIterator = row.cellIterator();
-        int i = 0;
-        int j = 0;
-        while (cellIterator.hasNext()) {
-            Cell cell = cellIterator.next();
-            header[j] = cell.toString();
-            j++;
+    public String[] r(int index){
+        return df[index];
+    }
+    public String[] c(int index){
+        String[] column = new String[df.length];
+        for(int i=0; i<column.length; i++){
+            column[i] = df[i][index];
+            System.out.println(i);
         }
-        df = new String[cols][rows-1];
-        FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
-
-        Iterator<Row> rowIt = sheet.iterator();
-        row = rowIt.next();
-        while (rowIt.hasNext()) {
-            row = rowIt.next();
-            cellIterator = row.cellIterator();
-            j = 0;
-            while (cellIterator.hasNext()) {
-                Cell cell = cellIterator.next();
-                try {
-                    evaluator.evaluate(cell);
-                } catch (Exception e) {
-                    String f = cell.getCellFormula();
-                    cell.setCellType(CellType.STRING);
-                    cell.setCellValue(f);
-                }
-                switch (cell.getCellTypeEnum()) {
-                    case BOOLEAN:
-                        df[j][i] = valueOf(cell.getBooleanCellValue());
-                        break;
-                    case NUMERIC:
-                        df[j][i] = valueOf(cell.getNumericCellValue());
-                        break;
-                    case STRING:
-                        df[j][i] = cell.getStringCellValue();
-                        break;
-                    case BLANK:
-                        break;
-                    case ERROR:
-                        System.out.print("error" + cell.getErrorCellValue() + " / ");
-                        break;
-                    case FORMULA:
-                        switch (cell.getCachedFormulaResultTypeEnum()) {
-                            case BOOLEAN:
-                                df[j][i] = valueOf(cell.getBooleanCellValue());
-                                break;
-                            case NUMERIC:
-                                df[j][i] = valueOf(cell.getNumericCellValue());
-                                break;
-                            case STRING:
-                                df[j][i] = cell.getStringCellValue();
-                                break;
-                            case BLANK:
-                                break;
-                        }
-                        break;
-                }
-                j++;
-            }
-            i++;
-        }
-        try {
-            workbook.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            fis.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        return column;
     }
 }
