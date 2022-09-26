@@ -7,8 +7,7 @@ import com.univocity.parsers.csv.CsvParserSettings;
 
 import java.io.*;
 import java.nio.file.Files;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,11 +17,15 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 
+import javax.naming.PartialResultException;
+import javax.swing.*;
+
 public class DF {
     private char delim;
     private String path;
     public String[][] df;
     String[] header;
+    int ncol;
 
     public DF (String path, char delim, String encoding) {
         if (encoding.equals("default")) encoding = "UTF-8";
@@ -64,15 +67,14 @@ public class DF {
         Sheet sheet = workbook.getSheet((String) sheet_n);
 
         Iterator<Row> rowIter = sheet.rowIterator();    // make row iterator
-        Row row = rowIter.next();                       // take first row
+        Row row = rowIter.next();                       // get first row
+        ncol = row.getLastCellNum();                    // get ncol
         header = new String[row.getLastCellNum()];      // init header array
         int col_count = 0;                              // from 0
         for (Cell c : row) {                            // iterate
             header[col_count] = c.getStringCellValue(); // fill header
             col_count++;                                // count columns
         }
-        System.out.println(sheet.getLastRowNum());
-        System.out.println(col_count);
         df = new String[sheet.getLastRowNum()][col_count]; // -1 header
 
         int l = 0,k = 0;
@@ -102,8 +104,97 @@ public class DF {
         String[] column = new String[df.length];
         for(int i=0; i<column.length; i++){
             column[i] = df[i][index];
-            System.out.println(i);
         }
         return column;
     }
+    public String[] c(String name){
+        int width = df[0].length;
+        int index = -1;
+        for (int i=0; i<width; i++) {
+            if (Objects.equals(header[i], name)){ index = i;}
+        }
+        String[] column = new String[df.length];
+        for(int i=0; i<column.length; i++){
+            column[i] = df[i][index];
+        }
+        return column;
+    }
+
+//    public String[][] f(String colname, String value) {
+//        String[] a = this.c(colname);
+//        Boolean[] b = new Boolean[a.length];
+//        for (int i = 0; i < a.length; i++) {
+//            b[i] = a[i].equals(value);
+//        }
+//        return a;
+//    }
+    public String[][] removeRows(final boolean[] which) {
+
+        int nrow = this.sum_boolean(which);
+        String[][] rowsToKeep = new String[nrow][ncol];
+
+        int i = 0;
+        for (String[] row : df) {
+            if (which[i]) {
+                rowsToKeep[i] = row;
+                i++;
+            }
+        }
+
+        return rowsToKeep;
+    }
+
+    public int sum_boolean(boolean[] vector_boolean) {
+        int sum = 0;
+        for(boolean b : vector_boolean) {
+            sum += b ? 1 : 0;
+        }
+        return sum;
+    }
+    public int whichf (String[] arr, String t)
+    {
+
+        // if array is Null
+        if (arr == null) {
+            return -1;
+        }
+
+        // find length of array
+        int len = arr.length;
+        int i = 0;
+
+        // traverse in the array
+        while (i < len) {
+
+            // if the i-th element is t
+            // then return the index
+            if (Objects.equals(arr[i], t)) {
+                return i;
+            }
+            else {
+                i = i + 1;
+            }
+        }
+        return -1;
+    }
+//    public Object[] which(String arr, String t)
+//    {
+//        Vector<Integer> out = new Vector<>();
+//
+//        if (arr == null) {
+//            return out.toArray();
+//        }
+//
+//        String[] arr = this.df.c()
+//        int len = arr.length;
+//        int i = 0;
+//
+//        while (i < len) {
+//            if (Objects.equals(arr[i], t)) {out.add(i);}
+//            i++;
+//        }
+////        if (vectInt.size() > 0) {
+//            return (out.toArray());
+////        }
+//    }
 }
