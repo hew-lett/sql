@@ -17,16 +17,16 @@ public class App {
         System.out.println("hello");
 //        DF base = new DF("C:/Users/ozhukov/Desktop/Sinistre_Historique_ICICDDP19_677_20220806.txt",'|',"UTF-8");
 //        final String[][] table_sin = base.df;
-//        DF c811 = new DF("C:/Users/ozhukov/Desktop/Grille Semi-spécifique sinistre 2022_09_13.xlsx","C811");
+        DF c811 = new DF("C:/Users/ozhukov/Desktop/Grille Semi-spécifique sinistre 2022_09_13.xlsx","C811");
+//        DF c811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx",0);
 //        boolean[] which = filtre(c811, "Numéro_Police", "ICICDDV15-1");
 //        DF grille = new DF(c811, which, startTime);
 //        base.print();
-//        c811.keep_rows(find_in_arr(c811.c("Numéro_Police"), "ICICDDP19"));
-//        c811.keep_cols(c811.dna());
+        c811.keep_rows(find_in_arr(c811.c("Numéro_Police"), "ICICDDV19"));
+        c811.keep_cols(c811.dna());
         long startTime = System.nanoTime();
-        String[] out = new String[5];
-        Node x = new Node();
-        System.out.println(Arrays.toString(x.child_arr));
+        Node x = new Node(c811);
+//        System.out.println(Arrays.toString(x.child_arr));
 //        System.out.println(Arrays.toString(cut(c811.c(0),find_in_arr(c811.c("Numéro_Police"), "ICICDDP19"))));
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 

@@ -29,20 +29,25 @@ public class Node {
     }
     public void getchilds(DF base, boolean[] vec) {
 //        this.vec = b_and(this.vec,unique(cut(base.c(level),this.vec)));
-        if (this.level < base.nrow) {
+        if (this.level < base.ncol) {
             String[] childs = wunique(cut(base.c(this.level),this.vec));
             int len = childs.length;
+            System.out.println(len);
             this.child_arr = new Node[len];
             for (int i = 0; i < len; i++) {
+                this.child_arr[i] = new Node();
                 this.child_arr[i].value = childs[i];
-                this.child_arr[i].level++;
+                this.child_arr[i].level = this.level+1;
                 this.child_arr[i].vec = b_and(this.vec, find_in_arr(base.c(this.level),childs[i]));
+//                System.out.println(Arrays.toString(base.c(this.level)));
+//                System.out.println("childs: " + childs[i]);
+//                System.out.println(Arrays.toString(b_and(this.vec, find_in_arr(base.c(this.level),childs[i]))));
                 this.child_arr[i].getchilds(base,this.child_arr[i].vec);
             }
-            for (Node s : this.child_arr) {
-                System.out.print(s.value);
-            }
-            System.out.println();
+//            for (Node s : this.child_arr) {
+//                System.out.print(s.value + " ");
+//            }
+//            System.out.println();
 
         }
 
