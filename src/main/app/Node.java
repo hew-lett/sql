@@ -2,62 +2,104 @@ package main.app;
 
 import java.util.Arrays;
 import java.util.LinkedHashSet;
+import java.util.Optional;
 import java.util.Set;
 
 import static main.app.App.*;
 import static main.app.App.b_and;
 
 public class Node {
+    public String column;
     public String value;
     public Node[] child_arr;
     public boolean[] vec;
-    public int level = 0;
-
+//    public int level = 0;
+    public static String[] order;
+    public int order_pos;
+    public int size;
+    public Special_columns_c811 type;
     public Node(String value, Node[] child_arr) {
         this.value = value;
         this.child_arr = child_arr;
     }
-    public Node(DF base) {
+    public Node(DF base, String[] order) {
         value = "root";
         vec = new boolean[base.nrow];
         Arrays.fill(vec, true);
-        this.getchilds(base,this.vec);
+        Node.order = order;
+        order_pos = 0;
+        getchilds(base,vec,0);
 
     }
     public Node() {
 
     }
-    public void getchilds(DF base, boolean[] vec) {
-//        this.vec = b_and(this.vec,unique(cut(base.c(level),this.vec)));
-        if (this.level < base.ncol) {
-            String[] childs = wunique(cut(base.c(this.level),this.vec));
-            int len = childs.length;
-            System.out.println(len);
-            this.child_arr = new Node[len];
-            for (int i = 0; i < len; i++) {
-                this.child_arr[i] = new Node();
-                this.child_arr[i].value = childs[i];
-                this.child_arr[i].level = this.level+1;
-                this.child_arr[i].vec = b_and(this.vec, find_in_arr(base.c(this.level),childs[i]));
-//                System.out.println(Arrays.toString(base.c(this.level)));
-//                System.out.println("childs: " + childs[i]);
-//                System.out.println(Arrays.toString(b_and(this.vec, find_in_arr(base.c(this.level),childs[i]))));
-                this.child_arr[i].getchilds(base,this.child_arr[i].vec);
+    public void getchilds(DF base, boolean[] vec, int order_col) {
+        if (order_pos < order.length) {
+            column = order[order_pos];
+            String[] childs = wunique(cut(base.c(column),vec));
+            Arrays.sort(childs);
+            size = childs.length;
+            child_arr = new Node[size];
+            for (int i = 0; i < size; i++) {
+                child_arr[i] = new Node();
+                child_arr[i].value = childs[i];
+                child_arr[i].type = Special_columns_c811.get(column);
+                child_arr[i].order_pos = order_pos+1;
+                child_arr[i].vec = b_and(vec, find_in_arr(base.c(column),childs[i]));
+                child_arr[i].getchilds(base,child_arr[i].vec,child_arr[i].order_pos);
             }
-//            for (Node s : this.child_arr) {
-//                System.out.print(s.value + " ");
-//            }
-//            System.out.println();
+        }
+    }
+    public boolean find(String[] row, String[] header) {
+        if (child_arr.length==0) return true;
+        String cell = row[find_in_arr_first(header, column)];
+        switch(type) {
+            case DEFAULT:
+                if (cell.equals("")) {
+                    for (Node n : child_arr) {
+                        if (n.value.equals(cell) | n.value.equals("N.A.") | n.value.equals("{ vide }")) {
+                            return n.find(row,header);
+                        }
+                    }
+                } else {
+                    for (Node n : child_arr) {
+                        if (n.value.equals(cell) | n.value.equals("N.A.") | n.value.equals("{ renseigné }")) {
+                            return n.find(row,header);
+                        }
+                    }
+                }
+                break;
+            case DCBB:
+
+
 
         }
-
+        return false;
     }
-//    public void getchilds(String[] vec) {
-//        int len = vec.length;
-//        this.child_arr = new Node[len];
-//        for (int j = 0; j < len; j++) {
-//            this.child_arr[j] = new Node(vec[j]);
+//
+//    public boolean get_type() {
+//        int i = switch (this.value) {
+//            case "Valeur_Catalogue Borne haute":
+//
 //        }
 //    }
+
+
+//    public void keep_from_node (boolean[] vec) {
+//        value = "root";
+//        childs = keep_from_array(childs, vec);
+//        Node[] temp = new Node[sum_boolean(vec)];
+//        int j = 0;
+//        for (int i = 0; i < size; i++) {
+//            if(vec[i]) {
+//                temp[j] = child_arr[i];
+//                j++;
+//            }
+//        }
+//        size = j;
+//        child_arr = temp;
+//    }
+
 
 }

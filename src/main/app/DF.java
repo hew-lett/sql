@@ -50,8 +50,7 @@ public class DF {
                 int j = 0;
                 String[] parsedRow = rows.next();
                 for (String s : parsedRow) {
-                    df[i][j] = s;
-                    j++;
+                    df[i][j] = s;                    j++;
                 }
                 i++;
             }
@@ -239,6 +238,9 @@ public class DF {
                 keep[j] = keep[j] | !row[j].equals("N.A.");
             }
         }
+        for (int j = 0; j < ncol; j++) {
+            keep[j] = keep[j] | !this.header[j].equals("Date de modif");
+        }
         return keep;
     }
 
@@ -278,4 +280,5 @@ public class DF {
         }
         return out;
     }
+
 }
