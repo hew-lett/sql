@@ -18,6 +18,7 @@ import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.STSourceType;
 
 import javax.naming.PartialResultException;
 import javax.swing.*;
@@ -98,26 +99,34 @@ public class DF {
         header = header_refactor(header);
 
         df = new ArrayList<>(ncol);
-        for (int h = 0; h < header.length; h++) {
-            df.add(new String[nrow]);
-        }
-        int l = 0,k = 0;
+        df = df_populate(df,coltypes);
+
+        int col_iterator;
+        int ct_iterator;
+        int row_number = 0;
         while(rowIter.hasNext()) {
             row = rowIter.next();
-            k = 0;
+            col_iterator = 0;
+            ct_iterator = 0;
             for (Cell c : row) {
-                if(c.getCellTypeEnum().name().equals("FORMULA")) {
-                    if(c.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
-                        df.get(k)[l] = c.getCellFormula();      // bad formula
+                if (coltypes[ct_iterator] != Col_types.SKP) {
+                    if(c.getCellTypeEnum().name().equals("FORMULA")) {
+                        if(c.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
+                            df.get(col_iterator)[row_number] = get_cell_of_type(c.getCellFormula(),coltypes[ct_iterator]);      // bad formula
+                        } else {
+                            df.get(col_iterator)[row_number] = get_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);  // good formula
+                        }
                     } else {
-                        df.get(k)[l] = c.getStringCellValue();  // good formula
+//                        System.out.println(c.getStringCellValue());
+//                        System.out.println(coltypes[ct_iterator]);
+//                        System.out.println(df.get(col_iterator).getClass());
+                        df.get(col_iterator)[row_number] = get_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);      // no formula
                     }
-                } else {
-                    df.get(k)[l] = c.getStringCellValue();      // no formula
+                    col_iterator++;
                 }
-                k++;
+                ct_iterator++;
             }
-            l++;
+            row_number++;
         }
     }
 
@@ -211,13 +220,21 @@ public class DF {
                 out = cell;
                 break;
             case DBL:
-                out = Double.parseDouble(cell);
+                try {
+                    out = Double.parseDouble(cell.replace(",","."));
+                } catch (NumberFormatException ignored) {
+                    out = 99999999d;
+                }
                 break;
             case DAT:
                 try {
                     out = format.parse(cell);
                 }
                 catch (NullPointerException | ParseException ignored) {
+                    try {
+                        out = format.parse("01/01/2100");
+                    } catch (ParseException ignored1) {
+                    }
                 }
                 break;
         }
@@ -235,18 +252,10 @@ public class DF {
         nrow = sum_boolean(keep_bool);
         ArrayList<Object[]> rowsToKeep = new ArrayList<>(ncol);
         rowsToKeep = df_populate(rowsToKeep,coltypes);
-        for (int i = 0; i < ncol; i++) {
-            System.out.println(rowsToKeep.get(i).getClass() + " " + this.c(i).getClass());
-        }
         int k = 0;
         for (int i = 0; i < nrow_old; i++) {
             if (keep_bool[i]) {
                 for (int j = 0; j < ncol; j++){
-                    if (j == 9 & k == 0 & i == 15602) {
-                        System.out.println(rowsToKeep.get(j)[k]);
-                        System.out.println(df.get(j)[i]);
-
-                    }
                     rowsToKeep.get(j)[k] = df.get(j)[i];
                 }
                 k++;
@@ -256,10 +265,8 @@ public class DF {
     }
     public void keep_cols( boolean[] keep_vec) {
         header = keep_from_array(header,keep_vec);
-        System.out.println(Arrays.toString(coltypes));
-        System.out.println(Arrays.toString(keep_vec));
+
         coltypes = keep_from_array(coltypes,keep_vec);
-        System.out.println(Arrays.toString(coltypes));
 
         int j = 0;
             for (int i = 0; i < ncol; i++) {
@@ -287,8 +294,8 @@ public class DF {
         for (int i = 0; i < nrow; i++) {
             vec[i] = col[i].equals(crit);
         }
-
         this.keep_rows(vec);
+
     }
 
     // VECTORS
@@ -330,7 +337,7 @@ public class DF {
         for (int i = 0; i < nrow; i++) {
             Object[] row = this.r(i);
             for (int j = 0; j < ncol; j++) {
-                keep[j] = keep[j] | !row[j].equals("N.A.");
+                keep[j] = keep[j] | row[j] != null;
             }
         }
         for (int j = 0; j < ncol; j++) {
