@@ -86,7 +86,7 @@ public class App {
          DF g811 = new DF("C:/Users/ozhukov/Desktop/Grille Semi-spécifique sinistre 2022_09_13.xlsx","C811",coltypes_G);
          g811.dna();
         g811.filter_in(0,"ICICDDP19");
-
+        System.out.println("hello");
          g811.printgrille();
         String[] basic_cols = new String[]{"Statut_Technique_Sinistre", "SKU", "Type_Indemnisation", "Statut_Technique_Sinistre_2", "Libellé_Garantie",
                                            "Critère_Identification_Bien_Garanti_2", "Critère_Identification_Bien_Garanti_6", "Critère_Tarifaire_1", "Statut_Sogedep"};
