@@ -6,6 +6,7 @@ import static main.app.App.*;
 import static main.app.App.b_and;
 
 public class Node {
+    public static Double sizes = 0d;
     public String column;
     public Object value;
     public Node[] child_arr;
@@ -35,7 +36,11 @@ public class Node {
         if (order_pos < order.length) {
             column = order[order_pos];
             Object[] childs = unique_of(keep_from_array(base.c(column),vec));
-            System.out.println(Arrays.toString(childs));
+//            for (int ii = 0; ii < childs.length; ii++) {
+//                if (childs[ii] == null) return 1;
+//            }
+//            Node.sizes = sizes + childs.length;
+            System.out.println(Node.sizes);
             DF.Col_types type = base.coltypes[find_in_arr_first_index(base.header, column)];
             size = childs.length;
             child_arr = new Node[size];
@@ -44,10 +49,14 @@ public class Node {
                 child_arr[i].value = childs[i];
                 child_arr[i].type = Grille_columns.get_type(column);
                 child_arr[i].order_pos = order_pos+1;
-                child_arr[i].vec = b_and(vec, find_in_arr(base.c(column),childs[i]));
+//                System.out.println(vec.length);
+                boolean[] x = find_in_arr(base.c(column),childs[i]);
+//                System.out.println(x.length);
+                child_arr[i].vec = b_and(vec, x);
                 child_arr[i].getchilds(base);
             }
         }
+//        return 0;
     }
 //    public boolean find(String[] row, String[] header) {
 //        if (child_arr.length==0) return true;

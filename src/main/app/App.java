@@ -83,16 +83,22 @@ public class App {
 ////        DF grille = new DF(c811, which, startTime);
 ////        base.print();
 //        startTime = System.nanoTime();
-         DF g811 = new DF("C:/Users/ozhukov/Desktop/Grille Semi-spécifique sinistre 2022_09_13.xlsx","C811",coltypes_G);
-         g811.dna();
+        DF g811 = new DF("C:/Users/ozhukov/Desktop/Grille Semi-spécifique sinistre 2022_09_13.xlsx","C811",coltypes_G);
         g811.filter_in(0,"ICICDDP19");
+        g811.dna();
+
+//        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
+//        DF g811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx","Лист1",coltypes_s);
+        String[] orders = { "col1", "col2", "col3"};
+        String[] arr = new String[0];
+        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new String[0])));
+        System.out.println(hash);
         System.out.println("hello");
          g811.printgrille();
         String[] basic_cols = new String[]{"Statut_Technique_Sinistre", "SKU", "Type_Indemnisation", "Statut_Technique_Sinistre_2", "Libellé_Garantie",
                                            "Critère_Identification_Bien_Garanti_2", "Critère_Identification_Bien_Garanti_6", "Critère_Tarifaire_1", "Statut_Sogedep"};
         String[] calc_cols = new String[] {"Signe Montant_Indemnité_Principale","Pourcentage Montant_Indemnité_Principale","Valeur Montant_Indemnité_Principale"};
         System.out.println(Arrays.toString(g811.header));
-        System.out.println(Arrays.toString(arr_concat(basic_cols, calc_cols)));
         Object[] tmp = arr_merge(g811.header,arr_concat(basic_cols,calc_cols));
         String[] order =  Arrays.copyOf(tmp, tmp.length, String[].class);
 //        Node tree = new Node(grille, order);
@@ -105,6 +111,7 @@ public class App {
 //        Special_columns_c811 x = Special_columns_c811.get("Valeur_Achat Borne haute");
         startTime = System.nanoTime();
         Node x = new Node(g811, order);
+        System.out.println("size " + Node.sizes);
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
 
@@ -164,7 +171,7 @@ public class App {
         int len = sum_boolean(which);
         Object[] out = new Object[len];
         int j = 0;
-        for (int i = 0; i < len; i++) {
+        for (int i = 0; i < which.length; i++) {
             if (which[i]) {
                 out[j] = arr[i];
                 j++;
@@ -255,7 +262,8 @@ public class App {
         return out;
     }
     public static Object[] unique_of(Object[] arr) {
-        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.ofNullable(arr).orElse(new String[0])));
+        if (arr.length == 1) return arr;
+        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.ofNullable(arr).orElse(new Object[0])));
         return hash.toArray(new Object[0]);
     }
     public static boolean[] unique_bool(Object[] arr) {

@@ -164,6 +164,8 @@ public class DF {
         return df.get(index);
     }
     public String[] header_refactor(String[] cols) {
+        System.out.println(Arrays.toString(cols));
+        System.out.println(Arrays.toString(coltypes));
         String[] out = new String[get_len(coltypes)];
         Col_types[] coltypes_new = new Col_types[get_len(coltypes)];
         int j = 0;
