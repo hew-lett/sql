@@ -7,15 +7,31 @@ import org.w3c.dom.ls.LSOutput;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static java.lang.Math.ceil;
 import static java.lang.Math.round;
 import static java.util.Arrays.fill;
 
 public class App {
+    public static final Double NA_DBL = 9999099d;
+    public static final String NA_STR = "N.A.";
+    public static final SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
+    public static final Date NA_DAT;
+    static {
+        try {
+            NA_DAT = format.parse("01/01/2100");
+        } catch (ParseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static void main(String[] args) throws IOException {
 //        System.out.println("hello");
+
                 long startTime = System.nanoTime();
 
 ////        DF base = new DF("C:/Users/ozhukov/Desktop/Sinistre_Historique_ICICDDP19_677_20220806.txt",'|',"UTF-8");
@@ -86,18 +102,20 @@ public class App {
         DF g811 = new DF("C:/Users/ozhukov/Desktop/Grille Semi-spécifique sinistre 2022_09_13.xlsx","C811",coltypes_G);
         g811.filter_in(0,"ICICDDP19");
         g811.dna();
-
+//g811.printgrille();
 //        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
 //        DF g811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx","Лист1",coltypes_s);
         String[] orders = { "col1", "col2", "col3"};
         String[] arr = new String[0];
-        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new String[0])));
-        System.out.println(hash);
+//        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new String[0])));
+//        System.out.println(hash);
         System.out.println("hello");
-         g811.printgrille();
+//         g811.printgrille();
         String[] basic_cols = new String[]{"Statut_Technique_Sinistre", "SKU", "Type_Indemnisation", "Statut_Technique_Sinistre_2", "Libellé_Garantie",
                                            "Critère_Identification_Bien_Garanti_2", "Critère_Identification_Bien_Garanti_6", "Critère_Tarifaire_1", "Statut_Sogedep"};
         String[] calc_cols = new String[] {"Signe Montant_Indemnité_Principale","Pourcentage Montant_Indemnité_Principale","Valeur Montant_Indemnité_Principale"};
+        Net x = new Net(g811, coltypes_G, calc_cols);
+
         System.out.println(Arrays.toString(g811.header));
         Object[] tmp = arr_merge(g811.header,arr_concat(basic_cols,calc_cols));
         String[] order =  Arrays.copyOf(tmp, tmp.length, String[].class);
@@ -110,8 +128,8 @@ public class App {
 
 //        Special_columns_c811 x = Special_columns_c811.get("Valeur_Achat Borne haute");
         startTime = System.nanoTime();
-        Node x = new Node(g811, order);
-        System.out.println("size " + Node.sizes);
+//        Node x = new Node(g811, order);
+//        System.out.println("size " + Node.sizes);
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
 
@@ -182,6 +200,18 @@ public class App {
     public static String[] keep_from_array(String[] arr, boolean[] which) {
         int len = sum_boolean(which);
         String[] out = new String[len];
+        int j = 0;
+        for (int i = 0; i < which.length; i++) {
+            if (which[i]) {
+                out[j] = arr[i];
+                j++;
+            }
+        }
+        return out;
+    }
+    public static int[] keep_from_array(int[] arr, boolean[] which) {
+        int len = sum_boolean(which);
+        int[] out = new int[len];
         int j = 0;
         for (int i = 0; i < which.length; i++) {
             if (which[i]) {
@@ -263,8 +293,26 @@ public class App {
     }
     public static Object[] unique_of(Object[] arr) {
         if (arr.length == 1) return arr;
-        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.ofNullable(arr).orElse(new Object[0])));
+        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new Object[0]))); //ofNullable bilo ranshe hz
         return hash.toArray(new Object[0]);
+    }
+    public static Integer[] unique_of(Integer[] arr) {
+        if (arr.length == 1) return arr;
+        Set<Integer> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new Integer[0]))); //ofNullable bilo ranshe hz
+        return hash.toArray(new Integer[0]);
+    }
+    public static int[] unique_of(int[] arr) {
+        if (arr.length == 1) return arr;
+        HashMap<Integer,Integer> hashmap = new HashMap<Integer,Integer>();
+        for (int j = 0; j < arr.length; j++) {
+            hashmap.put(arr[j], j);
+        }
+        Object[] key_arr = hashmap.keySet().toArray();
+        int[] int_arr = new int[key_arr.length];
+        for (int i = 0; i < key_arr.length; i++) {
+            int_arr[i] = (int) key_arr[i];
+        }
+        return int_arr;
     }
     public static boolean[] unique_bool(Object[] arr) {
         Set<Object> hash = new LinkedHashSet<>();
@@ -289,6 +337,29 @@ public class App {
         }
         return out;
     }
+    public static Integer[] push_to_end_ind(String[] arr, String[] pushed) {
+        Integer[] out = new Integer[arr.length];
+        int j = 0;
+        int k = arr.length - pushed.length;
+        for (int i = 0; i < arr.length; i++) {
+            if (!in(arr[i],pushed)) {
+                out[j] = i;
+                j++;
+            } else {
+                out[k] = i;
+                k++;
+            }
+        }
+        return out;
+    }
+    public static Integer[] arr_concat(Integer[] arr1, Integer[] arr2) {
+        int fal = arr1.length;
+        int sal = arr2.length;
+        Integer[] result = new Integer[fal + sal];
+        System.arraycopy(arr1, 0, result, 0, fal);
+        System.arraycopy(arr2, 0, result, fal, sal);
+        return result;
+    }
     public static Object[] arr_concat(Object[] arr1, Object[] arr2) {
         int fal = arr1.length;
         int sal = arr2.length;
@@ -301,6 +372,15 @@ public class App {
         int fal = arr1.length;
         int sal = arr2.length;
         Object[] result = new Object[fal + sal];
+        System.arraycopy(arr1, 0, result, 0, fal);
+        System.arraycopy(arr2, 0, result, fal, sal);
+        result = unique_of(result);
+        return result;
+    }
+    public static int[] arr_merge(int[] arr1, int[] arr2) {
+        int fal = arr1.length;
+        int sal = arr2.length;
+        int[] result = new int[fal + sal];
         System.arraycopy(arr1, 0, result, 0, fal);
         System.arraycopy(arr2, 0, result, fal, sal);
         result = unique_of(result);
@@ -322,8 +402,98 @@ public class App {
         }
         return true;
     }
+    public static Integer[] sortIndices(int [] input, boolean descending){
 
+        Integer [] indices = new Integer[input.length];
 
+        for (int i = 0; i <input.length ; i++)
+            indices[i]=i;
+        if (descending) {
+            Arrays.sort(indices, new Comparator<Integer>() {
+                @Override
+                public int compare(Integer o1, Integer o2) {
+                    return input[o2]-input[o1];
+                }
+            });
+        } else {
+            Arrays.sort(indices, new Comparator<Integer>() {
+                @Override
+                public int compare(Integer o1, Integer o2) {
+                    return input[o1]-input[o2];
+                }
+            });
+        }
+
+        return indices;
+    }
+    public static Integer[] sort_by_2_vars(int[] arr1, int[] arr2, int interval, int total) {
+        int[] var1 = Arrays.copyOf(arr1, arr1.length);
+        int[] var2 = Arrays.copyOf(arr2, arr2.length);
+        System.out.println(Arrays.toString(var1));
+        System.out.println(Arrays.toString(var2));
+        Integer[] first_sort = sortIndices(var1, false);
+        Integer[] second_sort = new Integer[0];
+        var2 = shuffle(var2,first_sort);
+        Arrays.sort(var1);
+
+        int len = var1.length;
+        int interval_counter = 1;
+        int debut = 0;
+        int fin;
+        for (int i = 0; i < len; i++) {
+            if (i == len-1) {
+                fin = i+1;
+                int[] var2_tranche = Arrays.copyOfRange(var2, debut, fin);
+                second_sort = arr_concat(second_sort, sortIndices(var2_tranche, false));
+                break;
+            }
+            if (var1[i]*100.0/total > interval*interval_counter) {
+                fin = i-1;
+                int[] var2_tranche = Arrays.copyOfRange(var2, debut, fin);
+                second_sort = arr_concat(second_sort, sortIndices(var2_tranche, false));
+                debut = fin+1;
+                interval_counter++;
+            }
+
+        }
+        for (int i = 0; i < len; i++) {
+            second_sort[i] = first_sort[second_sort[i]];
+        }
+        System.out.println(Arrays.toString(second_sort));
+        return second_sort;
+    }
+    public static Object[] shuffle(Object[] arr, Integer[] idx) {
+        int len = arr.length;
+        Object[] out = new Object[len];
+        for (int i = 0; i < len; i++) {
+            out[i] = arr[idx[i]];
+        }
+        return out;
+    }
+    public static int[] shuffle(int[] arr, Integer[] idx) {
+        int len = arr.length;
+        int[] out = new int[len];
+        for (int i = 0; i < len; i++) {
+            out[i] = arr[idx[i]];
+        }
+        return out;
+    }
+    public static String[] shuffle(String[] arr, Integer[] idx) {
+        int len = arr.length;
+        String[] out = new String[len];
+        for (int i = 0; i < len; i++) {
+            out[i] = arr[idx[i]];
+        }
+        return out;
+    }
+    public static Integer[] shuffle(Integer[] arr, Integer[] idx) {
+        int len = arr.length;
+        Integer[] out = new Integer[len];
+        for (int i = 0; i < len; i++) {
+            out[i] = arr[idx[i]];
+        }
+        return out;
+    }
 //    public static int c811(DF base, DF grille, String name) throws IOException {
 //        boolean[] vec = new boolean[base.nrow];
 //        grille.keep_rows(find_in_arr(grille.c("Numéro_Police"), name));

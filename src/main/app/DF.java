@@ -25,8 +25,7 @@ import javax.swing.*;
 
 import static java.lang.Math.addExact;
 import static java.lang.Math.round;
-import static main.app.App.find_in_arr_first_index;
-import static main.app.App.keep_from_array;
+import static main.app.App.*;
 
 public class DF {
     private char delim;
@@ -50,7 +49,8 @@ public class DF {
             List<String[]> parsedRows = parser.parseAll(inputReader);
             Iterator<String[]> rows = parsedRows.iterator();
             coltypes = col_types;
-            header = header_refactor(rows.next());
+            header = rows.next();
+            this.header_refactor();
             nrow = parsedRows.size()-1;
             assert (coltypes.length == parsedRows.get(0).length);
             ncol = get_len(coltypes);
@@ -96,7 +96,7 @@ public class DF {
             header[i] = c.getStringCellValue();
             i++;
         }
-        header = header_refactor(header);
+        this.header_refactor();
 
         df = new ArrayList<>(ncol);
         df = df_populate(df,coltypes);
@@ -129,7 +129,9 @@ public class DF {
             row_number++;
         }
     }
-
+    public DF ( ArrayList<Object[]> base) {
+        this.df = base;
+    }
     // PRINT
     public void print() {
         this.print(10);
@@ -139,6 +141,11 @@ public class DF {
         for (int i = 0; i < rows; i++) {
             System.out.println(Arrays.toString(this.r(i)));
         }
+    }
+    public void print_cols() {
+       for (int i = 0; i < this.ncol; i++) {
+           System.out.println(Arrays.toString(this.df.get(i)));
+       }
     }
     public void printgrille() {
         int max = Math.min(nrow, 100);
@@ -163,21 +170,19 @@ public class DF {
     public Object[] c(int index){
         return df.get(index);
     }
-    public String[] header_refactor(String[] cols) {
-        System.out.println(Arrays.toString(cols));
-        System.out.println(Arrays.toString(coltypes));
-        String[] out = new String[get_len(coltypes)];
+    public void header_refactor() {
+        String[] header_new = new String[get_len(coltypes)];
         Col_types[] coltypes_new = new Col_types[get_len(coltypes)];
         int j = 0;
         for (int i = 0; i < coltypes.length; i++) {
             if (coltypes[i] != Col_types.SKP) {
-                out[j] = cols[i];
+                header_new[j] = header[i];
                 coltypes_new[j] = coltypes[i];
                 j++;
             }
         }
         this.coltypes = coltypes_new;
-        return out;
+        this.header = header_new;
     }
     public ArrayList<Object[]> df_populate (ArrayList<Object[]> base, Col_types[] coltypes) {
         for (Col_types coltype : coltypes) {
@@ -225,7 +230,7 @@ public class DF {
                 try {
                     out = Double.parseDouble(cell.replace(",","."));
                 } catch (NumberFormatException ignored) {
-                    out = 99999999d;
+                    out = NA_DBL;
                 }
                 break;
             case DAT:
@@ -233,10 +238,7 @@ public class DF {
                     out = format.parse(cell);
                 }
                 catch (NullPointerException | ParseException ignored) {
-                    try {
-                        out = format.parse("01/01/2100");
-                    } catch (ParseException ignored1) {
-                    }
+                    out = NA_DAT;
                 }
                 break;
         }
@@ -266,6 +268,7 @@ public class DF {
         this.df = rowsToKeep;
     }
     public void keep_cols( boolean[] keep_vec) {
+
         header = keep_from_array(header,keep_vec);
 
         coltypes = keep_from_array(coltypes,keep_vec);
@@ -279,6 +282,7 @@ public class DF {
                 }
             }
         ncol = sum_boolean(keep_vec);
+
     }
     public DF filter_out(String colname, String crit) {
         boolean[] vec = new boolean[nrow];
@@ -336,12 +340,37 @@ public class DF {
     public void dna() {
         boolean[] keep = new boolean[ncol];
         Arrays.fill(keep, false);
-        for (int i = 0; i < nrow; i++) {
-            Object[] row = this.r(i);
-            for (int j = 0; j < ncol; j++) {
-                keep[j] = keep[j] | row[j] != null;
+        for (int i = 0; i < ncol; i++) {
+
+                Object[] col = this.c(i);
+                switch (coltypes[i]) {
+                    case STR:
+                        for (int j = 0; j < nrow; j++) {
+                            if (!col[j].equals(NA_STR)) {
+                                keep[i] = true;
+                                break;
+                            }
+                        }
+                        break;
+                    case DAT:
+                        for (int j = 0; j < nrow; j++) {
+                            if (!col[j].equals(NA_DAT)) {
+                                keep[i] = true;
+                                break;
+                            }
+                        }
+                        break;
+                    case DBL:
+                        for (int j = 0; j < nrow; j++) {
+                            if (!col[j].equals(NA_DBL)) {
+                                keep[i] = true;
+                                break;
+                            }
+                        }
+                        break;
+                }
             }
-        }
+
         for (int j = 0; j < ncol; j++) {
             keep[j] = keep[j] & !this.header[j].equals("Date de modif");
         }
