@@ -10,13 +10,19 @@ import java.nio.file.Files;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static java.lang.Math.ceil;
 import static java.lang.Math.round;
 import static java.util.Arrays.fill;
+import static java.util.stream.IntStream.range;
 
 public class App {
+
+//    public static final Pattern regex_digits = Pattern.compile("[0-9]+");
+    public static final String regex_digits = "[0-9]+";
     public static final Double NA_DBL = 9999099d;
     public static final String NA_STR = "N.A.";
     public static final SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
@@ -30,13 +36,8 @@ public class App {
     }
 
     public static void main(String[] args) throws IOException {
-//        System.out.println("hello");
 
                 long startTime = System.nanoTime();
-
-////        DF base = new DF("C:/Users/ozhukov/Desktop/Sinistre_Historique_ICICDDP19_677_20220806.txt",'|',"UTF-8");
-//        DF base = new DF("C:/Users/ozhukov/Desktop/Sinistre_Historique_ICICDDP19_677_20220806.txt",'|',"UTF-8");
-////        final String[][] table_sin = base.df;
         DF.Col_types[] columnTypes = {
                 DF.Col_types.STR,     // 0     Numéro_Police
                 DF.Col_types.STR,     // 1     Libellé_Distributeur
@@ -94,40 +95,39 @@ public class App {
         coltypes_G[81] = DF.Col_types.DBL;
         coltypes_G[82] = DF.Col_types.DBL;
 
-//        DF base = new DF("C:/Users/ozhukov/Desktop/Sinistre_Historique_ICICDDP19_677_20220806.txt",'|',"UTF-8",columnTypes);
-////        boolean[] which = filtre(c811, "Numéro_Police", "ICICDDV15-1");
-////        DF grille = new DF(c811, which, startTime);
-////        base.print();
+        DF base = new DF("C:/Users/jukov/OneDrive/Рабочий стол/Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8",columnTypes);
+        DF grille = new DF("C:/Users/jukov/OneDrive/Рабочий стол/Grille SS sinistre BI.xlsx","C811",coltypes_G);
+        grille.filter_in(0,"ICICDDP19");
+        grille.dna();
+
+        grille.printgrille();
+        base.print(10);
+        System.out.println(base.c811(grille));
+////        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
+////        DF g811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx","Лист1",coltypes_s);
+//        String[] orders = { "col1", "col2", "col3"};
+//        String[] arr = new String[0];
+////        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new String[0])));
+////        System.out.println(hash);
+//        System.out.println("hello");
+////         g811.printgrille();
+//        String[] basic_cols = new String[]{"Statut_Technique_Sinistre", "SKU", "Type_Indemnisation", "Statut_Technique_Sinistre_2", "Libellé_Garantie",
+//                                           "Critère_Identification_Bien_Garanti_2", "Critère_Identification_Bien_Garanti_6", "Critère_Tarifaire_1", "Statut_Sogedep"};
+//        String[] calc_cols = new String[] {"Signe Montant_Indemnité_Principale","Pourcentage Montant_Indemnité_Principale","Valeur Montant_Indemnité_Principale"};
+//        Net x = new Net(g811, coltypes_G, calc_cols);
+//
+//        System.out.println(Arrays.toString(g811.header));
+//        Object[] tmp = arr_merge(g811.header,arr_concat(basic_cols,calc_cols));
+//        String[] order =  Arrays.copyOf(tmp, tmp.length, String[].class);
+////        Node tree = new Node(grille, order);
+//
+////        String name = "ICIMM101";
+////        System.out.println(c811(base,g811,name));
+//////        System.out.println(Arrays.toString(x.child_arr));
+//////        System.out.println(Arrays.toString(cut(c811.c(0),find_in_arr(c811.c("Numéro_Police"), "ICICDDP19"))));
+//
+////        Special_columns_c811 x = Special_columns_c811.get("Valeur_Achat Borne haute");
 //        startTime = System.nanoTime();
-        DF g811 = new DF("C:/Users/ozhukov/Desktop/Grille Semi-spécifique sinistre 2022_09_13.xlsx","C811",coltypes_G);
-        g811.filter_in(0,"ICICDDP19");
-        g811.dna();
-//g811.printgrille();
-//        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
-//        DF g811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx","Лист1",coltypes_s);
-        String[] orders = { "col1", "col2", "col3"};
-        String[] arr = new String[0];
-//        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new String[0])));
-//        System.out.println(hash);
-        System.out.println("hello");
-//         g811.printgrille();
-        String[] basic_cols = new String[]{"Statut_Technique_Sinistre", "SKU", "Type_Indemnisation", "Statut_Technique_Sinistre_2", "Libellé_Garantie",
-                                           "Critère_Identification_Bien_Garanti_2", "Critère_Identification_Bien_Garanti_6", "Critère_Tarifaire_1", "Statut_Sogedep"};
-        String[] calc_cols = new String[] {"Signe Montant_Indemnité_Principale","Pourcentage Montant_Indemnité_Principale","Valeur Montant_Indemnité_Principale"};
-        Net x = new Net(g811, coltypes_G, calc_cols);
-
-        System.out.println(Arrays.toString(g811.header));
-        Object[] tmp = arr_merge(g811.header,arr_concat(basic_cols,calc_cols));
-        String[] order =  Arrays.copyOf(tmp, tmp.length, String[].class);
-//        Node tree = new Node(grille, order);
-
-//        String name = "ICIMM101";
-//        System.out.println(c811(base,g811,name));
-////        System.out.println(Arrays.toString(x.child_arr));
-////        System.out.println(Arrays.toString(cut(c811.c(0),find_in_arr(c811.c("Numéro_Police"), "ICICDDP19"))));
-
-//        Special_columns_c811 x = Special_columns_c811.get("Valeur_Achat Borne haute");
-        startTime = System.nanoTime();
 //        Node x = new Node(g811, order);
 //        System.out.println("size " + Node.sizes);
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
