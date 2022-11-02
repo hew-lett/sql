@@ -490,7 +490,10 @@ public class DF {
                 continue;
             }
 
+
             String col = "Valeur_Catalogue";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
+
             String colg = "Valeur_Catalogue Borne haute";
             cell_base_dbl = (Double) this.c(col)[i];
             if (cell_base_dbl != null) {
@@ -575,9 +578,11 @@ public class DF {
                     break;
                 }
             }
+        }
 
             col = "Code_Client";
-            colg = "Retraitement Code_Client";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
+            String colg = "Retraitement Code_Client";
             cell_base_str = (String) this.c(col)[i];
             if (cell_base_str != null) {
                 if (cell_base_str.matches(regex_digits)) {
@@ -638,9 +643,11 @@ public class DF {
                     break;
                 }
             }
+            }
 
             col = "Critère_Identification_Bien_Garanti_1";
-            colg = "Référentiel Marque";
+            String colg = "Référentiel Marque";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
             cell_base_str = (String) this.c(col)[i];
             switch (cell_base_str) {
                 case "apple":
@@ -727,6 +734,7 @@ public class DF {
                     temp = new boolean[reste.size()];
                     ind = 0;
                     for (int r : reste) {
+                        System.out.println(Arrays.toString(grille.header));
                         cell_grille = grille.c(colg)[r];
                         if(!(cell_grille.equals(4) | cell_grille.equals(5) | cell_grille.equals(6) | cell_grille.equals(8) | cell_grille == NA_DBL)) {
                             temp[ind] = true;
@@ -742,6 +750,7 @@ public class DF {
                         vec[i] = true;
                         break;
                     }
+            }
             }
 
 // valeur achat
@@ -804,6 +813,7 @@ public class DF {
 //            }
 
             col = "Date_Clôture";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
             colg = "Date_Clôture borne haute";
             LocalDate date_clot = (LocalDate) this.c(col)[i];
             if (date_clot != null) {
@@ -884,39 +894,39 @@ public class DF {
                     break;
                 }
             }
-
+            }
             if (reste.size() > 1) {
                 vec[i] = true;
-                System.out.println("error age");
+                System.out.println("error age multiple");
                 break;
             }
+            int reste_i = reste.get(0);
 
             col = "Date_Souscription_Adhésion";
-            String col1 = "Date_Survenance";
-            colg = date_sous_col;
-            int reste_i = reste.get(0);
-            double age_ref = (double) grille.c("Age")[reste_i];
-            LocalDate date_sous = (LocalDate) this.c(col)[i];
-            LocalDate date_surv = (LocalDate) this.c(col1)[i];
-            if (date_sous != null & date_surv != null) {
-                    String m = (String) grille.c(colg)[reste_i];
-                    int months = Integer.parseInt(m.replaceAll("\\D+",""));
-                    if (date_sous.plusMonths(months).isBefore(date_surv)) {
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
+                String col1 = "Date_Survenance";
+                double age_ref = (double) grille.c("Age")[reste_i];
+                LocalDate date_sous = (LocalDate) this.c(col)[i];
+                LocalDate date_surv = (LocalDate) this.c(col1)[i];
+                if (date_sous != null & date_surv != null) {
+                        String m = (String) grille.c(date_sous_col)[reste_i];
+                        int months = Integer.parseInt(m.replaceAll("\\D+",""));
+                        if (date_sous.plusMonths(months).isBefore(date_surv)) {
+                            vec[i] = true;
+                            break;
+                        }
+                        int age = Period.between(date_sous.plusMonths(months), date_surv).getYears();
+                        if(!(age == age_ref | Objects.equals(age_ref, NA_DBL))) {
+                            vec[i] = true;
+                            break;
+                        }
+                    } else {
+                    if(!Objects.equals(age_ref, NA_DBL)) {
                         vec[i] = true;
                         break;
                     }
-                    int age = Period.between(date_sous.plusMonths(months), date_surv).getYears();
-                    if(!(age == age_ref | Objects.equals(age_ref, NA_DBL))) {
-                        vec[i] = true;
-                        break;
-                    }
-                } else {
-                if(!Objects.equals(age_ref, NA_DBL)) {
-                    vec[i] = true;
-                    break;
                 }
             }
-
             col = "Montant_Indemnité_Principale";
             colg = "Valeur Montant_Indemnité_Principale";
             Object pourcent_raw = grille.c("Pourcentage Montant_Indemnité_Principale")[reste_i];
@@ -931,15 +941,15 @@ public class DF {
             } else {
                 pourcentage = (Double) pourcent_raw;
             }
-            Object montant_raw = grille.c(colg)[reste_i];
+            String montant_raw = (String) grille.c(colg)[reste_i];
             if (montant_raw.equals("Valeur_Achat")) {
                 montant = (Double) this.c("Valeur_Achat")[i];
             } else {
-                montant = (Double) grille.c(colg)[reste_i];
+                montant = Double.parseDouble(montant_raw.replace(",","."));
             }
             mip_ref = montant * pourcentage;
             mip = (Double) this.c(col)[i];
-            signe = (int) signe_raw;
+            signe = (short) round((Double) signe_raw);
             switch (signe) {
                 case 1:
                     vec[i] = !Objects.equals(mip, mip_ref);
@@ -962,9 +972,9 @@ public class DF {
                 default:
                     System.out.println("erreur signe non-renseignée grille c811");
             }
-
         }
 
+        System.out.println(sum_boolean(vec));
 
         return sum_boolean(vec);
     }

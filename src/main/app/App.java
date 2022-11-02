@@ -102,7 +102,8 @@ public class App {
 
         grille.printgrille();
         base.print(10);
-        System.out.println(base.c811(grille));
+        int x = base.c811(grille);
+        System.out.println(x);
 ////        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
 ////        DF g811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx","Лист1",coltypes_s);
 //        String[] orders = { "col1", "col2", "col3"};
