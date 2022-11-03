@@ -21,12 +21,12 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.STSourceType;
+import org.w3c.dom.ls.LSOutput;
 
 import javax.naming.PartialResultException;
 import javax.swing.*;
 
-import static java.lang.Math.addExact;
-import static java.lang.Math.round;
+import static java.lang.Math.*;
 import static java.util.stream.IntStream.range;
 import static main.app.App.*;
 
@@ -141,7 +141,7 @@ public class DF {
     }
     // PRINT
     public void print() {
-        this.print(10);
+        this.print(min(10,this.nrow));
     }
     public void print(int rows) {
         System.out.println(Arrays.toString(header));
@@ -155,7 +155,7 @@ public class DF {
        }
     }
     public void printgrille() {
-        int max = Math.min(nrow, 100);
+        int max = min(nrow, 100);
         this.print(max);
     }
 
@@ -430,7 +430,7 @@ public class DF {
         String[] crit = {"Statut_Technique_Sinistre","SKU","Type_Indemnisation","Statut_Technique_Sinistre_2","Libellé_Garantie","Critère_Identification_Bien_Garanti_2","Critère_Identification_Bien_Garanti_6",
                 "Critère_Tarifaire_1","Statut_Sogedep" };
         for (int i = 0; i < nrow; i++) {
-            System.out.println(i);
+//            System.out.println("row " + i);
 //            boolean[] vec_loc = new boolean[dim];
 //            Arrays.fill(vec_loc,false);
             ArrayList<Integer> reste = new ArrayList<>(reste_gen);
@@ -440,18 +440,26 @@ public class DF {
             Object cell_grille;
             Double cell_grille_dbl;
             for (String col : crit) {
-
+//                System.out.println(col);
+//                System.out.println("size " + reste.size());
                 if(find_in_arr_first_index(header, col) == -1 | find_in_arr_first_index(grille.header, col) == -1) {
                     continue;
                 }
                 cell_base = this.c(col)[i];
+//                System.out.println(cell_base);
 
                 if (cell_base != null) {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
                     for (int r : reste) {
+
                       cell_grille = grille.c(find_in_arr_first_index(grille.header, col))[r];
-                        if(!(cell_grille.equals(cell_base) | cell_grille.equals("{ renseigné }") | cell_grille == NA_STR)) {
+                        if (col.equals("SKU")) {
+//                            System.out.println("cell_grille " + cell_grille);
+//                            System.out.println(cell_grille.equals(NA_STR));
+//                            System.out.println(cell_grille.equals(NA_STR));
+                        }
+                        if(!(cell_grille.equals(cell_base) | cell_grille.equals("{ renseigné }") | cell_grille.equals(NA_STR))) {
                             temp[ind] = true;
                         }
                         ind++;
@@ -462,6 +470,7 @@ public class DF {
                         }
                     }
                     if (reste.isEmpty()) {
+//                        System.out.println(col);
                         vec[i] = true;
                         break;
                     }
@@ -470,7 +479,10 @@ public class DF {
                     int ind = 0;
                     for (int r : reste) {
                         cell_grille = grille.c(col)[r];
-                        if(!(cell_grille.equals("") | cell_grille.equals("{ vide }") | cell_grille == NA_STR)) {
+                        if (col.equals("SKU")) {
+//                            System.out.println("cell_grille "+ cell_grille);
+                        }
+                        if(!(cell_grille.equals("") | cell_grille.equals("{ vide }") | cell_grille.equals(NA_STR))) {
                             temp[ind] = true;
                         }
                         ind++;
@@ -481,16 +493,18 @@ public class DF {
                         }
                     }
                     if (reste.isEmpty()) {
+//                        System.out.println(col);
                         vec[i] = true;
                         break;
                     }
                 }
             }
             if (reste.isEmpty()) {
+                vec[i] = true;
                 continue;
             }
 
-
+//            System.out.println(1);
             String col = "Valeur_Catalogue";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
 
@@ -580,6 +594,8 @@ public class DF {
             }
         }
 
+//            System.out.println(2);
+
             col = "Code_Client";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
             String colg = "Retraitement Code_Client";
@@ -590,7 +606,7 @@ public class DF {
                     int ind = 0;
                     for (int r : reste) {
                         cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals("professionnel") | cell_grille == NA_STR)) {
+                        if(!(cell_grille.equals("professionnel") | cell_grille.equals(NA_STR))) {
                             temp[ind] = true;
                         }
                         ind++;
@@ -609,7 +625,7 @@ public class DF {
                     int ind = 0;
                     for (int r : reste) {
                         cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals("particulier") | cell_grille == NA_STR)) {
+                        if(!(cell_grille.equals("particulier") | cell_grille.equals(NA_STR))) {
                             temp[ind] = true;
                         }
                         i++;
@@ -628,7 +644,7 @@ public class DF {
                 boolean[] temp = new boolean[reste.size()];
                 int ind = 0;
                 for (int r : reste) {
-                    if(!(grille.c(colg)[r] == NA_STR)) {
+                    if(!(grille.c(colg)[r].equals(NA_STR))) {
                         temp[ind] = true;
                     }
                     i++;
@@ -645,6 +661,8 @@ public class DF {
             }
             }
 
+//            System.out.println(3);
+
             col = "Critère_Identification_Bien_Garanti_1";
             String colg = "Référentiel Marque";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
@@ -655,7 +673,7 @@ public class DF {
                     int ind = 0;
                     for (int r : reste) {
                         cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals(1) | cell_grille.equals(8) | cell_grille == NA_DBL)) {
+                        if(!(cell_grille.equals(1) | cell_grille.equals(8) | cell_grille.equals(NA_DBL))) {
                             temp[ind] = true;
                         }
                         i++;
@@ -675,7 +693,7 @@ public class DF {
                     ind = 0;
                     for (int r : reste) {
                         cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals(2) | cell_grille.equals(4) | cell_grille.equals(8) | cell_grille == NA_DBL)) {
+                        if(!(cell_grille.equals(2) | cell_grille.equals(4) | cell_grille.equals(8) | cell_grille.equals(NA_DBL))) {
                             temp[ind] = true;
                         }
                         i++;
@@ -695,7 +713,7 @@ public class DF {
                     ind = 0;
                     for (int r : reste) {
                         cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals(3) | cell_grille.equals(4) | cell_grille.equals(5) | cell_grille.equals(8) | cell_grille == NA_DBL)) {
+                        if(!(cell_grille.equals(3) | cell_grille.equals(4) | cell_grille.equals(5) | cell_grille.equals(8) | cell_grille.equals(NA_DBL))) {
                             temp[ind] = true;
                         }
                         i++;
@@ -715,7 +733,7 @@ public class DF {
                     ind = 0;
                     for (int r : reste) {
                         cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals(4) | cell_grille.equals(5) | cell_grille.equals(6) | cell_grille.equals(7) | cell_grille == NA_DBL)) {
+                        if(!(cell_grille.equals(4) | cell_grille.equals(5) | cell_grille.equals(6) | cell_grille.equals(7) | cell_grille.equals(NA_DBL))) {
                             temp[ind] = true;
                         }
                         i++;
@@ -736,7 +754,7 @@ public class DF {
                     for (int r : reste) {
                         System.out.println(Arrays.toString(grille.header));
                         cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals(4) | cell_grille.equals(5) | cell_grille.equals(6) | cell_grille.equals(8) | cell_grille == NA_DBL)) {
+                        if(!(cell_grille.equals(4) | cell_grille.equals(5) | cell_grille.equals(6) | cell_grille.equals(8) | cell_grille.equals(NA_DBL))) {
                             temp[ind] = true;
                         }
                         i++;
@@ -811,6 +829,8 @@ public class DF {
 //                    continue;
 //                }
 //            }
+
+//            System.out.println(4);
 
             col = "Date_Clôture";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
@@ -902,6 +922,7 @@ public class DF {
             }
             int reste_i = reste.get(0);
 
+//            System.out.println(5);
             col = "Date_Souscription_Adhésion";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
                 String col1 = "Date_Survenance";
@@ -947,9 +968,12 @@ public class DF {
             } else {
                 montant = Double.parseDouble(montant_raw.replace(",","."));
             }
-            mip_ref = montant * pourcentage;
+            mip_ref = montant * pourcentage / 100;
             mip = (Double) this.c(col)[i];
             signe = (short) round((Double) signe_raw);
+//            System.out.println("mip " + mip);
+//            System.out.println("mipref " + mip_ref);
+//            System.out.println("signe " + signe);
             switch (signe) {
                 case 1:
                     vec[i] = !Objects.equals(mip, mip_ref);

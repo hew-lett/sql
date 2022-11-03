@@ -27,6 +27,7 @@ public class App {
     public static final String NA_STR = "N.A.";
     public static final SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
     public static final Date NA_DAT;
+    public static final String wd = "C:/Users/ozhukov/Desktop/";
     static {
         try {
             NA_DAT = format.parse("01/01/2100");
@@ -95,13 +96,19 @@ public class App {
         coltypes_G[81] = DF.Col_types.DBL;
         coltypes_G[82] = DF.Col_types.DBL;
 
-        DF base = new DF("C:/Users/jukov/OneDrive/Рабочий стол/Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8",columnTypes);
-        DF grille = new DF("C:/Users/jukov/OneDrive/Рабочий стол/Grille SS sinistre BI.xlsx","C811",coltypes_G);
+//        DF base = new DF(wd + "ddp19 test.txt",'|',"UTF-8",columnTypes);
+        DF base = new DF(wd + "Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8",columnTypes);
+        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C811",coltypes_G);
         grille.filter_in(0,"ICICDDP19");
         grille.dna();
-
+//        boolean[] keep = new boolean[base.nrow];
+//        Arrays.fill(keep,false);
+//        for (int i = 0; i < 100; i++) {
+//            keep[i] = true;
+//        }
+//        base.keep_rows(keep);
         grille.printgrille();
-        base.print(10);
+        base.print();
         int x = base.c811(grille);
         System.out.println(x);
 ////        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
