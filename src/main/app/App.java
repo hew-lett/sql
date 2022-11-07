@@ -22,7 +22,8 @@ import static java.util.stream.IntStream.range;
 public class App {
 
 //    public static final Pattern regex_digits = Pattern.compile("[0-9]+");
-    public static final String regex_digits = "[0-9]+";
+public static final String regex_digits = "[0-9]+";
+    public static final String regex_letters = ".*[a-zA-Z].*";
     public static final Double NA_DBL = 9999099d;
     public static final String NA_STR = "N.A.";
     public static final SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
@@ -38,7 +39,6 @@ public class App {
 
     public static void main(String[] args) throws IOException {
 
-                long startTime = System.nanoTime();
         DF.Col_types[] columnTypes = {
                 DF.Col_types.STR,     // 0     Numéro_Police
                 DF.Col_types.STR,     // 1     Libellé_Distributeur
@@ -87,20 +87,32 @@ public class App {
         };
         DF.Col_types[] coltypes_G = new DF.Col_types[84];
         Arrays.fill(coltypes_G,DF.Col_types.STR);
-        coltypes_G[57] = DF.Col_types.DBL;
-        coltypes_G[60] = DF.Col_types.DAT;
-        coltypes_G[61] = DF.Col_types.DAT;
-        coltypes_G[62] = DF.Col_types.DBL;
-        coltypes_G[63] = DF.Col_types.DBL;
-        coltypes_G[71] = DF.Col_types.DBL;
-        coltypes_G[81] = DF.Col_types.DBL;
-        coltypes_G[82] = DF.Col_types.DBL;
+        coltypes_G[57] = DF.Col_types.DBL; // Référentiel Marque
+        coltypes_G[60] = DF.Col_types.DAT; // Date_Clôture borne basse
+        coltypes_G[61] = DF.Col_types.DAT; // Date_Clôture borne haute
+        coltypes_G[62] = DF.Col_types.DBL; // Signe Montant_Indemnité_Principale
+        coltypes_G[63] = DF.Col_types.DBL; // Pourcentage Montant_Indemnité_Principale
+        coltypes_G[65] = DF.Col_types.DBL; // Signe Montant_Frais_Annexe
+        coltypes_G[66] = DF.Col_types.DBL; // Pourcentage Montant_Frais_Annexe
+        coltypes_G[68] = DF.Col_types.DBL; // Signe Montant_Reprise
+        coltypes_G[69] = DF.Col_types.DBL; // Pourcentage Montant_Reprise
+        coltypes_G[71] = DF.Col_types.DBL; // Age
+        coltypes_G[81] = DF.Col_types.DBL; // Valeur_Catalogue Borne basse
+        coltypes_G[82] = DF.Col_types.DBL; // Valeur_Catalogue Borne haute
 
 //        DF base = new DF(wd + "ddp19 test.txt",'|',"UTF-8",columnTypes);
+
+//        DF base = new DF(wd + "Sinistre_Historique_ICICDDV19_678_20221006.txt",'|',"UTF-8",columnTypes);
         DF base = new DF(wd + "Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8",columnTypes);
-        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C811",coltypes_G);
+
+        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C807",coltypes_G);
+
         grille.filter_in(0,"ICICDDP19");
+
         grille.dna();
+        System.out.println(grille.nrow);
+        System.out.println(grille.ncol);
+
 //        boolean[] keep = new boolean[base.nrow];
 //        Arrays.fill(keep,false);
 //        for (int i = 0; i < 100; i++) {
@@ -109,7 +121,12 @@ public class App {
 //        base.keep_rows(keep);
         grille.printgrille();
         base.print();
-        int x = base.c811(grille);
+
+        long startTime = System.nanoTime();
+
+        int x = base.c808(grille);
+        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
+
         System.out.println(x);
 ////        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
 ////        DF g811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx","Лист1",coltypes_s);
@@ -138,7 +155,6 @@ public class App {
 //        startTime = System.nanoTime();
 //        Node x = new Node(g811, order);
 //        System.out.println("size " + Node.sizes);
-        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
 
 //        System.out.println(x==Special_columns_c811.DEFAULT);
