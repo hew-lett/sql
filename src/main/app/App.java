@@ -36,10 +36,11 @@ public static final String regex_digits = "[0-9]+";
             throw new RuntimeException(e);
         }
     }
-
+    public static String Police_en_cours = "default";
+    public static String Controle_en_cours = "default";
     public static void main(String[] args) throws IOException {
 
-        DF.Col_types[] columnTypes = {
+       DF.Col_types[] columnTypes = {
                 DF.Col_types.STR,     // 0     Numéro_Police
                 DF.Col_types.STR,     // 1     Libellé_Distributeur
                 DF.Col_types.STR,    // 2     Numéro_Dossier
@@ -107,8 +108,14 @@ public static final String regex_digits = "[0-9]+";
 
         DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C807",coltypes_G);
 
+        long startTime = System.nanoTime();
+
+        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
         grille.filter_in(0,"ICICDDP19");
 
+//        System.out.println(grille.cc("Signe Montant_Frais_Annexe").getClass().getName());
+//        System.out.println(grille.cc("Date_Clôture borne basse").getClass().getName());
+//        System.out.println(grille.cc(70).getClass().getName());
         grille.dna();
         System.out.println(grille.nrow);
         System.out.println(grille.ncol);
@@ -122,12 +129,11 @@ public static final String regex_digits = "[0-9]+";
         grille.printgrille();
         base.print();
 
-        long startTime = System.nanoTime();
 
-        int x = base.c808(grille);
+//        int x = base.c807(grille);
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
-        System.out.println(x);
+//        System.out.println(x);
 ////        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
 ////        DF g811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx","Лист1",coltypes_s);
 //        String[] orders = { "col1", "col2", "col3"};

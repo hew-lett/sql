@@ -11,11 +11,13 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.ZoneId;
 import java.util.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 
+import org.apache.poi.ss.formula.functions.T;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -251,6 +253,9 @@ public class DF {
         }
         return out;
     }
+    public LocalDate to_Date (Date input) {
+        return input.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+    }
 
     // FILTER
     public void keep_rows (boolean[] keep_bool) {
@@ -309,6 +314,18 @@ public class DF {
         }
         this.keep_rows(vec);
 
+    }
+    public boolean check_in(String[] what, String[] where) {
+        int counter = 0;
+        for (String value : what) {
+            for (String ref : where) {
+                if (value.equals(ref)) {
+                    counter++;
+                    break;
+                }
+            }
+        }
+        return counter == what.length;
     }
 
     // VECTORS
@@ -383,6 +400,11 @@ public class DF {
         }
         this.keep_cols(keep);
     }
+    public void err(String msg) {
+        System.out.println(msg);
+        System.out.println(Police_en_cours);
+        System.out.println(Controle_en_cours);
+    }
 
 //    // CONTROLES
 //    public int c811() {
@@ -412,13 +434,53 @@ public class DF {
             }
         }
         return j;
-    }
-
-    public int c811(DF grille) {
+    } // gets number of non-SKIP columns
+    public boolean compa_signe(Double a, Double b, short signe) {
+        switch (signe) {
+            case 1:
+                return Objects.equals(a, b);
+            case 2:
+                return a > b;
+            case 3:
+                return a < b;
+            case 4:
+                return a >= b;
+            case 5:
+                return a <= b;
+            case 6:
+                return !Objects.equals(a, b);
+            default:
+                err("erreur signe non-renseignée");
+                return false;
+        }
+    } // true = OK, selon signe
+    public boolean compa_signe(Date a, Date b, short signe) {
+        switch (signe) {
+            case 1:
+                return Objects.equals(a, b);
+            case 2:
+                return a.after(b);
+            case 3:
+                return a.before(b);
+            case 4:
+                return !a.before(b);
+            case 5:
+                return !a.after(b);
+            case 6:
+                return !Objects.equals(a, b);
+            default:
+                err("erreur signe non-renseignée");
+                return false;
+        }
+    } // true = OK, selon signe
+    public boolean[] c811(DF grille) {
+        Controle_en_cours = "C811";
         boolean[] vec = new boolean[nrow];
-        if(find_in_arr_first_index(header, "Montant_Indemnité_Principale") == -1 | find_in_arr_first_index(header, "Valeur_Achat") == -1) {
-            System.out.println("missing columns for grille C808");
-            return(this.nrow);
+        String[] cols = {"Montant_Indemnité_Principale","Valeur_Achat"};
+        if (check_in(cols,header)) {
+            System.out.println("missing columns for grille C811");
+            Arrays.fill(vec,false);
+            return vec;
         } else {
             Arrays.fill(vec,false);
         }
@@ -500,9 +562,9 @@ public class DF {
             }
 
             String col = "Valeur_Catalogue";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
-
             String colg = "Valeur_Catalogue Borne haute";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+
             cell_base_dbl = (Double) this.c(col)[i];
             if (cell_base_dbl != null) {
                 boolean[] temp = new boolean[reste.size()];
@@ -589,35 +651,54 @@ public class DF {
         }
 
             col = "Code_Client";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
-            String colg = "Retraitement Code_Client";
-            cell_base_str = (String) this.c(col)[i];
-            if (cell_base_str != null) {
-                if (cell_base_str.matches(regex_digits)) {
-                    boolean[] temp = new boolean[reste.size()];
-                    int ind = 0;
-                    for (int r : reste) {
-                        cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals("professionnel") | cell_grille.equals(NA_STR))) {
-                            temp[ind] = true;
+            colg = "Retraitement Code_Client";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                cell_base_str = (String) this.c(col)[i];
+                if (cell_base_str != null) {
+                    if (cell_base_str.matches(regex_digits)) {
+                        boolean[] temp = new boolean[reste.size()];
+                        int ind = 0;
+                        for (int r : reste) {
+                            cell_grille = grille.c(colg)[r];
+                            if(!(cell_grille.equals("professionnel") | cell_grille.equals(NA_STR))) {
+                                temp[ind] = true;
+                            }
+                            ind++;
                         }
-                        ind++;
-                    }
-                    for (int t = temp.length-1; t >= 0; t--) {
-                        if (temp[t]) {
-                            reste.remove(t);
+                        for (int t = temp.length-1; t >= 0; t--) {
+                            if (temp[t]) {
+                                reste.remove(t);
+                            }
                         }
-                    }
-                    if (reste.isEmpty()) {
-                        vec[i] = true;
-                        break;
+                        if (reste.isEmpty()) {
+                            vec[i] = true;
+                            break;
+                        }
+                    } else {
+                        boolean[] temp = new boolean[reste.size()];
+                        int ind = 0;
+                        for (int r : reste) {
+                            cell_grille = grille.c(colg)[r];
+                            if(!(cell_grille.equals("particulier") | cell_grille.equals(NA_STR))) {
+                                temp[ind] = true;
+                            }
+                            i++;
+                        }
+                        for (int t = temp.length-1; t >= 0; t--) {
+                            if (temp[t]) {
+                                reste.remove(t);
+                            }
+                        }
+                        if (reste.isEmpty()) {
+                            vec[i] = true;
+                            break;
+                        }
                     }
                 } else {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
                     for (int r : reste) {
-                        cell_grille = grille.c(colg)[r];
-                        if(!(cell_grille.equals("particulier") | cell_grille.equals(NA_STR))) {
+                        if(!(grille.c(colg)[r].equals(NA_STR))) {
                             temp[ind] = true;
                         }
                         i++;
@@ -632,29 +713,10 @@ public class DF {
                         break;
                     }
                 }
-            } else {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    if(!(grille.c(colg)[r].equals(NA_STR))) {
-                        temp[ind] = true;
-                    }
-                    i++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
-                    if (temp[t]) {
-                        reste.remove(t);
-                    }
-                }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    break;
-                }
-            }
             }
 
             col = "Critère_Identification_Bien_Garanti_1";
-            String colg = "Référentiel Marque";
+            colg = "Référentiel Marque";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
             cell_base_str = (String) this.c(col)[i];
             switch (cell_base_str) {
@@ -823,99 +885,101 @@ public class DF {
 //            System.out.println(4);
 
             col = "Date_Clôture";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
             colg = "Date_Clôture borne haute";
-            LocalDate date_clot = (LocalDate) this.c(col)[i];
-            if (date_clot != null) {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    LocalDate date_clot_ref = (LocalDate) grille.c(colg)[r];
-                    if(!(!date_clot_ref.isBefore(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
-                        temp[ind] = true;
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                Date date_clot = (Date) this.c(col)[i];
+                if (date_clot != null) {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        Date date_clot_ref = (Date) grille.c(colg)[r];
+                        if(!(!date_clot_ref.before(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
+                            temp[ind] = true;
+                        }
+                        i++;
                     }
-                    i++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
-                    if (temp[t]) {
-                        reste.remove(t);
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
+                } else {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        if(!grille.c(colg)[r].equals(NA_DAT)) {
+                            temp[ind] = true;
+                        }
+                        i++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
                     }
                 }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    break;
-                }
-            } else {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    if(!grille.c(colg)[r].equals(NA_DAT)) {
-                        temp[ind] = true;
+
+                colg = "Date_Clôture borne basse";
+                if (date_clot != null) {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        Date date_clot_ref = (Date) grille.c(colg)[r];
+                        if(!(!date_clot_ref.after(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
+                            temp[ind] = true;
+                        }
+                        i++;
                     }
-                    i++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
-                    if (temp[t]) {
-                        reste.remove(t);
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
                     }
-                }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    break;
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
+                } else {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        if(!grille.c(colg)[r].equals(NA_DAT)) {
+                            temp[ind] = true;
+                        }
+                        i++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
                 }
             }
 
-            colg = "Date_Clôture borne basse";
-            if (date_clot != null) {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    LocalDate date_clot_ref = (LocalDate) grille.c(colg)[r];
-                    if(!(!date_clot_ref.isAfter(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
-                        temp[ind] = true;
-                    }
-                    i++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
-                    if (temp[t]) {
-                        reste.remove(t);
-                    }
-                }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    break;
-                }
-            } else {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    if(!grille.c(colg)[r].equals(NA_DAT)) {
-                        temp[ind] = true;
-                    }
-                    i++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
-                    if (temp[t]) {
-                        reste.remove(t);
-                    }
-                }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    break;
-                }
-            }
-            }
             if (reste.size() > 1) {
                 vec[i] = true;
-                System.out.println("error age multiple");
+                err("error lignes multiples");
                 break;
             }
             int reste_i = reste.get(0);
 
             col = "Date_Souscription_Adhésion";
             String col1 = "Date_Survenance";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(header, col1) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
-                double age_ref = (double) grille.c("Age")[reste_i];
+            colg = "Age";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(header, col1) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                double age_ref = (double) grille.c(colg)[reste_i];
                 LocalDate date_sous = (LocalDate) this.c(col)[i];
                 LocalDate date_surv = (LocalDate) this.c(col1)[i];
                 if (date_sous != null & date_surv != null) {
@@ -939,6 +1003,11 @@ public class DF {
             }
 
             col = "Montant_Indemnité_Principale";
+            Double mip = (Double) this.c(col)[i];
+            if (mip.equals(NA_DBL)) {
+                vec[i] = true;
+                continue;
+            }
             colg = "Valeur Montant_Indemnité_Principale";
             Object pourcent_raw = grille.c("Pourcentage Montant_Indemnité_Principale")[reste_i];
             Object signe_raw = grille.c("Signe Montant_Indemnité_Principale")[reste_i];
@@ -946,7 +1015,6 @@ public class DF {
             Double montant;
             Double pourcentage;
             Double mip_ref;
-            Double mip;
             if(pourcent_raw.equals(NA_DBL)) {
                 pourcentage = 100d;
             } else {
@@ -959,41 +1027,272 @@ public class DF {
                 montant = Double.parseDouble(montant_raw.replace(",","."));
             }
             mip_ref = Math.round(montant * pourcentage) / 100.0;
-            mip = (Double) this.c(col)[i];
 
-            switch (signe) {
-                case 1:
-                    vec[i] = !Objects.equals(mip, mip_ref);
-                    continue;
-                case 2:
-                    vec[i] = mip <= mip_ref;
-                    continue;
-                case 3:
-                    vec[i] = mip >= mip_ref;
-                    continue;
-                case 4:
-                    vec[i] = mip < mip_ref;
-                    continue;
-                case 5:
-                    vec[i] = mip > mip_ref;
-                    continue;
-                case 6:
-                    vec[i] = Objects.equals(mip, mip_ref);
-                    continue;
-                default:
-                    System.out.println("erreur signe non-renseignée grille c811");
-            }
+
+            vec[i] = !compa_signe(mip,mip_ref,signe);
+
         }
 
         System.out.println(sum_boolean(vec));
-
-        return sum_boolean(vec);
-    }
-    public int c808(DF grille) {
+        return(vec);
+    } // g
+    public boolean[] c810(DF grille) {
+        Controle_en_cours = "C810";
         boolean[] vec = new boolean[nrow];
-        if(find_in_arr_first_index(header, "Montant_Indemnité_Principale") == -1 | find_in_arr_first_index(header, "Montant_Reprise") == -1 | find_in_arr_first_index(header, "Valeur_Achat") == -1) {
+        String[] cols = {"Statut_Sogedep"};
+        if (check_in(cols,header)) {
+            System.out.println("missing columns for grille C810");
+            Arrays.fill(vec,false);
+            return vec;
+        } else {
+            Arrays.fill(vec,false);
+        }
+        int dim = grille.nrow;
+        String date_sous_col = "";
+        for (int i = 0; i < grille.ncol; i++) {
+            if (grille.header[i].contains("Date_Souscription_Adhésion borne basse")) {
+                date_sous_col = grille.header[i];
+            }
+        }
+        ArrayList<Integer> reste_gen = new ArrayList<>(dim);
+        for(int r = 0; r < dim; r++){
+            reste_gen.add(r);
+        }
+
+        String[] crit = {"Statut_Technique_Sinistre","Statut_Sogedep","Type_Indemnisation"};
+        for (int i = 0; i < nrow; i++) {
+
+            ArrayList<Integer> reste = new ArrayList<>(reste_gen);
+            Object cell_base;
+            Double cell_base_dbl;
+            Date cell_base_dat;
+            Object cell_grille;
+            Double cell_grille_dbl;
+            Date cell_grille_dat;
+
+            for (String col : crit) {
+
+                if(find_in_arr_first_index(header, col) == -1 | find_in_arr_first_index(grille.header, col) == -1) {
+                    continue;
+                }
+                cell_base = this.c(col)[i];
+
+                if (cell_base != null) {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+
+                        cell_grille = grille.c(find_in_arr_first_index(grille.header, col))[r];
+                        if(!(cell_grille.equals(cell_base) | cell_grille.equals("{ renseigné }") | cell_grille.equals(NA_STR))) {
+                            temp[ind] = true;
+                        }
+                        ind++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+//                        System.out.println(col);
+                        vec[i] = true;
+                        break;
+                    }
+                } else {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille = grille.c(col)[r];
+                        if(!(cell_grille.equals("") | cell_grille.equals("{ vide }") | cell_grille.equals(NA_STR))) {
+                            temp[ind] = true;
+                        }
+                        ind++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+//                        System.out.println(col);
+                        vec[i] = true;
+                        break;
+                    }
+                }
+            }
+            if (reste.isEmpty()) {
+                vec[i] = true;
+                continue;
+            }
+
+            String col = "Valeur_Catalogue";
+            String colg = "Valeur_Catalogue Borne haute";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+
+                cell_base_dbl = (Double) this.c(col)[i];
+                if (cell_base_dbl != null) {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dbl = (Double) grille.c(colg)[r];
+                        if(!(cell_grille_dbl >= cell_base_dbl | cell_grille_dbl.equals(NA_DBL))){
+                            temp[ind] = true;
+                        }
+                        ind++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
+                } else {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dbl = (Double) grille.c(colg)[r];
+                        if(!cell_grille_dbl.equals(NA_DBL)) {
+                            temp[ind] = true;
+                        }
+                        ind++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
+                }
+
+                colg = "Valeur_Catalogue Borne basse";
+                cell_base_dbl = (Double) this.c(col)[i];
+                if (cell_base_dbl != null) {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dbl = (Double) grille.c(colg)[r];
+                        if(!(cell_grille_dbl <= cell_base_dbl | cell_grille_dbl.equals(NA_DBL))) {
+                            temp[ind] = true;
+                        }
+                        ind++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
+                } else {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dbl = (Double) grille.c(colg)[r];
+                        if(!(cell_grille_dbl.equals(NA_DBL))) {
+                            temp[ind] = true;
+                        }
+                        ind++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
+                }
+            }
+
+            col = "Date_Déclaration";
+            colg = "Valeur Date_Déclaration";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                cell_base_dat = (Date) this.c(col)[i];
+                if (cell_base_dat != null) {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dat = (Date) grille.c(colg)[r];
+                        short signe = (short) grille.c("Signe Date_Déclaration")[r];
+                        if(compa_signe(cell_base_dat,cell_grille_dat,signe) | cell_grille_dat.equals(NA_DAT)){
+                            temp[ind] = true;
+                        }
+                        ind++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
+                } else {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dat = (Date) grille.c(colg)[r];
+                        if(!cell_grille_dat.equals(NA_DAT)) {
+                            temp[ind] = true;
+                        }
+                        ind++;
+                    }
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        break;
+                    }
+                }
+            }
+
+            if (reste.size() > 1) {
+                vec[i] = true;
+                err("error lignes multiples");
+                break;
+            }
+            int reste_i = reste.get(0);
+
+            col = "Montant_Indemnité_Principale";
+            Double mip = (Double) this.c(col)[i];
+            if (mip.equals(NA_DBL)) {
+                vec[i] = true;
+                continue;
+            }
+            colg = "Valeur Montant_Indemnité_Principale";
+            Object signe_raw = grille.c("Signe Montant_Indemnité_Principale")[reste_i];
+            short signe = (short) round((Double) signe_raw);
+            String montant_raw = (String) grille.c(colg)[reste_i];
+            double montant = Double.parseDouble(montant_raw.replace(",",".").replaceAll("[^\\d.]", ""));
+            double mip_ref = Math.round(montant * 100) / 100.0;
+
+            vec[i] = !compa_signe(mip,mip_ref,signe);
+        }
+
+        System.out.println(sum_boolean(vec));
+        return(vec);
+    } // g
+    public boolean[] c808(DF grille) {
+        Controle_en_cours = "C808";
+        boolean[] vec = new boolean[nrow];
+        String[] cols = {"Montant_Indemnité_Principale","Montant_Reprise","Valeur_Achat"};
+        if (check_in(cols,header)) {
             System.out.println("missing columns for grille C808");
-            return(this.nrow);
+            Arrays.fill(vec,false);
+            return vec;
         } else {
             Arrays.fill(vec,false);
         }
@@ -1337,15 +1636,15 @@ public class DF {
             }
 
             col = "Date_Clôture";
-            colg = "Date_Clôture borne haute";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-                LocalDate date_clot = (LocalDate) this.c(col)[i];
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
+                colg = "Date_Clôture borne haute";
+                Date date_clot = (Date) this.c(col)[i];
                 if (date_clot != null) {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
                     for (int r : reste) {
-                        LocalDate date_clot_ref = (LocalDate) grille.c(colg)[r];
-                        if(!(!date_clot_ref.isBefore(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
+                        Date date_clot_ref = (Date) grille.c(colg)[r];
+                        if(!(!date_clot_ref.before(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
                             temp[ind] = true;
                         }
                         i++;
@@ -1384,8 +1683,8 @@ public class DF {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
                     for (int r : reste) {
-                        LocalDate date_clot_ref = (LocalDate) grille.c(colg)[r];
-                        if(!(!date_clot_ref.isAfter(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
+                        Date date_clot_ref = (Date) grille.c(colg)[r];
+                        if(!(!date_clot_ref.after(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
                             temp[ind] = true;
                         }
                         i++;
@@ -1421,7 +1720,7 @@ public class DF {
             }
             if (reste.size() > 1) {
                 vec[i] = true;
-                System.out.println("error age multiple");
+                err("error age multiple");
                 break;
             }
             int reste_i = reste.get(0);
@@ -1430,8 +1729,8 @@ public class DF {
             String col1 = "Date_Survenance";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(header, col1) != -1 & find_in_arr_first_index(grille.header, date_sous_col) != -1) {
                 double age_ref = (double) grille.c("Age")[reste_i];
-                LocalDate date_sous = (LocalDate) this.c(col)[i];
-                LocalDate date_surv = (LocalDate) this.c(col1)[i];
+                LocalDate date_sous = to_Date((Date) this.c(col)[i]);
+                LocalDate date_surv = to_Date((Date) this.c(col1)[i]);
                 if (date_sous != null & date_surv != null) {
                     String m = (String) grille.c(date_sous_col)[reste_i];
                     int months = Integer.parseInt(m.replaceAll("\\D+",""));
@@ -1454,7 +1753,6 @@ public class DF {
 
             col = "Montant_Reprise";
             colg = "Valeur Montant_Reprise";
-//            System.out.println(Arrays.toString(grille.header));
 
             Object pourcent_raw;
             try {
@@ -1514,23 +1812,21 @@ public class DF {
 
         System.out.println(sum_boolean(vec));
 
-        return sum_boolean(vec);
-    }
-    public int c807(DF grille) {
+        System.out.println(sum_boolean(vec));
+        return(vec);
+    } // g
+    public boolean[] c807(DF grille) {
+        Controle_en_cours = "C807";
         boolean[] vec = new boolean[nrow];
-        if(find_in_arr_first_index(header, "Montant_Frais_Annexe") == -1 | find_in_arr_first_index(header, "Valeur_Achat") == -1) {
+        String[] cols = {"Montant_Frais_Annexe","Valeur_Achat"};
+        if (check_in(cols,header)) {
             System.out.println("missing columns for grille C807");
-            return(this.nrow);
+            Arrays.fill(vec,false);
+            return vec;
         } else {
             Arrays.fill(vec,false);
         }
         int dim = grille.nrow;
-        String date_sous_col = "";
-        for (int i = 0; i < grille.ncol; i++) {
-            if (grille.header[i].contains("Date_Souscription_Adhésion borne basse")) {
-                date_sous_col = grille.header[i];
-            }
-        }
         ArrayList<Integer> reste_gen = new ArrayList<>(dim);
         for(int r = 0; r < dim; r++){
             reste_gen.add(r);
@@ -1570,7 +1866,6 @@ public class DF {
                         }
                     }
                     if (reste.isEmpty()) {
-//                        System.out.println(col);
                         vec[i] = true;
                         break;
                     }
@@ -1862,13 +2157,13 @@ public class DF {
             col = "Date_Clôture";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
                 colg = "Date_Clôture borne haute";
-                LocalDate date_clot = (LocalDate) this.c(col)[i];
+                Date date_clot = (Date) this.c(col)[i];
                 if (date_clot != null) {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
                     for (int r : reste) {
-                        LocalDate date_clot_ref = (LocalDate) grille.c(colg)[r];
-                        if(!(!date_clot_ref.isBefore(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
+                        Date date_clot_ref = (Date) grille.c(colg)[r];
+                        if(!(!date_clot_ref.before(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
                             temp[ind] = true;
                         }
                         i++;
@@ -1907,8 +2202,8 @@ public class DF {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
                     for (int r : reste) {
-                        LocalDate date_clot_ref = (LocalDate) grille.c(colg)[r];
-                        if(!(!date_clot_ref.isAfter(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
+                        Date date_clot_ref = (Date) grille.c(colg)[r];
+                        if(!(!date_clot_ref.after(date_clot) | grille.c(colg)[r].equals(NA_DAT))){
                             temp[ind] = true;
                         }
                         i++;
@@ -1961,9 +2256,7 @@ public class DF {
                     if (!montant_raw.equals(NA_STR)) {
                         Object signe_raw = grille.c("Signe Montant_Indemnité_Principale")[id];
                         short signe = (short) round((Double) signe_raw);
-                        Double montant;
-                        montant = Double.parseDouble(montant_raw.replace(",", "."));
-
+                        Double montant = Double.parseDouble(montant_raw.replace(",", "."));
                         switch (signe) {
                             case 1:
                                 temp[ind] = Objects.equals(mip, montant);
@@ -2001,9 +2294,90 @@ public class DF {
                 }
         }
 
-///mip intermediaire!!
-        System.out.println(sum_boolean(vec));
+            if (reste.size() > 1) {
+                vec[i] = true;
+                err("error montant multiple");
+                break;
+            }
+
+            col = "Montant_Frais_Annexe";
+            colg = "Valeur Montant_Frais_Annexe";
+            int reste_i = reste.get(0);
+            Object pourcent_raw;
+            try {
+                pourcent_raw = grille.c("Pourcentage Montant_Frais_Annexe")[reste_i];
+            }
+            catch(Exception e) {
+                pourcent_raw = NA_DBL;
+            }
+            Object signe_raw = grille.c("Signe Montant_Frais_Annexe")[reste_i];
+            short signe = (short) round((Double) signe_raw);
+            Double montant;
+            Double pourcentage;
+            Double mr_ref;
+            Double mr;
+            if(pourcent_raw.equals(NA_DBL)) {
+                pourcentage = 100d;
+            } else {
+                pourcentage = (Double) pourcent_raw;
+            }
+            String montant_raw = (String) grille.c(colg)[reste_i];
+            if (!montant_raw.matches(regex_letters)) {
+                montant = Double.parseDouble(montant_raw.replace(",","."));
+            }else {
+                montant = (Double) this.c("Valeur_Achat")[i];
+            }
+
+            mr_ref = Math.round(montant * pourcentage) / 100.0;
+            mr = (Double) this.c(col)[i];
+
+            switch (signe) {
+                case 1:
+                    vec[i] = !Objects.equals(mr, mr_ref);
+                    continue;
+                case 2:
+                    vec[i] = mr <= mr_ref;
+                    continue;
+                case 3:
+                    vec[i] = mr >= mr_ref;
+                    continue;
+                case 4:
+                    vec[i] = mr < mr_ref;
+                    continue;
+                case 5:
+                    vec[i] = mr > mr_ref;
+                    continue;
+                case 6:
+                    vec[i] = Objects.equals(mr, mr_ref);
+                    continue;
+                default:
+                    System.out.println("erreur signe non-renseignée grille c811");
+            }
         }
-        return sum_boolean(vec);
+        System.out.println(sum_boolean(vec));
+        return(vec);
+    } // g
+    public boolean[] c809(DF grille) {
+        Controle_en_cours = "C809";
+        boolean[] vec = new boolean[nrow];
+        String[] cols = {"Montant_Indemnité_Principale","Montant_Frais_Annexe","Montant_Reprise","Montant_Total_Règlement"};
+        if (check_in(cols,header)) {
+            System.out.println("missing columns for grille C809");
+            Arrays.fill(vec,false);
+            return vec;
+        } else {
+            Arrays.fill(vec,false);
+        }
+        Double a;
+        double b;
+        for (int i = 0; i < nrow; i++) {
+            a = Math.round(((double) this.c("Montant_Indemnité_Principale")[i] +
+                            (double) this.c("Montant_Frais_Annexe")[i] -
+                            (double) this.c("Montant_Reprise")[i]) * 100) / 100d;
+            b = Math.round((double) this.c("Montant_Total_Règlement")[i] * 100) / 100d;
+            vec[i] = !a.equals(b);
+        }
+        System.out.println(sum_boolean(vec));
+        return(vec);
     }
 }
