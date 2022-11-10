@@ -38,7 +38,34 @@ public static final String regex_digits = "[0-9]+";
     }
     public static String Police_en_cours = "default";
     public static String Controle_en_cours = "default";
+    public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
     public static void main(String[] args) throws IOException {
+        {
+            String encoding = "UTF-8";
+            CsvParserSettings settings = new CsvParserSettings();
+            settings.setDelimiterDetectionEnabled(true, ',');
+            settings.trimValues(true);
+            try(Reader inputReader = new InputStreamReader(Files.newInputStream(
+                    new File(wd+"coltypes.csv").toPath()), encoding)){
+                CsvParser parser = new CsvParser(settings);
+                List<String[]> parsedRows = parser.parseAll(inputReader);
+                Iterator<String[]> rows = parsedRows.iterator();
+                int i = 0;
+                while(rows.hasNext()) {
+                    String[] values = rows.next();
+                    switch (values[1]) {
+                        case "1":
+                            coltypes_G.put(values[0],DF.Col_types.STR);
+                            break;
+                        case "2":
+                            coltypes_G.put(values[0],DF.Col_types.DBL);
+                            break;
+                        case "3":
+                            coltypes_G.put(values[0],DF.Col_types.DAT);
+                    }
+                }
+            }
+        } // get coltypes for grille
 
        DF.Col_types[] columnTypes = {
                 DF.Col_types.STR,     // 0     Numéro_Police
@@ -104,21 +131,19 @@ public static final String regex_digits = "[0-9]+";
 //        DF base = new DF(wd + "ddp19 test.txt",'|',"UTF-8",columnTypes);
 
 //        DF base = new DF(wd + "Sinistre_Historique_ICICDDV19_678_20221006.txt",'|',"UTF-8",columnTypes);
-        DF base = new DF(wd + "Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8",columnTypes);
+//        DF base = new DF(wd + "Sinistre_Historique_ICICDDV15-1_785_20221006.txt",'|',"UTF-8");
 
-        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C807",coltypes_G);
+        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C811");
 
         long startTime = System.nanoTime();
+        grille.dna();
 
-        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
-        grille.filter_in(0,"ICICDDP19");
+        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
+        grille.filter_in(0,"ICICDDV15-1");
 
 //        System.out.println(grille.cc("Signe Montant_Frais_Annexe").getClass().getName());
 //        System.out.println(grille.cc("Date_Clôture borne basse").getClass().getName());
 //        System.out.println(grille.cc(70).getClass().getName());
-        grille.dna();
-        System.out.println(grille.nrow);
-        System.out.println(grille.ncol);
 
 //        boolean[] keep = new boolean[base.nrow];
 //        Arrays.fill(keep,false);
@@ -127,13 +152,13 @@ public static final String regex_digits = "[0-9]+";
 //        }
 //        base.keep_rows(keep);
         grille.printgrille();
-        base.print();
+//        base.print();
 
 
-//        int x = base.c807(grille);
+//        boolean[] x = base.c806(grille);
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
-//        System.out.println(x);
+//        System.out.println(Arrays.toString(which(x)));
 ////        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
 ////        DF g811 = new DF("C:/Users/ozhukov/Desktop/test3.xlsx","Лист1",coltypes_s);
 //        String[] orders = { "col1", "col2", "col3"};
