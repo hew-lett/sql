@@ -39,6 +39,7 @@ public static final String regex_digits = "[0-9]+";
     public static String Police_en_cours = "default";
     public static String Controle_en_cours = "default";
     public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
+    public static HashMap<String, DF.Col_types> coltypes_B = new HashMap<String, DF.Col_types>();
     public static void main(String[] args) throws IOException {
         {
             String encoding = "UTF-8";
@@ -62,11 +63,42 @@ public static final String regex_digits = "[0-9]+";
                             break;
                         case "3":
                             coltypes_G.put(values[0],DF.Col_types.DAT);
+                            break;
+                        case "4":
+                            coltypes_G.put(values[0],DF.Col_types.SKP);
                     }
                 }
             }
         } // get coltypes for grille
-
+        {
+            String encoding = "UTF-8";
+            CsvParserSettings settings = new CsvParserSettings();
+            settings.setDelimiterDetectionEnabled(true, ',');
+            settings.trimValues(true);
+            try(Reader inputReader = new InputStreamReader(Files.newInputStream(
+                    new File(wd+"coltypes_base.csv").toPath()), encoding)){
+                CsvParser parser = new CsvParser(settings);
+                List<String[]> parsedRows = parser.parseAll(inputReader);
+                Iterator<String[]> rows = parsedRows.iterator();
+                int i = 0;
+                while(rows.hasNext()) {
+                    String[] values = rows.next();
+                    switch (values[1]) {
+                        case "1":
+                            coltypes_B.put(values[0],DF.Col_types.STR);
+                            break;
+                        case "2":
+                            coltypes_B.put(values[0],DF.Col_types.DBL);
+                            break;
+                        case "3":
+                            coltypes_B.put(values[0],DF.Col_types.DAT);
+                            break;
+                        case "4":
+                            coltypes_B.put(values[0],DF.Col_types.SKP);
+                    }
+                }
+            }
+        } // get coltypes for base
        DF.Col_types[] columnTypes = {
                 DF.Col_types.STR,     // 0     Numéro_Police
                 DF.Col_types.STR,     // 1     Libellé_Distributeur
@@ -128,18 +160,16 @@ public static final String regex_digits = "[0-9]+";
         coltypes_G[81] = DF.Col_types.DBL; // Valeur_Catalogue Borne basse
         coltypes_G[82] = DF.Col_types.DBL; // Valeur_Catalogue Borne haute
 
-//        DF base = new DF(wd + "ddp19 test.txt",'|',"UTF-8",columnTypes);
 
-//        DF base = new DF(wd + "Sinistre_Historique_ICICDDV19_678_20221006.txt",'|',"UTF-8",columnTypes);
-//        DF base = new DF(wd + "Sinistre_Historique_ICICDDV15-1_785_20221006.txt",'|',"UTF-8");
+        DF base = new DF(wd + "Sinistre_Historique_ICIPMEG15-1_770_20221006.txt",'|',"UTF-8");
 
-        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C811");
+        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C804");
 
         long startTime = System.nanoTime();
         grille.dna();
 
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
-        grille.filter_in(0,"ICICDDV15-1");
+        grille.filter_in(0,"ICIPMEG15-1");
 
 //        System.out.println(grille.cc("Signe Montant_Frais_Annexe").getClass().getName());
 //        System.out.println(grille.cc("Date_Clôture borne basse").getClass().getName());
@@ -154,8 +184,8 @@ public static final String regex_digits = "[0-9]+";
         grille.printgrille();
 //        base.print();
 
-
-//        boolean[] x = base.c806(grille);
+        startTime = System.nanoTime();
+        boolean[] x = base.c804(grille);
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
 //        System.out.println(Arrays.toString(which(x)));
