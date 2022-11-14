@@ -25,7 +25,7 @@ public class App {
 public static final String regex_digits = "[0-9]+";
     public static final String regex_letters = ".*[a-zA-Z].*";
     public static final Double NA_DBL = 9999099d;
-    public static final String NA_STR = "N.A.";
+    public static final String NA_STR = "n.a.";
     public static final SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
     public static final Date NA_DAT;
     public static final String wd = "C:/Users/ozhukov/Desktop/";
@@ -83,6 +83,7 @@ public static final String regex_digits = "[0-9]+";
                 int i = 0;
                 while(rows.hasNext()) {
                     String[] values = rows.next();
+                    System.out.println(values[0] + " " + values[1]);
                     switch (values[1]) {
                         case "1":
                             coltypes_B.put(values[0],DF.Col_types.STR);
@@ -99,6 +100,10 @@ public static final String regex_digits = "[0-9]+";
                 }
             }
         } // get coltypes for base
+
+/*
+        System.out.println((coltypes_G));
+*/
        DF.Col_types[] columnTypes = {
                 DF.Col_types.STR,     // 0     Numéro_Police
                 DF.Col_types.STR,     // 1     Libellé_Distributeur
@@ -161,15 +166,15 @@ public static final String regex_digits = "[0-9]+";
         coltypes_G[82] = DF.Col_types.DBL; // Valeur_Catalogue Borne haute
 
 
-        DF base = new DF(wd + "Sinistre_Historique_ICIPMEG15-1_770_20221006.txt",'|',"UTF-8");
+        DF base = new DF(wd + "Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8");
 
-        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C804");
+        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C711");
 
         long startTime = System.nanoTime();
         grille.dna();
 
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
-        grille.filter_in(0,"ICIPMEG15-1");
+        grille.filter_in(0,"icicddp19");
 
 //        System.out.println(grille.cc("Signe Montant_Frais_Annexe").getClass().getName());
 //        System.out.println(grille.cc("Date_Clôture borne basse").getClass().getName());
@@ -181,11 +186,11 @@ public static final String regex_digits = "[0-9]+";
 //            keep[i] = true;
 //        }
 //        base.keep_rows(keep);
-        grille.printgrille();
+//        grille.printgrille();
 //        base.print();
 
         startTime = System.nanoTime();
-        boolean[] x = base.c804(grille);
+        boolean[] x = base.c711(grille);
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
 //        System.out.println(Arrays.toString(which(x)));
@@ -621,5 +626,30 @@ public static final String regex_digits = "[0-9]+";
 //
 //
 //
+    public static void write_csv(Integer[] arr) {
+        BufferedWriter br = null;
+        try {
+            br = new BufferedWriter(new FileWriter(wd+"tester.csv"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        StringBuilder sb = new StringBuilder();
 
+// Append strings from array
+        for (Object element : arr) {
+            sb.append(element);
+            sb.append("\n");
+        }
+
+        try {
+            br.write(sb.toString());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            br.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
