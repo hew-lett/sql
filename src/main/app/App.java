@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,14 +23,13 @@ import static java.util.stream.IntStream.range;
 
 public class App {
 
-//    public static final Pattern regex_digits = Pattern.compile("[0-9]+");
-public static final String regex_digits = "[0-9]+";
+    public static final String wd = "C:/Users/ozhukov/Desktop/";
+    public static final String regex_digits = "[0-9]+";
     public static final String regex_letters = ".*[a-zA-Z].*";
     public static final Double NA_DBL = 9999099d;
     public static final String NA_STR = "n.a.";
     public static final SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
     public static final Date NA_DAT;
-    public static final String wd = "C:/Users/ozhukov/Desktop/";
     static {
         try {
             NA_DAT = format.parse("01/01/2100");
@@ -36,6 +37,8 @@ public static final String regex_digits = "[0-9]+";
             throw new RuntimeException(e);
         }
     }
+    public static final LocalDate NA_LDAT = to_Date(NA_DAT);
+
     public static String Police_en_cours = "default";
     public static String Controle_en_cours = "default";
     public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
@@ -100,6 +103,8 @@ public static final String regex_digits = "[0-9]+";
                 }
             }
         } // get coltypes for base
+        LocalDate s= to_Date(NA_DAT);
+        System.out.println(s);
 
 /*
         System.out.println((coltypes_G));
@@ -584,48 +589,9 @@ public static final String regex_digits = "[0-9]+";
         }
         return out;
     }
-//    public static int c811(DF base, DF grille, String name) throws IOException {
-//        boolean[] vec = new boolean[base.nrow];
-//        grille.keep_rows(find_in_arr(grille.c("Numéro_Police"), name));
-//        grille.keep_cols(grille.dna());
-//          assert(arr1_contains_arr2(grille.header,basic_cols));
-////        assert(arr1_contains_arr2(grille.header,calc_cols));
-//        String[] order = arr_merge(basic_cols,grille.header);
-//        Node tree = new Node(grille, order);
-////        for (String[] row : base.df) {
-////            for (int i = 0; i < basic_cols.length; i++) {
-////                String value = row[find_in_arr_first(base.header, basic_cols[i])];
-//////                vec[i] = tree.find(row,base.header);
-//////                Node tmp = basic_grille(value,tree);
-////            }
-////        }
-//
-//        return sum_boolean(vec);
-//    }
-//    //    public static Node basic_grille(String value, Node tree) {
-////        boolean[] vec;
-////        if (Objects.equals(value, "")) {
-////            vec = find_in_arr3(tree.childs, value, "N.A.","{ vide }");
-////        } else {
-////            vec = find_in_arr3(tree.childs, value, "N.A.","{ renseigné }");
-////        }
-////        tree.vec = vec;
-////        tree.childs = keep_from_array(tree.childs, vec);
-////        return tree;
-////    }
-////    public static Node basic_grille_vr(String value, Node tree) {
-////        boolean[] vec;
-////        if (Objects.equals(value, "")) {
-////            vec = find_in_arr3(tree.childs, value, "N.A.","{ vide }");
-////        } else {
-////            vec = find_in_arr3(tree.childs, value, "N.A.","{ renseigné }");
-////        }
-////        tree.keep_from_node(vec);
-////        return tree;
-////    }
-//
-//
-//
+    public static LocalDate to_Date (Date input) {
+        return input.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+    }
     public static void write_csv(Integer[] arr) {
         BufferedWriter br = null;
         try {
