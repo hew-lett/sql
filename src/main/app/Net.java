@@ -87,7 +87,7 @@ public class Net {
         for (int i = 0; i < base.ncol; i++) {
             refer_2.set(i, refer.get(idx[i]));
         }
-        DF out = new DF(refer_2);
+        DF out = new DF(refer_2); // tak ne rabotaet!
         out.header = base.header;
         base.header = header_temp;
         out.ncol = base.ncol;

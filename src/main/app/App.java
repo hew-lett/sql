@@ -1,9 +1,12 @@
 package main.app;
 
+import com.monitorjbl.xlsx.StreamingReader;
+import com.opencsv.CSVWriter;
+import com.opencsv.CSVWriterBuilder;
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.w3c.dom.ls.LSOutput;
-
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -24,6 +27,7 @@ import static java.util.stream.IntStream.range;
 public class App {
 
     public static final String wd = "C:/Users/ozhukov/Desktop/";
+    public static final String path_grilles = wd + "grilles/";
     public static final String regex_digits = "[0-9]+";
     public static final String regex_letters = ".*[a-zA-Z].*";
     public static final Double NA_DBL = 9999099d;
@@ -43,6 +47,7 @@ public class App {
     public static String Controle_en_cours = "default";
     public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF.Col_types> coltypes_B = new HashMap<String, DF.Col_types>();
+    public static HashMap<String, DF> grilles_G = new HashMap<String, DF>();
     public static void main(String[] args) throws IOException {
         {
             String encoding = "UTF-8";
@@ -86,7 +91,6 @@ public class App {
                 int i = 0;
                 while(rows.hasNext()) {
                     String[] values = rows.next();
-                    System.out.println(values[0] + " " + values[1]);
                     switch (values[1]) {
                         case "1":
                             coltypes_B.put(values[0],DF.Col_types.STR);
@@ -103,100 +107,111 @@ public class App {
                 }
             }
         } // get coltypes for base
-        LocalDate s= to_Date(NA_DAT);
-        System.out.println(s);
 
-/*
-        System.out.println((coltypes_G));
-*/
-       DF.Col_types[] columnTypes = {
-                DF.Col_types.STR,     // 0     Numéro_Police
-                DF.Col_types.STR,     // 1     Libellé_Distributeur
-                DF.Col_types.STR,    // 2     Numéro_Dossier
-                DF.Col_types.STR,     // 3     Libellé_Garantie
-                DF.Col_types.STR,    // 4     Numéro_Adhésion
-                DF.Col_types.STR,       // 5     Numéro_Extension
-                DF.Col_types.DAT, // 6     Date_Souscription_Adhésion
-                DF.Col_types.DAT, // 7     Date_Achat_Bien_Garanti
-                DF.Col_types.STR,     // 8     Critère_Identification_Bien_Garanti_1
-                DF.Col_types.STR,     // 9     Critère_Identification_Bien_Garanti_2
-                DF.Col_types.STR,     // 10    Critère_Identification_Bien_Garanti_3
-                DF.Col_types.STR,     // 11    Critère_Identification_Bien_Garanti_4
-                DF.Col_types.STR,     // 12    Critère_Identification_Bien_Garanti_5
-                DF.Col_types.STR,     // 13    Critère_Identification_Bien_Garanti_6
-                DF.Col_types.STR,     // 14    Critère_Tarifaire_1
-                DF.Col_types.STR,     // 15    Critère_Tarifaire_2
-                DF.Col_types.STR,       // 16    Critère_Tarifaire_3
-                DF.Col_types.STR,     // 17    Critère_Tarifaire_4
-                DF.Col_types.STR,     // 18    Canal_Adhésion
-                DF.Col_types.STR,       // 19    Nom_Magasin
-                DF.Col_types.DAT,       // 20    Date_Activation
-                DF.Col_types.DAT, // 21    Date_Déclaration
-                DF.Col_types.DAT, // 22    Date_Survenance
-                DF.Col_types.DAT,       // 23    Date_Evénement
-                DF.Col_types.STR,     // 24    Statut_Technique_Sinistre
-                DF.Col_types.STR,     // 25    Statut_Sogedep
-                DF.Col_types.STR,     // 26    Type_Indemnisation
-                DF.Col_types.STR,       // 27    Critère_Identification_Bien_Remplacement_1
-                DF.Col_types.STR,       // 28    Critère_Identification_Bien_Remplacement_2
-                DF.Col_types.STR,     // 29    Motif_Refus
-                DF.Col_types.DBL,     // 30    Montant_Indemnité_Principale
-                DF.Col_types.DBL,     // 31    Montant_Frais_Annexe
-                DF.Col_types.DBL,     // 32    Montant_Reprise
-                DF.Col_types.DBL,     // 33    Montant_Total_Règlement
-                DF.Col_types.DBL,     // 34    Valeur_Achat
-                DF.Col_types.DAT, // 35    Date_Dernier_Acte
-                DF.Col_types.STR,     // 36    SKU
-                DF.Col_types.STR,     // 37    Qualité_Client
-                DF.Col_types.SKP,   // 38    Nom_Client
-                DF.Col_types.SKP,     // 39    Prénom_Client
-                DF.Col_types.SKP,     // 40    Numéro_Rue_Client
-                DF.Col_types.SKP,    // 41    Code_Postal_Client
-                DF.Col_types.SKP,     // 42    Ville_Client
-                DF.Col_types.SKP,     // 43    Pays_Client
-        };
-        DF.Col_types[] coltypes_G = new DF.Col_types[84];
-        Arrays.fill(coltypes_G,DF.Col_types.STR);
-        coltypes_G[57] = DF.Col_types.DBL; // Référentiel Marque
-        coltypes_G[60] = DF.Col_types.DAT; // Date_Clôture borne basse
-        coltypes_G[61] = DF.Col_types.DAT; // Date_Clôture borne haute
-        coltypes_G[62] = DF.Col_types.DBL; // Signe Montant_Indemnité_Principale
-        coltypes_G[63] = DF.Col_types.DBL; // Pourcentage Montant_Indemnité_Principale
-        coltypes_G[65] = DF.Col_types.DBL; // Signe Montant_Frais_Annexe
-        coltypes_G[66] = DF.Col_types.DBL; // Pourcentage Montant_Frais_Annexe
-        coltypes_G[68] = DF.Col_types.DBL; // Signe Montant_Reprise
-        coltypes_G[69] = DF.Col_types.DBL; // Pourcentage Montant_Reprise
-        coltypes_G[71] = DF.Col_types.DBL; // Age
-        coltypes_G[81] = DF.Col_types.DBL; // Valeur_Catalogue Borne basse
-        coltypes_G[82] = DF.Col_types.DBL; // Valeur_Catalogue Borne haute
-
-
-        DF base = new DF(wd + "Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8");
-
-        DF grille = new DF(wd + "Grille SS sinistre BI.xlsx","C711");
-
+//        grilles_collect("Grille SS sinistre BI.xlsx");
         long startTime = System.nanoTime();
-        grille.dna();
+//        grille.dna();
+//
+        grilles_import();
+        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
+        System.out.println(grilles_G.get("C811").c(5)[12]);
+        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
+        DF x = new DF(grilles_G.get("C811"), "icimm101");
+        System.out.println(x.c(5)[3]);
+        x.c(5)[3] = "sdq";
+        System.out.println(x.c(5)[3]);
+        System.out.println(grilles_G.get("C811").c(5)[3]);
 
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
-        grille.filter_in(0,"icicddp19");
 
-//        System.out.println(grille.cc("Signe Montant_Frais_Annexe").getClass().getName());
-//        System.out.println(grille.cc("Date_Clôture borne basse").getClass().getName());
-//        System.out.println(grille.cc(70).getClass().getName());
-
-//        boolean[] keep = new boolean[base.nrow];
-//        Arrays.fill(keep,false);
-//        for (int i = 0; i < 100; i++) {
-//            keep[i] = true;
-//        }
-//        base.keep_rows(keep);
-//        grille.printgrille();
-//        base.print();
-
-        startTime = System.nanoTime();
-        boolean[] x = base.c711(grille);
-        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
+//       DF.Col_types[] columnTypes = {
+//                DF.Col_types.STR,     // 0     Numéro_Police
+//                DF.Col_types.STR,     // 1     Libellé_Distributeur
+//                DF.Col_types.STR,    // 2     Numéro_Dossier
+//                DF.Col_types.STR,     // 3     Libellé_Garantie
+//                DF.Col_types.STR,    // 4     Numéro_Adhésion
+//                DF.Col_types.STR,       // 5     Numéro_Extension
+//                DF.Col_types.DAT, // 6     Date_Souscription_Adhésion
+//                DF.Col_types.DAT, // 7     Date_Achat_Bien_Garanti
+//                DF.Col_types.STR,     // 8     Critère_Identification_Bien_Garanti_1
+//                DF.Col_types.STR,     // 9     Critère_Identification_Bien_Garanti_2
+//                DF.Col_types.STR,     // 10    Critère_Identification_Bien_Garanti_3
+//                DF.Col_types.STR,     // 11    Critère_Identification_Bien_Garanti_4
+//                DF.Col_types.STR,     // 12    Critère_Identification_Bien_Garanti_5
+//                DF.Col_types.STR,     // 13    Critère_Identification_Bien_Garanti_6
+//                DF.Col_types.STR,     // 14    Critère_Tarifaire_1
+//                DF.Col_types.STR,     // 15    Critère_Tarifaire_2
+//                DF.Col_types.STR,       // 16    Critère_Tarifaire_3
+//                DF.Col_types.STR,     // 17    Critère_Tarifaire_4
+//                DF.Col_types.STR,     // 18    Canal_Adhésion
+//                DF.Col_types.STR,       // 19    Nom_Magasin
+//                DF.Col_types.DAT,       // 20    Date_Activation
+//                DF.Col_types.DAT, // 21    Date_Déclaration
+//                DF.Col_types.DAT, // 22    Date_Survenance
+//                DF.Col_types.DAT,       // 23    Date_Evénement
+//                DF.Col_types.STR,     // 24    Statut_Technique_Sinistre
+//                DF.Col_types.STR,     // 25    Statut_Sogedep
+//                DF.Col_types.STR,     // 26    Type_Indemnisation
+//                DF.Col_types.STR,       // 27    Critère_Identification_Bien_Remplacement_1
+//                DF.Col_types.STR,       // 28    Critère_Identification_Bien_Remplacement_2
+//                DF.Col_types.STR,     // 29    Motif_Refus
+//                DF.Col_types.DBL,     // 30    Montant_Indemnité_Principale
+//                DF.Col_types.DBL,     // 31    Montant_Frais_Annexe
+//                DF.Col_types.DBL,     // 32    Montant_Reprise
+//                DF.Col_types.DBL,     // 33    Montant_Total_Règlement
+//                DF.Col_types.DBL,     // 34    Valeur_Achat
+//                DF.Col_types.DAT, // 35    Date_Dernier_Acte
+//                DF.Col_types.STR,     // 36    SKU
+//                DF.Col_types.STR,     // 37    Qualité_Client
+//                DF.Col_types.SKP,   // 38    Nom_Client
+//                DF.Col_types.SKP,     // 39    Prénom_Client
+//                DF.Col_types.SKP,     // 40    Numéro_Rue_Client
+//                DF.Col_types.SKP,    // 41    Code_Postal_Client
+//                DF.Col_types.SKP,     // 42    Ville_Client
+//                DF.Col_types.SKP,     // 43    Pays_Client
+//        };
+//        DF.Col_types[] coltypes_G = new DF.Col_types[84];
+//        Arrays.fill(coltypes_G,DF.Col_types.STR);
+//        coltypes_G[57] = DF.Col_types.DBL; // Référentiel Marque
+//        coltypes_G[60] = DF.Col_types.DAT; // Date_Clôture borne basse
+//        coltypes_G[61] = DF.Col_types.DAT; // Date_Clôture borne haute
+//        coltypes_G[62] = DF.Col_types.DBL; // Signe Montant_Indemnité_Principale
+//        coltypes_G[63] = DF.Col_types.DBL; // Pourcentage Montant_Indemnité_Principale
+//        coltypes_G[65] = DF.Col_types.DBL; // Signe Montant_Frais_Annexe
+//        coltypes_G[66] = DF.Col_types.DBL; // Pourcentage Montant_Frais_Annexe
+//        coltypes_G[68] = DF.Col_types.DBL; // Signe Montant_Reprise
+//        coltypes_G[69] = DF.Col_types.DBL; // Pourcentage Montant_Reprise
+//        coltypes_G[71] = DF.Col_types.DBL; // Age
+//        coltypes_G[81] = DF.Col_types.DBL; // Valeur_Catalogue Borne basse
+//        coltypes_G[82] = DF.Col_types.DBL; // Valeur_Catalogue Borne haute
+//
+//
+//        DF base = new DF(wd + "Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8");
+//
+//        grille = new DF(wd + "Grille SS sinistre BI.xlsx","C711");
+//
+//        startTime = System.nanoTime();
+//        grille.dna();
+//
+//        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
+//        grille.filter_in(0,"icicddp19");
+//
+////        System.out.println(grille.cc("Signe Montant_Frais_Annexe").getClass().getName());
+////        System.out.println(grille.cc("Date_Clôture borne basse").getClass().getName());
+////        System.out.println(grille.cc(70).getClass().getName());
+//
+////        boolean[] keep = new boolean[base.nrow];
+////        Arrays.fill(keep,false);
+////        for (int i = 0; i < 100; i++) {
+////            keep[i] = true;
+////        }
+////        base.keep_rows(keep);
+////        grille.printgrille();
+////        base.print();
+//
+//        startTime = System.nanoTime();
+//        boolean[] x = base.c711(grille);
+//        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
 //        System.out.println(Arrays.toString(which(x)));
 ////        DF.Col_types[] coltypes_s = { DF.Col_types.STR,DF.Col_types.DBL,DF.Col_types.STR};
@@ -616,6 +631,57 @@ public class App {
             br.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+    public static void grilles_collect(String path) throws IOException {
+        path = wd+path;
+        InputStream is = Files.newInputStream(new File(path).toPath());
+        Workbook workbook = StreamingReader.builder().rowCacheSize(1).bufferSize(4096).open(is);
+        List<String> sheetNames = new ArrayList<>();
+        for (int i=0; i<workbook.getNumberOfSheets(); i++) {
+            String name = workbook.getSheetName(i);
+            if (name.charAt(0) == 'C') {
+                if (name.charAt(1) == 'S') {
+                    sheetNames.add(name.replace("S",""));
+                } else {
+                    sheetNames.add(name);
+                }
+            }
+        }
+
+        for (String s : sheetNames) {
+            System.out.println(s);
+            CSVWriter writer = (CSVWriter) new CSVWriterBuilder(new FileWriter(path_grilles+s+".csv"))
+                    .withSeparator('\t')
+                    .build();
+            DF grille = new DF(path,s,true);
+
+            grille.dna();
+
+            writer.writeNext(grille.header);
+            for (int i = 0; i < grille.nrow; i++) {
+                String[] vec = new String[grille.ncol];
+                for (int j = 0; j < grille.ncol; j++) {
+                    vec[j] = grille.r(i)[j].toString();
+                }
+                writer.writeNext(vec);
+            }
+            writer.close();
+        }
+    }
+    public static void grilles_import() throws IOException {
+        File f = new File(path_grilles);
+        String[] grilles = f.list();
+        if (grilles == null) {
+            System.out.println("grilles empty!");
+            return;
+        }
+        for (String g : grilles) {
+            String name = g.substring(0,g.indexOf('.'));
+            System.out.println(name);
+            DF df = new DF(path_grilles+g,'\t',"UTF-8");
+            df.dna();
+            grilles_G.put(name,df);
         }
     }
 }
