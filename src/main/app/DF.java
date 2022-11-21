@@ -3653,7 +3653,7 @@ public class DF {
                     continue;
                 }
 
-                long number = ((Double) grille.c(colg_aux)[reste_i]).longValue();
+                long number = round((Double) grille.c(colg_aux)[reste_i]);
                 vec[i] = date_sous.plusMonths(number).isAfter(date_surv);
             }
 
@@ -4078,7 +4078,7 @@ public class DF {
         Controle_en_cours = "C305";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         Double x_raw = (Double) grille.c("Contrôle")[0];
-        long x = Long.parseLong(String.valueOf(x_raw));
+        long x = round(x_raw);
         String col1 = "Date_Activation";
         String col2 = "Date_Souscription_Adhésion";
         String[] cols = {col1,col2};
@@ -4100,6 +4100,76 @@ public class DF {
                 }
             } else {
                 vec[i] = false;
+            }
+
+        }
+        return vec;
+    }
+    public boolean[] c304() {
+        Controle_en_cours = "C304";
+        DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
+        String col1 = "Date_Activation";
+        String col2 = "Date_Souscription_Adhésion";
+        String col3 = "Date_Achat_Bien_Garanti";
+        String[] cols = {col1,col2,col3};
+        boolean[] vec;
+        if (!check_in(cols,this.header)) {
+            err("missing columns");
+            return logvec(this.nrow,true);
+        } else {
+            vec = logvec(this.nrow,false);
+        }
+        for (int i = 0; i < this.nrow; i++) {
+            Date activ = (Date) this.c(col1)[i];
+            Date sous = (Date) this.c(col2)[i];
+            Date achat = (Date) this.c(col3)[i];
+            if (!activ.equals(NA_DAT)) {
+                if (sous.equals(NA_DAT) | achat.equals(NA_DAT)) {
+                    vec[i] = true;
+                } else {
+                    vec[i] = activ.before(sous) | activ.before(achat);
+                }
+            }
+        }
+        return vec;
+    }
+    public boolean[] c303() {
+        Controle_en_cours = "C303";
+        DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
+
+        String col1 = "Date_Achat_Bien_Garanti";
+        String col2 = "Date_Souscription_Adhésion";
+        String col3 = "Critère_Identification_Bien_Garanti_4";
+        String[] cols = {col1,col2,col3};
+        boolean[] vec;
+        if (!check_in(cols,this.header)) {
+            err("missing columns");
+            return logvec(this.nrow,true);
+        } else {
+            vec = logvec(this.nrow,false);
+        }
+        for (int i = 0; i < this.nrow; i++) {
+            String cell_base = (String) this.c(col3)[i];
+            ArrayList<Integer> ind = new ArrayList<>();
+            for (int j = 0; j < grille.nrow; j++) {
+                if (grille.c(col3)[j].equals(cell_base) | grille.c(col3)[j].equals(NA_STR)) {
+                    ind.add(j);
+                }
+            }
+            if (ind.size() > 1) {
+                err("grille logic");
+                vec[i] = true;
+                continue;
+            }
+
+            Double x_raw = (Double) grille.c("Contrôle")[ind.get(0)];
+            long x = round(x_raw);
+            LocalDate achat = to_Date((Date) this.c(col1)[i]);
+            LocalDate sous = to_Date((Date) this.c(col2)[i]);
+            if (achat == NA_LDAT | sous == NA_LDAT) {
+                vec[i] = true;
+            } else {
+                vec[i] = sous.isAfter(achat.plusDays(x));
             }
 
         }

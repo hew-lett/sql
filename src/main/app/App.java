@@ -111,13 +111,12 @@ public class App {
 //        grille.dna();
 //
 //        DF df = new DF(path_grilles+"C309.csv",'\t',"UTF-8");
-//        System.out.println(Arrays.toString(df.coltypes));
+
         grilles_import();
 //        System.out.println();
         DF base = new DF(wd + "Sinistre_Historique_ICIMM101_303_20221106.txt",'|',"UTF-8");
         Police_en_cours = "icimm101";
         Class<DF> classobj = DF.class;
-        System.out.println("ON EST OU LA");
         Method[] methods = classobj.getMethods();
 //       Method xxxx = classobj.getMethod("C811");
         for (Method method : methods) {
@@ -129,7 +128,7 @@ public class App {
             }
         }
         long startTime = System.nanoTime();
-        boolean[] sd = (boolean[]) controles_G.get("c305").invoke(base);
+        boolean[] sd = (boolean[]) controles_G.get("c303").invoke(base);
 //        System.out.println(controles_G.get("c608"));
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
 
