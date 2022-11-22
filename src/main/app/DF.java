@@ -143,7 +143,7 @@ public class DF {
             row_number++;
         }
     }
-    public DF (String path, Object sheet_n, boolean strings) throws IOException {
+    public DF (String path, Object sheet_n, boolean strings, boolean tolower) throws IOException {
 
         InputStream is = Files.newInputStream(new File(path).toPath());
         Workbook workbook = StreamingReader.builder()
@@ -169,6 +169,8 @@ public class DF {
         if(strings) {
             coltypes = new Col_types[ncol];
             Arrays.fill(coltypes,Col_types.STR);
+        } else {
+            coltypes = get_col_types(header,coltypes_G);
         }
 
         df = new ArrayList<>(ncol);
@@ -181,21 +183,40 @@ public class DF {
             row = rowIter.next();
             col_iterator = 0;
             ct_iterator = 0;
-            for (Cell c : row) {
-                if (coltypes[ct_iterator] != Col_types.SKP) {
-                    if(c.getCellTypeEnum().name().equals("FORMULA")) {
-                        if(c.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
-                            df.get(col_iterator)[row_number] = get_cell_of_type(c.getCellFormula(),coltypes[ct_iterator]);      // bad formula
-                        } else {
-                            df.get(col_iterator)[row_number] = get_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);  // good formula
+            if (tolower) {
+                for (Cell c : row) {
+                    if (coltypes[ct_iterator] != Col_types.SKP) {
+                            if(c.getCellTypeEnum().name().equals("FORMULA")) {
+                                if(c.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
+                                    df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(c.getCellFormula(),coltypes[ct_iterator]);      // bad formula
+                                } else {
+                                    df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);  // good formula
+                                }
+                            } else {
+                                df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);      // no formula
+                            }
+                            col_iterator++;
                         }
-                    } else {
-                        df.get(col_iterator)[row_number] = get_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);      // no formula
-                    }
-                    col_iterator++;
+                    ct_iterator++;
                 }
-                ct_iterator++;
+            } else {
+                for (Cell c : row) {
+                    if (coltypes[ct_iterator] != Col_types.SKP) {
+                        if(c.getCellTypeEnum().name().equals("FORMULA")) {
+                            if(c.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
+                                df.get(col_iterator)[row_number] = get_cell_of_type(c.getCellFormula(),coltypes[ct_iterator]);      // bad formula
+                            } else {
+                                df.get(col_iterator)[row_number] = get_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);  // good formula
+                            }
+                        } else {
+                            df.get(col_iterator)[row_number] = get_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);      // no formula
+                        }
+                        col_iterator++;
+                    }
+                    ct_iterator++;
+                }
             }
+
             row_number++;
         }
     }
@@ -327,6 +348,31 @@ public class DF {
         return base;
     }
     public Object get_cell_of_type (String cell, Col_types type) {
+        Object out = null;
+        switch(type){
+            case STR:
+                if (cell == null) return "";
+                out = cell;
+                break;
+            case DBL:
+                try {
+                    out = Double.parseDouble(cell.replace(",","."));
+                } catch (NumberFormatException ignored) {
+                    out = NA_DBL;
+                }
+                break;
+            case DAT:
+                try {
+                    out = format.parse(cell);
+                }
+                catch (NullPointerException | ParseException ignored) {
+                    out = NA_DAT;
+                }
+                break;
+        }
+        return out;
+    }
+    public Object get_lowercase_cell_of_type (String cell, Col_types type) {
         Object out = null;
         switch(type){
             case STR:
@@ -707,7 +753,10 @@ public class DF {
         }
     } // true = OK, selon signe
 
-    public boolean[] c811() {
+    public void certif() {
+
+    }
+    public boolean[] controle_811() {
         Controle_en_cours = "C811";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -1261,7 +1310,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c810() {
+    public boolean[] controle_810() {
         Controle_en_cours = "C810";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -1505,7 +1554,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c809() {
+    public boolean[] controle_809() {
         Controle_en_cours = "C809";
         boolean[] vec = new boolean[nrow];
         String[] cols = {"Montant_Indemnité_Principale","Montant_Frais_Annexe","Montant_Reprise","Montant_Total_Règlement"};
@@ -1528,7 +1577,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     }
-    public boolean[] c808() {
+    public boolean[] controle_808() {
         Controle_en_cours = "C808";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -1965,7 +2014,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c807() {
+    public boolean[] controle_807() {
         Controle_en_cours = "C807";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -2420,7 +2469,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c806() {
+    public boolean[] controle_806() {
         Controle_en_cours = "C806";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -2617,7 +2666,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c805() {
+    public boolean[] controle_805() {
         Controle_en_cours = "C805";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -2720,7 +2769,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c804() {
+    public boolean[] controle_804() {
         Controle_en_cours = "C804";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -2802,7 +2851,7 @@ public class DF {
 
         return(vec);
     } // g
-    public boolean[] c803() {
+    public boolean[] controle_803() {
         Controle_en_cours = "C803";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -3001,7 +3050,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c801() {
+    public boolean[] controle_801() {
         Controle_en_cours = "C801";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -3029,7 +3078,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c712() {
+    public boolean[] controle_712() {
         Controle_en_cours = "C712";
         boolean[] vec = new boolean[nrow];
         String[] cols = {"Statut_Technique_Sinistre","Date_Survenance","Date_Souscription_Adhésion","Date_Evénement"};
@@ -3057,7 +3106,7 @@ public class DF {
 
         return(vec);
     }
-    public boolean[] c711() {
+    public boolean[] controle_711() {
         Controle_en_cours = "C711";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -3579,7 +3628,7 @@ public class DF {
 
         return(vec);
     } // g
-    public boolean[] c710(DF base_adh) {
+    public boolean[] controle_710(DF base_adh) {
         boolean[] vec = logvec(this.nrow,false);
         String col = "Numéro_Adhésion";
         Integer[] m = match_sans_doublons(this.c(col), base_adh.c(col));
@@ -3588,7 +3637,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c709() {
+    public boolean[] controle_709() {
         Controle_en_cours = "C709";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -3698,7 +3747,7 @@ public class DF {
         }
         return(vec);
     } // g
-    public boolean[] c708(DF base_adh) {
+    public boolean[] controle_708(DF base_adh) {
         Controle_en_cours = "C708";
         boolean[] vec;
         String adh = "Numéro_Adhésion";
@@ -3738,7 +3787,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c707() {
+    public boolean[] controle_707() {
         Controle_en_cours = "C707";
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
@@ -3758,7 +3807,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c706() {
+    public boolean[] controle_706() {
         Controle_en_cours = "C706";
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
@@ -3784,7 +3833,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c705() {
+    public boolean[] controle_705() {
         Controle_en_cours = "C705";
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
@@ -3812,7 +3861,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c704() {
+    public boolean[] controle_704() {
         Controle_en_cours = "C704";
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
@@ -3838,7 +3887,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c703() {
+    public boolean[] controle_703() {
         Controle_en_cours = "C703";
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
@@ -3864,7 +3913,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c702() {
+    public boolean[] controle_702() {
         Controle_en_cours = "C702";
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
@@ -3892,7 +3941,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c701() {
+    public boolean[] controle_701() {
         Controle_en_cours = "C701";
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
@@ -3918,17 +3967,17 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c608() {
+    public boolean[] controle_608() {
         Controle_en_cours = "C608";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] c607() {
+    public boolean[] controle_607() {
         Controle_en_cours = "C607";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public void c503_519(DF base_adh) {
+    public void controle_503_519(DF base_adh) {
         String[] controles = new String[]{"503","C504","C505","C506","C507","C508",
                 "C509","C510","C511","C512","C513","C514","C515","516","C518","C519"};
         String[] cols = new String[]{"Numéro_Extension","Date_Souscription_Adhésion","Date_Achat_Bien_Garanti",
@@ -3940,22 +3989,22 @@ public class DF {
             this.matcher(base_adh,cols[i]);
         }
     }
-    public boolean[] c517() {
+    public boolean[] controle_517() {
         Controle_en_cours = "C517";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] c502() {
+    public boolean[] controle_502() {
         Controle_en_cours = "C502";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] c501() {
+    public boolean[] controle_501() {
         Controle_en_cours = "C501";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] c401() {
+    public boolean[] controle_401() {
         Controle_en_cours = "C401";
         int dim = this.nrow;
         String col = "Date_Prise_Effet_Résiliation";
@@ -3977,7 +4026,7 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return vec;
     } // controle adhé
-    public boolean[] c309() {
+    public boolean[] controle_309() {
         Controle_en_cours = "C309";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         boolean[] vec = new boolean[nrow];
@@ -4071,12 +4120,12 @@ public class DF {
         System.out.println(sum_boolean(vec));
         return(vec);
     } // g
-    public boolean[] c308() {
+    public boolean[] controle_308() {
         Controle_en_cours = "C308";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] c305() {
+    public boolean[] controle_305() {
         Controle_en_cours = "C305";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         Double x_raw = (Double) grille.c("Contrôle")[0];
@@ -4107,7 +4156,7 @@ public class DF {
         }
         return vec;
     } // g
-    public boolean[] c304() {
+    public boolean[] controle_304() {
         Controle_en_cours = "C304";
         String col1 = "Date_Activation";
         String col2 = "Date_Souscription_Adhésion";
@@ -4134,7 +4183,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c303() {
+    public boolean[] controle_303() {
         Controle_en_cours = "C303";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -4176,7 +4225,7 @@ public class DF {
         }
         return vec;
     } // g
-    public boolean[] c302() {
+    public boolean[] controle_302() {
         Controle_en_cours = "C302";
 
         String col1 = "Date_Souscription_Adhésion";
@@ -4200,7 +4249,7 @@ public class DF {
         }
         return vec;
     }
-    public boolean[] c301() {
+    public boolean[] controle_301() {
         Controle_en_cours = "C301";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         Date x_raw = (Date) grille.c("Contrôle")[0];
@@ -4224,12 +4273,12 @@ public class DF {
         }
         return vec;
     } // g
-    public boolean[] c205() {
+    public boolean[] controle_205() {
         Controle_en_cours = "C205";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public void c202_223() {
+    public void controle_202_223() {
         String[] controles = new String[]{"C202","C203","C204","C206",
         "C207","C208","C209","C210","C211","C212","C213","C214","C215",
         "C216","C217","C218","C219","C220","C221","C222","C223"};
@@ -4239,7 +4288,7 @@ public class DF {
             this.one_dim_grille(grille);
         }
     }
-    public void c201() {
+    public void controle_201() {
         Controle_en_cours = "C304";
         String col = "Numéro_Police";
         boolean[] vec;
@@ -4254,87 +4303,59 @@ public class DF {
         }
         System.out.println(sum_boolean(vec));
     }
-    public void c101() {
-        Controle_en_cours = "C101";
-        DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
-
-        String col1 = "Statut_Technique_Sinistre";
-        String col2 = "Numéro_Adhésion";
-        String colg = "Nombre Numéro_Adhésion";
-        String[] cols = {"Numéro_Police",col1,col2};
+    public void controle_107() {
+        Controle_en_cours = "C107";
+        String col = "Critère_Identification_Bien_Garanti_5";
         boolean[] vec;
-        if (!check_in(cols,this.header)) {
+        if (!check_in(col,this.header)) {
             err("missing columns");
             System.out.println(this.nrow);
             return;
         } else {
-            vec = logvec(this.nrow,false);
-        }
-
-        for (int i = 0; i < this.nrow; i++) {
-            int ind = find_in_arr_first_index(grille.c(col1), this.c(col1)[i]);
-            if (ind == -1) {
-                vec[i] = true;
-                continue;
-            }
-            Double cell_grille = (Double) grille.c(colg)[ind];
-            if (cell_grille.equals(NA_DBL)) {
-                continue;
-            }
-            String cell_base = (String) this.c(col2)[i];
-            int counter = 0;
-            for (int j = 0; (counter <= cell_grille) & (j < this.nrow); j++) {
-                if (this.c(col2)[j].equals(cell_base)) {
-                    counter++;
-                }
-            }
-            if (counter > cell_grille) {
-                vec[i] = true;
-            }
+            vec = doublons(col);
         }
         System.out.println(sum_boolean(vec));
     }
-    public void c102() {
-        Controle_en_cours = "C102";
-        DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
-
-        String col1 = "Statut_Technique_Sinistre";
-        String col2 = "Numéro_Extension";
-        String colg = "Nombre Numéro_Extension";
-        String[] cols = {"Numéro_Police",col1,col2};
+    public void controle_106() {
+        Controle_en_cours = "C106";
+        String col = "Numéro_Extension";
         boolean[] vec;
-        if (!check_in(cols,this.header)) {
+        if (!check_in(col,this.header)) {
             err("missing columns");
             System.out.println(this.nrow);
             return;
         } else {
-            vec = logvec(this.nrow,false);
-        }
-
-        for (int i = 0; i < this.nrow; i++) {
-            int ind = find_in_arr_first_index(grille.c(col1), this.c(col1)[i]);
-            if (ind == -1) {
-                vec[i] = true;
-                continue;
-            }
-            Double cell_grille = (Double) grille.c(colg)[ind];
-            if (cell_grille.equals(NA_DBL)) {
-                continue;
-            }
-            String cell_base = (String) this.c(col2)[i];
-            int counter = 0;
-            for (int j = 0; (counter <= cell_grille) & (j < this.nrow); j++) {
-                if (this.c(col2)[j].equals(cell_base)) {
-                    counter++;
-                }
-            }
-            if (counter > cell_grille) {
-                vec[i] = true;
-            }
+            vec = doublons(col);
         }
         System.out.println(sum_boolean(vec));
     }
-    public void c103() {
+    public void controle_105() {
+        Controle_en_cours = "C105";
+        String col = "Numéro_Adhésion";
+        boolean[] vec;
+        if (!check_in(col,this.header)) {
+            err("missing columns");
+            System.out.println(this.nrow);
+            return;
+        } else {
+            vec = doublons(col);
+        }
+        System.out.println(sum_boolean(vec));
+    }
+    public void controle_104() {
+        Controle_en_cours = "C104";
+        String col = "Numéro_Dossier";
+        boolean[] vec;
+        if (!check_in(col,this.header)) {
+            err("missing columns");
+            System.out.println(this.nrow);
+            return;
+        } else {
+            vec = doublons(col);
+        }
+        System.out.println(sum_boolean(vec));
+    }
+    public void controle_103() {
         Controle_en_cours = "C103";
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
@@ -4437,6 +4458,170 @@ public class DF {
         }
         System.out.println(sum_boolean(vec));
     }
+    public void controle_102() {
+        Controle_en_cours = "C102";
+        DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
+
+        String col1 = "Statut_Technique_Sinistre";
+        String col2 = "Numéro_Extension";
+        String colg = "Nombre Numéro_Extension";
+        String[] cols = {"Numéro_Police",col1,col2};
+        boolean[] vec;
+        if (!check_in(cols,this.header)) {
+            err("missing columns");
+            System.out.println(this.nrow);
+            return;
+        } else {
+            vec = logvec(this.nrow,false);
+        }
+
+        for (int i = 0; i < this.nrow; i++) {
+            int ind = find_in_arr_first_index(grille.c(col1), this.c(col1)[i]);
+            if (ind == -1) {
+                vec[i] = true;
+                continue;
+            }
+            Double cell_grille = (Double) grille.c(colg)[ind];
+            if (cell_grille.equals(NA_DBL)) {
+                continue;
+            }
+            String cell_base = (String) this.c(col2)[i];
+            int counter = 0;
+            for (int j = 0; (counter <= cell_grille) & (j < this.nrow); j++) {
+                if (this.c(col2)[j].equals(cell_base)) {
+                    counter++;
+                }
+            }
+            if (counter > cell_grille) {
+                vec[i] = true;
+            }
+        }
+        System.out.println(sum_boolean(vec));
+    }
+    public void controle_101() {
+        Controle_en_cours = "C101";
+        DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
+
+        String col1 = "Statut_Technique_Sinistre";
+        String col2 = "Numéro_Adhésion";
+        String colg = "Nombre Numéro_Adhésion";
+        String[] cols = {"Numéro_Police",col1,col2};
+        boolean[] vec;
+        if (!check_in(cols,this.header)) {
+            err("missing columns");
+            System.out.println(this.nrow);
+            return;
+        } else {
+            vec = logvec(this.nrow,false);
+        }
+
+        for (int i = 0; i < this.nrow; i++) {
+            int ind = find_in_arr_first_index(grille.c(col1), this.c(col1)[i]);
+            if (ind == -1) {
+                vec[i] = true;
+                continue;
+            }
+            Double cell_grille = (Double) grille.c(colg)[ind];
+            if (cell_grille.equals(NA_DBL)) {
+                continue;
+            }
+            String cell_base = (String) this.c(col2)[i];
+            int counter = 0;
+            for (int j = 0; (counter <= cell_grille) & (j < this.nrow); j++) {
+                if (this.c(col2)[j].equals(cell_base)) {
+                    counter++;
+                }
+            }
+            if (counter > cell_grille) {
+                vec[i] = true;
+            }
+        }
+        System.out.println(sum_boolean(vec));
+    }
+    public void controle_002_035() {
+        String[] controles = new String[]{"C002","C003","C004","C005","C006","C007","C008","C009","C010",
+                "C011","C012","C014","C015","C016","C017","C018","C019","C020","C021","C022",
+                "C023","C024","C025","C026","C027","C028","C029","C030","C031","C032","C033","C034","C035"};
+        String[] cols = new String[]{"Libellé_Distributeur","Libellé_Produit","Numéro_Adhésion","Numéro_Extension","Date_Souscription_Adhésion",
+                "Statut_Adhésion","Date_Achat_Bien_Garanti","Critère_Identification_Bien_Garanti_1","Critère_Identification_Bien_Garanti_2",
+                "Critère_Identification_Bien_Garanti_3","Critère_Identification_Bien_Garanti_4","Critère_Identification_Bien_Garanti_6",
+                "Critère_Tarifaire_1","Critère_Tarifaire_2","Cotisation_TTC","Canal_Adhésion","Nom_Magasin","Période_Bordereau_Cotisation",
+                "Numéro_Dossier","Libellé_Garantie","Date_Déclaration","Statut_Technique_Sinistre","Montant_Indemnité_Principale",
+                "Montant_Frais_Annexe","Montant_Reprise","Montant_Total_Règlement","Critère_Tarifaire_3","Critère_Tarifaire_4",
+                "Valeur_Achat","Date_Dernier_Acte","SKU","Date_Evénement","Qualité_Client"};
+            for (int i = 0; i < controles.length; i++) {
+                Controle_en_cours = controles[i];
+                if (check_in(cols[i], header)) {
+                    boolean[] vec = this.check_vides(cols[i]);
+                    System.out.println(sum_boolean(vec));
+                } else {
+                    err("cvides colonne manque");
+                    System.out.println(this.nrow);
+
+                }
+            }
+
+    }
+    public boolean[] check_vides (String col) {
+        boolean[] vec = logvec(this.nrow,false);
+        switch (this.coltypes[find_in_arr_first_index(this.header,col)]) {
+            case STR:
+                for (int i = 0; i < this.nrow; i++) {
+                    vec[i] = this.c(col)[i] == "";
+                }
+                break;
+            case DBL:
+                for (int i = 0; i < this.nrow; i++) {
+                    vec[i] = this.c(col)[i] == NA_DBL;
+                }
+                break;
+            case DAT:
+                for (int i = 0; i < this.nrow; i++) {
+                    vec[i] = this.c(col)[i] == NA_DAT;
+                }
+                break;
+            default:
+                err("check_vides type inexistant");
+            }
+        return vec;
+    }
+    public boolean[] doublons(String col) {
+        boolean[] vec = logvec(this.nrow,false);
+        HashMap<String, Integer> map = new HashMap<>();
+        for (int i = 0; i < this.nrow; i++) {
+            if (map.put((String) this.c(col)[i],i) != null) {
+                vec[i] = true;
+            }
+        }
+
+        map = new HashMap<>();
+        for (int i = this.nrow; i > 0; i--) {
+            if (map.put((String) this.c(col)[i-1],i) != null) {
+                vec[i-1] = true;
+            }
+        }
+        return vec;
+    }
+    public boolean[] oshibka_doublons(String col) {
+        boolean[] vec = logvec(this.nrow,false);
+        Set<String> map = new HashSet<>();
+        for (int i = 0; i < this.nrow; i++) {
+            vec[i] = !map.add((String) this.c(col)[i]);
+        }
+        for (int i = 0; i < this.nrow; i++) {
+            if (vec[i]) {
+                System.out.println(this.c(col)[i]);
+            }
+        }
+        System.out.println(sum_boolean(vec));
+
+        map = new HashSet<>();
+        for (int i = this.nrow; i > 0; i--) {
+            vec[i-1] = !map.add((String) this.c(col)[i-1]);
+        }
+        return vec;
+    }
+
     public void matcher(DF base_adh, String col) {
         boolean[] vec = logvec(this.nrow,true);
         String adh = "Numéro_Adhésion";

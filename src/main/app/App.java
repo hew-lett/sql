@@ -107,37 +107,61 @@ public class App {
                 }
             }
         } // get coltypes for base
-//        grilles_collect("Grille SS sinistre BI.xlsx");
-//        grille.dna();
-//
-//        DF df = new DF(path_grilles+"C309.csv",'\t',"UTF-8");
+        System.out.println(get_name_fr("Sinistre_Historique_ICIMM101_303_20221106.txt"));
+//        grilles_import();
+        String path_sin = "Sinistre_Historique_ICIMM101_303_20221106.txt";
+        String path_gg = "Grille Générique.csv";
+        String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
+        String onglet_mapping_sin = "Mapping bases sinistres";
+        String onglet_mapping_adh = "Mapping bases adhésions";
+        char delim_sin = '|';
+        char delim_gg = '|';
+        String encode = "UTF-8";
+        DF base = new DF(wd + path_sin,delim_sin,encode);
+        DF grille_gen = new DF(wd + path_gg,delim_gg,encode);
+        DF mapping = new DF(wd + path_mapping,onglet_mapping_sin,true,false);
+        mapping.print(15);
+        Police_en_cours = get_name_fr(path_sin).toLowerCase();
 
-        grilles_import();
-//        System.out.println();
-        DF base = new DF(wd + "Sinistre_Historique_ICIMM101_303_20221106.txt",'|',"UTF-8");
-        Police_en_cours = "icimm101";
-        Class<DF> classobj = DF.class;
-        Method[] methods = classobj.getMethods();
-//       Method xxxx = classobj.getMethod("C811");
-        for (Method method : methods) {
-        String name = method.getName();
-            if(name.charAt(0) == 'c' & name.length() == 4) {
-                controles_G.put(name,method);
-                Class<?>[] types = method.getParameterTypes();
-                if (types.length > 0) params_G.add(name);
-            }
-        }
-        long startTime = System.nanoTime();
-        boolean[] sd = (boolean[]) controles_G.get("c303").invoke(base);
-//        System.out.println(controles_G.get("c608"));
-        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
+
+
+
+//
+//        Class<DF> classobj = DF.class;
+//        Method[] methods = classobj.getMethods();
+////       Method xxxx = classobj.getMethod("C811");
+//        for (Method method : methods) {
+//        String name = method.getName();
+//            if(name.startsWith("controle")) {
+//                controles_G.put(name,method);
+//                Class<?>[] types = method.getParameterTypes();
+//                if (types.length > 0) params_G.add(name);
+//            }
+//        }
+//        long startTime = System.nanoTime();
+//        boolean[] sd = (boolean[]) controles_G.get("controle_002_035").invoke(base);
+////        System.out.println(controles_G.get("c608"));
+//        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
 
 }
-
-
-
-
-
+    public static String get_name_fr (String path) {
+        ArrayList<Integer> ind = get_all_occurences(path,'_');
+        if (ind.isEmpty()) {
+            err("pb naming france: " + path);
+            return "";
+        } else {
+            return path.substring(ind.get(1)+1,ind.get(2));
+        }
+    }
+    public static ArrayList<Integer> get_all_occurences (String str,char c) {
+        ArrayList<Integer> ind = new ArrayList<>();
+        for (int i = 0; i < str.length(); i++) {
+            if(str.charAt(i)==c) {
+                ind.add(i);
+            }
+        }
+        return ind;
+    }
 //        DF base = new DF(wd + "Sinistre_Historique_ICICDDP19_677_20221006.txt",'|',"UTF-8");
 //
 //        grille = new DF(wd + "Grille SS sinistre BI.xlsx","C711");
@@ -603,7 +627,7 @@ public class App {
             CSVWriter writer = (CSVWriter) new CSVWriterBuilder(new FileWriter(path_grilles+s+".csv"))
                     .withSeparator('\t')
                     .build();
-            DF grille = new DF(path,s,true);
+            DF grille = new DF(path,s,true,true);
 
             grille.dna();
 
@@ -631,5 +655,10 @@ public class App {
             df.dna();
             grilles_G.put(name,df);
         }
+    }
+    public static void err(String msg) {
+        System.out.println(msg);
+        System.out.println(Police_en_cours);
+        System.out.println(Controle_en_cours);
     }
 }
