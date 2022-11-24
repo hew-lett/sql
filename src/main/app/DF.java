@@ -224,12 +224,26 @@ public class DF {
         this.df = base;
     }
     public DF ( DF old_base, boolean[] keep) {
-        this.df = old_base.df;
         this.coltypes = old_base.coltypes;
         this.header = old_base.header;
         this.ncol = old_base.ncol;
         this.nrow = old_base.nrow;
+        for (int i = 0; i < this.ncol; i++) {
+            System.arraycopy(old_base.df.get(i), 0,this.df.get(i),0,this.nrow);
+        }
         this.keep_rows(keep);
+    }
+    public DF ( DF old_base, boolean[] keep, boolean keep_cols) {
+        this.df = new ArrayList<>();
+        this.coltypes = old_base.coltypes;
+        this.header = old_base.header;
+        this.ncol = old_base.ncol;
+        this.nrow = old_base.nrow;
+        this.df_populate(old_base.coltypes);
+        for (int i = 0; i < this.ncol; i++) {
+            System.arraycopy(old_base.df.get(i), 0,this.df.get(i),0,this.nrow);
+        }
+        this.keep_cols(keep);
     }
     public DF ( DF old_base, String crit) {
         this.df = old_base.df;
@@ -248,10 +262,18 @@ public class DF {
         this.print(min(10,this.nrow));
     }
     public void print(int rows) {
+        rows = Math.min(rows,this.nrow);
+        System.out.println("nrow" + this.nrow);
+        System.out.println("ncol" + this.ncol);
+        System.out.println("rows" + rows);
         System.out.println(Arrays.toString(header));
         for (int i = 0; i < rows; i++) {
             System.out.println(Arrays.toString(this.r(i)));
         }
+        int ncoll = this.df.size();
+        int nrowl = this.df.get(0).length;
+        System.out.println(ncoll + " " + nrowl);
+
     }
     public void print_cols() {
        for (int i = 0; i < this.ncol; i++) {
@@ -266,7 +288,7 @@ public class DF {
     // DATA
     public Object[] r(int index){
         Object[] row = new Object[ncol];
-        for(int i=0; i<ncol; i++){
+        for(int i=0; i<this.ncol; i++){
             row[i] = df.get(i)[index];
         }
         return row;
@@ -409,6 +431,19 @@ public class DF {
         }
         return out;
     }
+    public void mapping_traitement() {
+        Object[] col1 = this.c(0);
+       int ind = find_in_arr_first_index(col1,"Numéro_Police");
+       if (ind == -1){
+           err("probleme mapping!");
+       } else {
+           boolean[] vec = logvec(this.nrow,false);
+           for (  ; ind < nrow; ind++) {
+               vec[ind] = true;
+           }
+           this.keep_rows(vec);
+       }
+    }
 
     // FILTER
     public void keep_rows (boolean[] keep_bool) {
@@ -433,10 +468,8 @@ public class DF {
         this.df = rowsToKeep;
     }
     public void keep_cols( boolean[] keep_vec) {
-
-        header = keep_from_array(header,keep_vec);
-
-        coltypes = keep_from_array(coltypes,keep_vec);
+        this.header = keep_from_array(header,keep_vec);
+        this.coltypes = keep_from_array(coltypes,keep_vec);
         int j = 0;
             for (int i = 0; i < ncol; i++) {
                 if(!keep_vec[i]) {
@@ -445,8 +478,7 @@ public class DF {
                     j++;
                 }
             }
-        ncol = sum_boolean(keep_vec);
-
+        this.ncol = sum_boolean(keep_vec);
     }
     public DF filter_out(String colname, String crit) {
         boolean[] vec = new boolean[nrow];
@@ -4632,11 +4664,6 @@ public class DF {
             }
         }
         System.out.println(sum_boolean(vec));
-    }
-    public boolean[] logvec(int dim, boolean values) {
-        boolean[] out = new boolean[dim];
-        Arrays.fill(out,values);
-        return out;
     }
     public int[] match_first (Object[] a, Object[] b) {
         int[] out = new int[a.length];

@@ -40,6 +40,8 @@ public class App {
         }
     }
     public static final LocalDate NA_LDAT = to_Date(NA_DAT);
+    public static DF mapping_sin;
+    public static DF mapping_adh;
 
     public static String Police_en_cours = "default";
     public static String Controle_en_cours = "default";
@@ -107,20 +109,33 @@ public class App {
                 }
             }
         } // get coltypes for base
+        //        grilles_import();
+
+        String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
+        String mapping_sin_onglet = "Mapping bases sinistres";
+        String mapping_adh_onglet = "Mapping bases adhésions";
+        String mapping_sin_col = "SPB France / Wakam";
+        mapping_sin = new DF(wd + path_mapping,mapping_sin_onglet,true,false);
+        mapping_sin.mapping_traitement();
+
+
+
         System.out.println(get_name_fr("Sinistre_Historique_ICIMM101_303_20221106.txt"));
-//        grilles_import();
         String path_sin = "Sinistre_Historique_ICIMM101_303_20221106.txt";
         String path_gg = "Grille Générique.csv";
-        String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
-        String onglet_mapping_sin = "Mapping bases sinistres";
-        String onglet_mapping_adh = "Mapping bases adhésions";
+
         char delim_sin = '|';
         char delim_gg = '|';
         String encode = "UTF-8";
         DF base = new DF(wd + path_sin,delim_sin,encode);
         DF grille_gen = new DF(wd + path_gg,delim_gg,encode);
-        DF mapping = new DF(wd + path_mapping,onglet_mapping_sin,true,false);
-        mapping.print(15);
+
+        DF map_sin = mapping_filtre(mapping_sin_col);
+        mapping_sin.print();
+        System.out.println(Arrays.toString(mapping_sin.coltypes));
+        map_sin.print();
+        System.out.println(Arrays.toString(map_sin.coltypes));
+
         Police_en_cours = get_name_fr(path_sin).toLowerCase();
 
 
@@ -144,6 +159,14 @@ public class App {
 //        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
 
 }
+    public static DF mapping_filtre(String col) {
+        boolean[] vec = logvec(mapping_sin.ncol,false);
+        int ind = find_in_arr_first_index(mapping_sin.header, col);
+        assert(ind != -1);
+        vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
+        vec[ind] = true;
+        return new DF(mapping_sin,vec,true);
+    }
     public static String get_name_fr (String path) {
         ArrayList<Integer> ind = get_all_occurences(path,'_');
         if (ind.isEmpty()) {
@@ -660,5 +683,10 @@ public class App {
         System.out.println(msg);
         System.out.println(Police_en_cours);
         System.out.println(Controle_en_cours);
+    }
+    public static boolean[] logvec(int dim, boolean values) {
+        boolean[] out = new boolean[dim];
+        Arrays.fill(out,values);
+        return out;
     }
 }
