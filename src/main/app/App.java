@@ -40,16 +40,20 @@ public class App {
         }
     }
     public static final LocalDate NA_LDAT = to_Date(NA_DAT);
-    public static DF mapping_sin;
-    public static DF mapping_adh;
-
+    public static DF mapping_sin_g;
+    public static DF mapping_adh_g;
+    public static DF grille_gen_g;
     public static String Police_en_cours = "default";
+    public static String Police_en_cours_maj = "default";
     public static String Controle_en_cours = "default";
+    public static String Flux_en_cours = "default";
+    public static ArrayList<ArrayList<String>> Rapport = new ArrayList<>();
     public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF.Col_types> coltypes_B = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF> grilles_G = new HashMap<String, DF>();
-    public static HashMap<String, Method> controles_G = new HashMap<String, Method>();
-    public static List<String> params_G = new ArrayList<>();
+    public static HashMap<String, Method> controles_G = new HashMap<>();
+    public static HashMap<String, Boolean> params_G = new HashMap<>();
+
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         {
             String encoding = "UTF-8";
@@ -110,62 +114,97 @@ public class App {
             }
         } // get coltypes for base
         //        grilles_import();
+        String[] rapport_cols = {"Police","Controle","ID"};
+        for (int i = 0; i < rapport_cols.length; i++) {
+            Rapport.add(new ArrayList<>());
+            Rapport.get(i).add(rapport_cols[i]);
+        }
 
+        Class<DF> classobj = DF.class;
+        Method[] methods = classobj.getMethods();
+        for (Method method : methods) {
+            String name = method.getName();
+            if(name.startsWith("controle")) {
+                controles_G.put(name,method);
+                System.out.println(Arrays.toString(method.getParameterTypes()));
+                Class<?>[] types = method.getParameterTypes();
+                if (types.length > 0)  {
+                    params_G.put(name,true);
+                } else {
+                    params_G.put(name,false);
+                }
+            }
+        }
+
+        Flux_en_cours = "sinistre";
+        String encode = "UTF-8";
         String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
         String mapping_sin_onglet = "Mapping bases sinistres";
         String mapping_adh_onglet = "Mapping bases adhésions";
-        String mapping_sin_col = "SPB France / Wakam";
-        mapping_sin = new DF(wd + path_mapping,mapping_sin_onglet,true,false);
-        mapping_sin.mapping_traitement();
+        mapping_sin_g = new DF(wd + path_mapping,mapping_sin_onglet,true,false);
+        mapping_sin_g.mapping_traitement();
 
-
-
-        System.out.println(get_name_fr("Sinistre_Historique_ICIMM101_303_20221106.txt"));
-        String path_sin = "Sinistre_Historique_ICIMM101_303_20221106.txt";
         String path_gg = "Grille Générique.csv";
+        char delim_gg = ';';
+        grille_gen_g = new DF(wd + path_gg,delim_gg,encode);
 
+        String path_sin = "Sinistre_Historique_ICIMM101_303_20221106.txt";
         char delim_sin = '|';
-        char delim_gg = '|';
-        String encode = "UTF-8";
         DF base = new DF(wd + path_sin,delim_sin,encode);
-        DF grille_gen = new DF(wd + path_gg,delim_gg,encode);
 
+        String path_adh = "Adhesion_Historique_ICIMM101_303_20221102.txt";
+        char delim_adh = '|';
+        DF base_adh = new DF(wd + path_adh,delim_adh,encode);
+        Police_en_cours_maj = get_name_fr(path_sin);
+        Police_en_cours = Police_en_cours_maj.toLowerCase();
+
+        String mapping_sin_col = "SPB France / Wakam";
         DF map_sin = mapping_filtre(mapping_sin_col);
-        mapping_sin.print();
-        System.out.println(Arrays.toString(mapping_sin.coltypes));
-        map_sin.print();
-        System.out.println(Arrays.toString(map_sin.coltypes));
+        base.subst_columns(map_sin);
+        String mapping_adh_col = "SPB France / Wakam";
+        DF map_adh = mapping_filtre(mapping_adh_col);
+        base.subst_columns(map_adh);
 
-        Police_en_cours = get_name_fr(path_sin).toLowerCase();
+        boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours);
+        boolean[] keep2 = find_in_arr(grille_gen_g.c("Flux"), Flux_en_cours);
+        for (int i = 0; i < keep.length; i++) {
+            keep[i] &= keep2[i];
+        }
+        base.grille_gen = new DF(grille_gen_g,keep);
+
+        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
+            if (params_G.get(set.getKey())) {
+                set.getValue().invoke(base,base_adh);
+            } else {
+                set.getValue().invoke(base);
+            }
+        }
 
 
 
 
-//
-//        Class<DF> classobj = DF.class;
-//        Method[] methods = classobj.getMethods();
-////       Method xxxx = classobj.getMethod("C811");
-//        for (Method method : methods) {
-//        String name = method.getName();
-//            if(name.startsWith("controle")) {
-//                controles_G.put(name,method);
-//                Class<?>[] types = method.getParameterTypes();
-//                if (types.length > 0) params_G.add(name);
-//            }
-//        }
-//        long startTime = System.nanoTime();
-//        boolean[] sd = (boolean[]) controles_G.get("controle_002_035").invoke(base);
-////        System.out.println(controles_G.get("c608"));
-//        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
+
+        long startTime = System.nanoTime();
+//        System.out.println(controles_G.get("c608"));
+        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
 
 }
+    public static void rapport_print () {
+        for (int i = 0; i < Rapport.get(0).size(); i++) {
+            System.out.print("| ");
+            for (int j = 0; j < Rapport.size(); j++) {
+                System.out.print(Rapport.get(j).get(i) + " | ");
+            }
+            System.out.println();
+        }
+    }
     public static DF mapping_filtre(String col) {
-        boolean[] vec = logvec(mapping_sin.ncol,false);
-        int ind = find_in_arr_first_index(mapping_sin.header, col);
+        boolean[] vec = logvec(mapping_sin_g.ncol,false);
+        int ind = find_in_arr_first_index(mapping_sin_g.header, col);
         assert(ind != -1);
         vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
         vec[ind] = true;
-        return new DF(mapping_sin,vec,true);
+        return new DF(mapping_sin_g,vec,true);
     }
     public static String get_name_fr (String path) {
         ArrayList<Integer> ind = get_all_occurences(path,'_');

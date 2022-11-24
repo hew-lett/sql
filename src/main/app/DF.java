@@ -42,6 +42,7 @@ public class DF {
     public String[] header;
     public int ncol;
     public int nrow;
+    public DF grille_gen;
     public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
 
     // CONSTRUCTORS
@@ -77,7 +78,7 @@ public class DF {
                 String[] parsedRow = rows.next();
                 for (String s : parsedRow) {
                     if (coltypes[k] != Col_types.SKP) {
-                        df.get(j)[i] = get_cell_of_type(s,coltypes[k]);
+                        df.get(j)[i] = get_lowercase_cell_of_type(s,coltypes[k]);
                         j++;
                     }
                     k++;
@@ -220,32 +221,34 @@ public class DF {
             row_number++;
         }
     }
-    public DF ( ArrayList<Object[]> base) {
+    public DF (ArrayList<Object[]> base) {
         this.df = base;
     }
-    public DF ( DF old_base, boolean[] keep) {
+    public DF (DF old_base, boolean[] keep) {
         this.coltypes = old_base.coltypes;
         this.header = old_base.header;
         this.ncol = old_base.ncol;
         this.nrow = old_base.nrow;
+        this.df = new ArrayList<>();
+        this.df_populate(this.coltypes);
         for (int i = 0; i < this.ncol; i++) {
             System.arraycopy(old_base.df.get(i), 0,this.df.get(i),0,this.nrow);
         }
         this.keep_rows(keep);
     }
-    public DF ( DF old_base, boolean[] keep, boolean keep_cols) {
-        this.df = new ArrayList<>();
+    public DF (DF old_base, boolean[] keep, boolean keep_cols) {
         this.coltypes = old_base.coltypes;
         this.header = old_base.header;
         this.ncol = old_base.ncol;
         this.nrow = old_base.nrow;
-        this.df_populate(old_base.coltypes);
+        this.df = new ArrayList<>();
+        this.df_populate(this.coltypes);
         for (int i = 0; i < this.ncol; i++) {
             System.arraycopy(old_base.df.get(i), 0,this.df.get(i),0,this.nrow);
         }
         this.keep_cols(keep);
     }
-    public DF ( DF old_base, String crit) {
+    public DF (DF old_base, String crit) {
         this.df = old_base.df;
         this.coltypes = old_base.coltypes;
         this.header = old_base.header;
@@ -257,23 +260,21 @@ public class DF {
         }
         this.keep_rows(keep);
     }
+    public DF () {
+        
+    }
     // PRINT
     public void print() {
         this.print(min(10,this.nrow));
     }
     public void print(int rows) {
         rows = Math.min(rows,this.nrow);
-        System.out.println("nrow" + this.nrow);
-        System.out.println("ncol" + this.ncol);
-        System.out.println("rows" + rows);
-        System.out.println(Arrays.toString(header));
+
         for (int i = 0; i < rows; i++) {
             System.out.println(Arrays.toString(this.r(i)));
         }
         int ncoll = this.df.size();
         int nrowl = this.df.get(0).length;
-        System.out.println(ncoll + " " + nrowl);
-
     }
     public void print_cols() {
        for (int i = 0; i < this.ncol; i++) {
@@ -788,8 +789,9 @@ public class DF {
     public void certif() {
 
     }
-    public boolean[] controle_811() {
+    public void controle_811() {
         Controle_en_cours = "C811";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -797,7 +799,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -1340,10 +1343,11 @@ public class DF {
         }
 
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_810() {
+    public void controle_810() {
         Controle_en_cours = "C810";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -1351,7 +1355,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -1584,16 +1589,18 @@ public class DF {
         }
 
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_809() {
+    public void controle_809() {
         Controle_en_cours = "C809";
+        if (grille_gen_controle_absent()) return;
         boolean[] vec = new boolean[nrow];
         String[] cols = {"Montant_Indemnité_Principale","Montant_Frais_Annexe","Montant_Reprise","Montant_Total_Règlement"};
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -1607,10 +1614,11 @@ public class DF {
             vec[i] = !a.equals(b);
         }
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     }
-    public boolean[] controle_808() {
+    public void controle_808() {
         Controle_en_cours = "C808";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -1618,7 +1626,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -2044,10 +2053,11 @@ public class DF {
 
 
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_807() {
+    public void controle_807() {
         Controle_en_cours = "C807";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -2055,7 +2065,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -2499,10 +2510,11 @@ public class DF {
             vec[i] = !compa_signe(mr,mr_ref,signe);
         }
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_806() {
+    public void controle_806() {
         Controle_en_cours = "C806";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -2510,7 +2522,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -2696,10 +2709,11 @@ public class DF {
         }
 
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_805() {
+    public void controle_805() {
         Controle_en_cours = "C805";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -2707,7 +2721,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -2799,10 +2814,11 @@ public class DF {
         }
 
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_804() {
+    public void controle_804() {
         Controle_en_cours = "C804";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -2810,7 +2826,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -2881,10 +2898,11 @@ public class DF {
             }
         }
 
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_803() {
+    public void controle_803() {
         Controle_en_cours = "C803";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -2892,7 +2910,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -3080,10 +3099,11 @@ public class DF {
         }
 
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_801() {
+    public void controle_801() {
         Controle_en_cours = "C801";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = new boolean[nrow];
@@ -3091,7 +3111,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -3108,16 +3129,18 @@ public class DF {
             }
         }
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_712() {
+    public void controle_712() {
         Controle_en_cours = "C712";
+        if (grille_gen_controle_absent()) return;
         boolean[] vec = new boolean[nrow];
         String[] cols = {"Statut_Technique_Sinistre","Date_Survenance","Date_Souscription_Adhésion","Date_Evénement"};
         String[] stats = {"en cours - accepté","terminé - accepté","réglé"};
         if (!check_in(cols,header)) {
             err("missing columns");
-            return logvec(nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -3136,10 +3159,11 @@ public class DF {
             vec[i] = a & (b | c);
         }
 
-        return(vec);
+        err_vec_handle(vec);
     }
-    public boolean[] controle_711() {
+    public void controle_711() {
         Controle_en_cours = "C711";
+        if (grille_gen_controle_absent()) return;
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         boolean[] vec = logvec(nrow,false);
@@ -3658,26 +3682,31 @@ public class DF {
             }
         }
 
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_710(DF base_adh) {
+    public void controle_710(DF base_adh) {
+        Controle_en_cours = "C710";
+        if (grille_gen_controle_absent()) return;
         boolean[] vec = logvec(this.nrow,false);
         String col = "Numéro_Adhésion";
         Integer[] m = match_sans_doublons(this.c(col), base_adh.c(col));
         for (int i = 0; i < this.nrow; i++) {
             vec[i] = m[i].equals(-1);
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_709() {
+    public void controle_709() {
         Controle_en_cours = "C709";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         String[] cols = {"Numéro_Police","Date_Survenance","Date_Souscription_Adhésion"};
         boolean[] vec;
         if (!check_in(cols,header)) {
             err("missing columns");
-            return logvec(nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(nrow,true);
         }
@@ -3777,10 +3806,12 @@ public class DF {
             }
 
         }
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_708(DF base_adh) {
+    public void controle_708(DF base_adh) {
         Controle_en_cours = "C708";
+        if (grille_gen_controle_absent()) return;
+
         boolean[] vec;
         String adh = "Numéro_Adhésion";
         String col = "Date_Survenance";
@@ -3788,7 +3819,8 @@ public class DF {
         String col2 = "Statut_Technique_Sinistre";
         if (!check_in(new String[]{adh, col},this.header) | !check_in(new String[]{adh, col1},base_adh.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(this.nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -3817,10 +3849,12 @@ public class DF {
                 }
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_707() {
+    public void controle_707() {
         Controle_en_cours = "C707";
+        if (grille_gen_controle_absent()) return;
+
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
         String col1 = "Date_Survenance";
@@ -3828,7 +3862,8 @@ public class DF {
         String[] statut_ref = {"en cours - accepté","terminé - accepté","réglé"};
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -3837,10 +3872,12 @@ public class DF {
             Date surv = (Date) this.c(col1)[i];
             vec[i] = in(statut,statut_ref) & surv.equals(NA_DAT);
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_706() {
+    public void controle_706() {
         Controle_en_cours = "C706";
+        if (grille_gen_controle_absent()) return;
+
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
         String col1 = "Date_Survenance";
@@ -3849,7 +3886,8 @@ public class DF {
         String[] statut_ref = {"en cours - accepté","terminé - accepté","réglé"};
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -3863,10 +3901,12 @@ public class DF {
                 vec[i] = in(statut,statut_ref);
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_705() {
+    public void controle_705() {
         Controle_en_cours = "C705";
+        if (grille_gen_controle_absent()) return;
+
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
         String col1 = "Date_Survenance";
@@ -3876,7 +3916,8 @@ public class DF {
         String[] statut_ref = {"en cours - accepté","terminé - accepté","réglé"};
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -3891,10 +3932,12 @@ public class DF {
                 vec[i] = in(statut,statut_ref);
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_704() {
+    public void controle_704() {
         Controle_en_cours = "C704";
+        if (grille_gen_controle_absent()) return;
+
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
         String col1 = "Date_Déclaration";
@@ -3903,7 +3946,8 @@ public class DF {
         String[] statut_ref = {"en cours - accepté","terminé - accepté","réglé"};
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -3917,10 +3961,12 @@ public class DF {
                 vec[i] = in(statut,statut_ref);
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_703() {
+    public void controle_703() {
         Controle_en_cours = "C703";
+        if (grille_gen_controle_absent()) return;
+
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
         String col1 = "Date_Déclaration";
@@ -3929,7 +3975,8 @@ public class DF {
         String[] statut_ref = {"en cours - accepté","terminé - accepté","réglé"};
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -3943,10 +3990,12 @@ public class DF {
                 vec[i] = in(statut,statut_ref);
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_702() {
+    public void controle_702() {
         Controle_en_cours = "C702";
+        if (grille_gen_controle_absent()) return;
+
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
         String col1 = "Date_Déclaration";
@@ -3956,7 +4005,8 @@ public class DF {
         String[] statut_ref = {"en cours - accepté","terminé - accepté","réglé"};
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -3971,10 +4021,12 @@ public class DF {
                 vec[i] = in(statut,statut_ref);
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_701() {
+    public void controle_701() {
         Controle_en_cours = "C701";
+        if (grille_gen_controle_absent()) return;
+
         boolean[] vec;
         String col = "Statut_Technique_Sinistre";
         String col1 = "Date_Déclaration";
@@ -3983,7 +4035,8 @@ public class DF {
         String[] statut_ref = {"en cours - accepté","terminé - accepté","réglé"};
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -3997,15 +4050,19 @@ public class DF {
                 vec[i] = in(statut,statut_ref);
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_608() {
+    public void controle_608() {
         Controle_en_cours = "C608";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] controle_607() {
+    public void controle_607() {
         Controle_en_cours = "C607";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
@@ -4018,26 +4075,36 @@ public class DF {
                 "Critère_Tarifaire_1","Critère_Tarifaire_2","Critère_Tarifaire_3","Critère_Tarifaire_4","SKU","Valeur_Achat","Qualité_Client"};
         for (int i = 0; i < controles.length; i++) {
             Controle_en_cours = controles[i];
-            this.matcher(base_adh,cols[i]);
+            if (grille_gen_controle_absent()) continue;
+
+            err_vec_handle(this.matcher(base_adh,cols[i]));
         }
     }
-    public boolean[] controle_517() {
+    public void controle_517() {
         Controle_en_cours = "C517";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] controle_502() {
+    public void controle_502() {
         Controle_en_cours = "C502";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] controle_501() {
+    public void controle_501() {
         Controle_en_cours = "C501";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] controle_401() {
+    public void controle_401() {
         Controle_en_cours = "C401";
+        if (grille_gen_controle_absent()) return;
+
         int dim = this.nrow;
         String col = "Date_Prise_Effet_Résiliation";
         String col1 = "Date_Souscription_Adhésion";
@@ -4046,7 +4113,8 @@ public class DF {
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -4056,17 +4124,20 @@ public class DF {
             vec[i] = !resil.equals(NA_DAT) & resil.before(sous);
         }
         System.out.println(sum_boolean(vec));
-        return vec;
+        err_vec_handle(vec);
     } // controle adhé
-    public boolean[] controle_309() {
+    public void controle_309() {
         Controle_en_cours = "C309";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         boolean[] vec = new boolean[nrow];
         String[] cols = {"Numéro_Police","Critère_Tarifaire_1","SKU","Valeur_Achat"};
         if (!check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
-            return vec;
+            err_vec_handle(vec);
+            return;
         } else {
             Arrays.fill(vec,false);
         }
@@ -4150,15 +4221,19 @@ public class DF {
         }
 
         System.out.println(sum_boolean(vec));
-        return(vec);
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_308() {
+    public void controle_308() {
         Controle_en_cours = "C308";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
-    public boolean[] controle_305() {
+    public void controle_305() {
         Controle_en_cours = "C305";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         Double x_raw = (Double) grille.c("Contrôle")[0];
         long x = round(x_raw);
@@ -4168,7 +4243,8 @@ public class DF {
         boolean[] vec;
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -4186,10 +4262,12 @@ public class DF {
             }
 
         }
-        return vec;
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_304() {
+    public void controle_304() {
         Controle_en_cours = "C304";
+        if (grille_gen_controle_absent()) return;
+
         String col1 = "Date_Activation";
         String col2 = "Date_Souscription_Adhésion";
         String col3 = "Date_Achat_Bien_Garanti";
@@ -4197,7 +4275,8 @@ public class DF {
         boolean[] vec;
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -4213,10 +4292,12 @@ public class DF {
                 }
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_303() {
+    public void controle_303() {
         Controle_en_cours = "C303";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         String col1 = "Date_Achat_Bien_Garanti";
@@ -4226,7 +4307,8 @@ public class DF {
         boolean[] vec;
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -4255,10 +4337,11 @@ public class DF {
             }
 
         }
-        return vec;
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_302() {
+    public void controle_302() {
         Controle_en_cours = "C302";
+        if (grille_gen_controle_absent()) return;
 
         String col1 = "Date_Souscription_Adhésion";
         String col2 = "Date_Achat_Bien_Garanti";
@@ -4266,7 +4349,8 @@ public class DF {
         boolean[] vec;
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -4279,10 +4363,12 @@ public class DF {
                 vec[i] = sous.before(achat);
             }
         }
-        return vec;
+        err_vec_handle(vec);
     }
-    public boolean[] controle_301() {
+    public void controle_301() {
         Controle_en_cours = "C301";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         Date x_raw = (Date) grille.c("Contrôle")[0];
 
@@ -4291,7 +4377,8 @@ public class DF {
         boolean[] vec;
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            return logvec(this.nrow,true);
+            err_vec_handle(logvec(nrow,true));
+            return;
         } else {
             vec = logvec(this.nrow,false);
         }
@@ -4303,10 +4390,12 @@ public class DF {
                 vec[i] = cell_base.before(x_raw);
             }
         }
-        return vec;
+        err_vec_handle(vec);
     } // g
-    public boolean[] controle_205() {
+    public void controle_205() {
         Controle_en_cours = "C205";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
         return simple_grille(grille);
     } // g
@@ -4316,12 +4405,16 @@ public class DF {
         "C216","C217","C218","C219","C220","C221","C222","C223"};
         for (String s : controles) {
             Controle_en_cours = s;
+            if (grille_gen_controle_absent()) return;
+
             DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
             this.one_dim_grille(grille);
         }
     }
     public void controle_201() {
-        Controle_en_cours = "C304";
+        Controle_en_cours = "C201";
+        if (grille_gen_controle_absent()) return;
+
         String col = "Numéro_Police";
         boolean[] vec;
         if (!check_in(col,this.header)) {
@@ -4337,11 +4430,13 @@ public class DF {
     }
     public void controle_107() {
         Controle_en_cours = "C107";
+        if (grille_gen_controle_absent()) return;
+
         String col = "Critère_Identification_Bien_Garanti_5";
         boolean[] vec;
         if (!check_in(col,this.header)) {
             err("missing columns");
-            System.out.println(this.nrow);
+            err_vec_handle(logvec(nrow,true));
             return;
         } else {
             vec = doublons(col);
@@ -4350,11 +4445,13 @@ public class DF {
     }
     public void controle_106() {
         Controle_en_cours = "C106";
+        if (grille_gen_controle_absent()) return;
+
         String col = "Numéro_Extension";
         boolean[] vec;
         if (!check_in(col,this.header)) {
             err("missing columns");
-            System.out.println(this.nrow);
+            err_vec_handle(logvec(nrow,true));
             return;
         } else {
             vec = doublons(col);
@@ -4363,11 +4460,13 @@ public class DF {
     }
     public void controle_105() {
         Controle_en_cours = "C105";
+        if (grille_gen_controle_absent()) return;
+
         String col = "Numéro_Adhésion";
         boolean[] vec;
         if (!check_in(col,this.header)) {
             err("missing columns");
-            System.out.println(this.nrow);
+            err_vec_handle(logvec(nrow,true));
             return;
         } else {
             vec = doublons(col);
@@ -4376,11 +4475,13 @@ public class DF {
     }
     public void controle_104() {
         Controle_en_cours = "C104";
+        if (grille_gen_controle_absent()) return;
+
         String col = "Numéro_Dossier";
         boolean[] vec;
         if (!check_in(col,this.header)) {
             err("missing columns");
-            System.out.println(this.nrow);
+            err_vec_handle(logvec(nrow,true));
             return;
         } else {
             vec = doublons(col);
@@ -4389,6 +4490,8 @@ public class DF {
     }
     public void controle_103() {
         Controle_en_cours = "C103";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         String col3 = "Statut_Technique_Sinistre";
@@ -4400,7 +4503,7 @@ public class DF {
         boolean[] vec;
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            System.out.println(this.nrow);
+            err_vec_handle(logvec(nrow,true));
             return;
         } else {
             vec = logvec(this.nrow,false);
@@ -4492,6 +4595,8 @@ public class DF {
     }
     public void controle_102() {
         Controle_en_cours = "C102";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         String col1 = "Statut_Technique_Sinistre";
@@ -4501,7 +4606,7 @@ public class DF {
         boolean[] vec;
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            System.out.println(this.nrow);
+            err_vec_handle(logvec(nrow,true));
             return;
         } else {
             vec = logvec(this.nrow,false);
@@ -4532,6 +4637,8 @@ public class DF {
     }
     public void controle_101() {
         Controle_en_cours = "C101";
+        if (grille_gen_controle_absent()) return;
+
         DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
 
         String col1 = "Statut_Technique_Sinistre";
@@ -4541,7 +4648,7 @@ public class DF {
         boolean[] vec;
         if (!check_in(cols,this.header)) {
             err("missing columns");
-            System.out.println(this.nrow);
+            err_vec_handle(logvec(nrow,true));
             return;
         } else {
             vec = logvec(this.nrow,false);
@@ -4583,6 +4690,8 @@ public class DF {
                 "Valeur_Achat","Date_Dernier_Acte","SKU","Date_Evénement","Qualité_Client"};
             for (int i = 0; i < controles.length; i++) {
                 Controle_en_cours = controles[i];
+                if (grille_gen_controle_absent()) return;
+
                 if (check_in(cols[i], header)) {
                     boolean[] vec = this.check_vides(cols[i]);
                     System.out.println(sum_boolean(vec));
@@ -4652,9 +4761,9 @@ public class DF {
             vec[i-1] = !map.add((String) this.c(col)[i-1]);
         }
         return vec;
-    }
+    } // pochemu ne rabotaet
 
-    public void matcher(DF base_adh, String col) {
+    public boolean[] matcher(DF base_adh, String col) {
         boolean[] vec = logvec(this.nrow,true);
         String adh = "Numéro_Adhésion";
         int[] m = match_first(this.c(adh), base_adh.c(adh));
@@ -4663,7 +4772,7 @@ public class DF {
                 vec[i] = !this.c(col)[i].equals(base_adh.c(col)[m[i]]);
             }
         }
-        System.out.println(sum_boolean(vec));
+        return vec;
     }
     public int[] match_first (Object[] a, Object[] b) {
         int[] out = new int[a.length];
@@ -4700,6 +4809,36 @@ public class DF {
         }
         return out;
     }
+    public void subst_columns(DF map) {
+        for (int i = 0; i < this.header.length; i++) {
+            int ind = find_in_arr_first_index(map.c(0),this.header[i]);
+            if (ind > -1) {
+                this.header[i] = (String) map.c(1)[ind];
+            }
+        }
+    }
+    public boolean gg_check_controle(String label) {
+        int ind = find_in_arr_first_index(this.c("Contrôle"), label);
+        return this.c("Etat")[ind].equals("oui");
+    }
+    public boolean gg_check_bloquant(String label) {
+        int ind = find_in_arr_first_index(this.c("Contrôle"), label);
+        return this.c("Bloquant")[ind].equals("oui");
+    }
+    public void err_vec_handle(boolean[] vec) {
+        for (int i = 0; i < this.nrow; i++) {
+            if(vec[i]) {
+                Rapport.get(0).add(Police_en_cours);
+                Rapport.get(1).add(Controle_en_cours);
+                Rapport.get(2).add((String) this.c("Numéro_Dossier")[i]);
+            }
+        }
+    }
+    public boolean grille_gen_controle_absent() {
+        if (this.grille_gen == null) return false;
+        return this.grille_gen.c("Etat")[find_in_arr_first_index(this.grille_gen.c("Contrôle"),Controle_en_cours)] == "oui";
+    }
+    
 //    int[] temp = which(vec);
 //    Integer[] v = new Integer[temp.length];
 //        for (int c = 0; c < temp.length; c++) {
