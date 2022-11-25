@@ -172,19 +172,23 @@ public class App {
         boolean[] crit = b_and(keep,keep2);
         base.grille_gen = new DF(grille_gen_g,crit);
         base.grille_gen.printgrille();
-        controles_G.get("controle_708").invoke(base,base_adh);
-
-//        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
-//            System.out.println(set.getKey());
-//            if (params_G.get(set.getKey())) {
-//                set.getValue().invoke(base,base_adh);
-//            } else {
-//                set.getValue().invoke(base);
-//            }
-//        }
-
-        rapport_print();
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
+
+        startTime = System.nanoTime();
+
+//        controles_G.get("controle_805").invoke(base);
+
+        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
+            System.out.println(set.getKey());
+            if (params_G.get(set.getKey())) {
+                set.getValue().invoke(base,base_adh);
+            } else {
+                set.getValue().invoke(base);
+            }
+        }
+
+//        rapport_print();
+        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
 }
     public static void rapport_print () {
@@ -193,6 +197,7 @@ public class App {
             for (int j = 0; j < Rapport.size(); j++) {
                 System.out.print(Rapport.get(j).get(i) + " | ");
             }
+            System.out.println();
         }
     }
     public static DF mapping_filtre(String col) {

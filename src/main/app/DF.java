@@ -2736,11 +2736,13 @@ public class DF {
                 vec[i] = true;
                 continue;
             }
-            String montant_raw = (String) grille.c(col)[reste_i];
-            double montant = Double.parseDouble(montant_raw.replace(",",".").replaceAll("[^\\d.]", ""));
-            Double mip_ref = Math.round(montant * 100) / 100.0;
+            Double montant = (Double) grille.c(col)[reste_i];
+            if (montant.equals(NA_DBL)) {
+                continue;
+            }
+            double mip_ref = Math.round(montant * 100) / 100.0;
 
-            vec[i] = !(mip <= mip_ref | mip_ref.equals(NA_DBL));
+            vec[i] = !(mip <= mip_ref);
         }
 
         this.err_vec_handle(vec);
@@ -3543,7 +3545,7 @@ public class DF {
         String col = "Numéro_Adhésion";
         Integer[] m = match_sans_doublons(this.c(col), base_adh.c(col));
         for (int i = 0; i < this.nrow; i++) {
-            vec[i] = m[i].equals(-1);
+            vec[i] = m[i] == null;
         }
         this.err_vec_handle(vec);
     }
@@ -3674,13 +3676,16 @@ public class DF {
         } else {
             vec = logvec(this.nrow,false);
         }
-        base_adh.print(5);
+
         Integer[] m = match_sans_doublons(this.c(adh), base_adh.c(adh));
 
         for (int i = 0; i < this.nrow; i++) {
-            System.out.println(i);
             String statut = (String) this.c(col2)[i];
             if (!statut.equals("terminé - refusé avant instruction")) {
+                if (m[i] == null) {
+                    vec[i] = true;
+                    continue;
+                }
 
                 Date surv = (Date) this.c(col)[i];
                 if(surv.equals(NA_DAT)) {
@@ -3688,18 +3693,21 @@ public class DF {
                     continue;
                 }
 
-                Date resil = (Date) this.c(col1)[i];
+                Date resil = (Date) base_adh.c(col1)[i];
                 if(resil.equals(NA_DAT)) {
                     continue;
                 }
 
-                if (m[i] == -1) {
-                    vec[i] = true;
-                } else {
-                    vec[i] = surv.after(resil);
-                }
+                vec[i] = surv.after(resil);
+
             }
         }
+    int[] temp = which(vec);
+    Integer[] v = new Integer[temp.length];
+        for (int c = 0; c < temp.length; c++) {
+        v[c] = Integer.parseInt((String) this.c("Numéro_Dossier")[temp[c]]);
+    }
+    write_csv(v);
         System.out.println(sum_boolean(vec));
 //        this.err_vec_handle(vec);
     }
@@ -3919,14 +3927,15 @@ public class DF {
         this.err_vec_handle(simple_grille(grille));
     } // g
     public void controle_503_519(DF base_adh) {
-        String[] controles = new String[]{"503","C504","C505","C506","C507","C508",
-                "C509","C510","C511","C512","C513","C514","C515","516","C518","C519"};
+        String[] controles = new String[]{"C503","C504","C505","C506","C507","C508",
+                "C509","C510","C511","C512","C513","C514","C515","C516","C518","C519"};
         String[] cols = new String[]{"Numéro_Extension","Date_Souscription_Adhésion","Date_Achat_Bien_Garanti",
                 "Critère_Identification_Bien_Garanti_1","Critère_Identification_Bien_Garanti_2","Critère_Identification_Bien_Garanti_3",
                 "Critère_Identification_Bien_Garanti_4","Critère_Identification_Bien_Garanti_5","Critère_Identification_Bien_Garanti_6",
                 "Critère_Tarifaire_1","Critère_Tarifaire_2","Critère_Tarifaire_3","Critère_Tarifaire_4","SKU","Valeur_Achat","Qualité_Client"};
         for (int i = 0; i < controles.length; i++) {
             Controle_en_cours = controles[i];
+
             if (grille_gen_controle_absent()) continue;
 
             this.err_vec_handle(this.matcher(base_adh,cols[i]));
@@ -4619,9 +4628,9 @@ public class DF {
     public boolean[] matcher(DF base_adh, String col) {
         boolean[] vec = logvec(this.nrow,true);
         String adh = "Numéro_Adhésion";
-        int[] m = match_first(this.c(adh), base_adh.c(adh));
+        Integer[] m = match_sans_doublons(this.c(adh), base_adh.c(adh));
         for (int i = 0; i < this.nrow; i++) {
-            if (m[i] != -1) {
+            if (m[i] != null) {
                 vec[i] = !this.c(col)[i].equals(base_adh.c(col)[m[i]]);
             }
         }
@@ -4642,8 +4651,8 @@ public class DF {
         }
 
         return out;
-    }
-    public Integer[] match_sans_doublons (Object[] a, Object[] b) {
+    } // ploho napisan medlenii pizdec
+    public Integer[] match_sans_doublonss (Object[] a, Object[] b) {
         Integer[] out = new Integer[a.length];
         Arrays.fill(out,-1);
 
@@ -4660,6 +4669,23 @@ public class DF {
                 }
             }
         }
+        return out;
+    }
+    public Integer[] match_sans_doublons (Object[] a, Object[] b) {
+        Integer[] out = new Integer[a.length];
+//        Arrays.fill(out,-1);
+
+        HashMap<String, Integer> map = new HashMap<>();
+        for (int i = 0; i < b.length; i++) {
+            String v = (String) b[i];
+            if (map.put(v,i) != null) {
+                map.remove(v);
+            }
+        }
+        for (int i = 0; i < a.length; i++) {
+           out[i] = map.get((String) a[i]);
+        }
+
         return out;
     }
     public void subst_columns(DF map) {
