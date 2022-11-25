@@ -113,7 +113,7 @@ public class App {
                 }
             }
         } // get coltypes for base
-        //        grilles_import();
+        grilles_import();
         String[] rapport_cols = {"Police","Controle","ID"};
         for (int i = 0; i < rapport_cols.length; i++) {
             Rapport.add(new ArrayList<>());
@@ -126,7 +126,6 @@ public class App {
             String name = method.getName();
             if(name.startsWith("controle")) {
                 controles_G.put(name,method);
-                System.out.println(Arrays.toString(method.getParameterTypes()));
                 Class<?>[] types = method.getParameterTypes();
                 if (types.length > 0)  {
                     params_G.put(name,true);
@@ -136,7 +135,7 @@ public class App {
             }
         }
 
-        Flux_en_cours = "sinistre";
+        Flux_en_cours = "Sinistre";
         String encode = "UTF-8";
         String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
         String mapping_sin_onglet = "Mapping bases sinistres";
@@ -146,15 +145,17 @@ public class App {
 
         String path_gg = "Grille Générique.csv";
         char delim_gg = ';';
-        grille_gen_g = new DF(wd + path_gg,delim_gg,encode);
+        grille_gen_g = new DF(wd + path_gg,delim_gg,encode,false);
+
+        long startTime = System.nanoTime();
 
         String path_sin = "Sinistre_Historique_ICIMM101_303_20221106.txt";
         char delim_sin = '|';
-        DF base = new DF(wd + path_sin,delim_sin,encode);
+        DF base = new DF(wd + path_sin,delim_sin,encode,true);
 
         String path_adh = "Adhesion_Historique_ICIMM101_303_20221102.txt";
         char delim_adh = '|';
-        DF base_adh = new DF(wd + path_adh,delim_adh,encode);
+        DF base_adh = new DF(wd + path_adh,delim_adh,encode,true);
         Police_en_cours_maj = get_name_fr(path_sin);
         Police_en_cours = Police_en_cours_maj.toLowerCase();
 
@@ -165,27 +166,24 @@ public class App {
         DF map_adh = mapping_filtre(mapping_adh_col);
         base.subst_columns(map_adh);
 
-        boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours);
+        boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
         boolean[] keep2 = find_in_arr(grille_gen_g.c("Flux"), Flux_en_cours);
-        for (int i = 0; i < keep.length; i++) {
-            keep[i] &= keep2[i];
-        }
-        base.grille_gen = new DF(grille_gen_g,keep);
 
-        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
-            if (params_G.get(set.getKey())) {
-                set.getValue().invoke(base,base_adh);
-            } else {
-                set.getValue().invoke(base);
-            }
-        }
+        boolean[] crit = b_and(keep,keep2);
+        base.grille_gen = new DF(grille_gen_g,crit);
+        base.grille_gen.printgrille();
+        controles_G.get("controle_708").invoke(base,base_adh);
 
+//        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
+//            System.out.println(set.getKey());
+//            if (params_G.get(set.getKey())) {
+//                set.getValue().invoke(base,base_adh);
+//            } else {
+//                set.getValue().invoke(base);
+//            }
+//        }
 
-
-
-
-        long startTime = System.nanoTime();
-//        System.out.println(controles_G.get("c608"));
+        rapport_print();
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
 
 }
@@ -195,7 +193,6 @@ public class App {
             for (int j = 0; j < Rapport.size(); j++) {
                 System.out.print(Rapport.get(j).get(i) + " | ");
             }
-            System.out.println();
         }
     }
     public static DF mapping_filtre(String col) {
@@ -400,7 +397,7 @@ public class App {
                 return i;
             }
         }
-        return null;
+        return -1;
     }
     public static boolean[] find_in_arr(Object[] arr, Object value) {
         final int len = arr.length;
@@ -479,6 +476,14 @@ public class App {
         boolean[] out = new boolean[arr1.length];
         for (int i = 0; i < arr1.length; i++) {
             out[i] = arr1[i] & arr2[i];
+        }
+        return out;
+    }
+    public static boolean[] a_and_b_and_c(boolean[] arr1, boolean[] arr2, boolean[] arr3) {
+        assert(arr1.length == arr2.length);
+        boolean[] out = new boolean[arr1.length];
+        for (int i = 0; i < arr1.length; i++) {
+            out[i] = arr1[i] & arr2[i] & arr3[i];
         }
         return out;
     }
@@ -713,7 +718,7 @@ public class App {
         }
         for (String g : grilles) {
             String name = g.substring(0,g.indexOf('.'));
-            DF df = new DF(path_grilles+g,'\t',"UTF-8");
+            DF df = new DF(path_grilles+g,'\t',"UTF-8",true);
             df.dna();
             grilles_G.put(name,df);
         }
