@@ -28,6 +28,7 @@ import org.w3c.dom.ls.LSOutput;
 
 import javax.naming.PartialResultException;
 import javax.naming.ldap.Control;
+import javax.sound.midi.ControllerEventListener;
 import javax.swing.*;
 
 import static java.lang.Math.*;
@@ -458,18 +459,18 @@ public class DF {
         return out;
     }
     public void mapping_traitement() {
-        Object[] col1 = this.c(0);
-       int ind = find_in_arr_first_index(col1,"Numéro_Police");
-       if (ind == -1){
-           err("probleme mapping!");
-       } else {
-           boolean[] vec = logvec(this.nrow,false);
-           for (  ; ind < nrow; ind++) {
-               vec[ind] = true;
-           }
-           this.keep_rows(vec);
-       }
-    }
+//        Object[] col1 = this.c(0);
+//       int ind = find_in_arr_first_index(col1,"Numéro_Police");
+//       if (ind == -1){
+//           err("probleme mapping!");
+//       } else {
+//           boolean[] vec = logvec(this.nrow,false);
+//           for (  ; ind < nrow; ind++) {
+//               vec[ind] = true;
+//           }
+//           this.keep_rows(vec);
+//       }
+    } // inutile si corriger la grille manuellement
 
     // FILTER
     public void keep_rows (boolean[] keep_bool) {
@@ -3938,7 +3939,7 @@ public class DF {
 
             if (grille_gen_controle_absent()) continue;
 
-            this.err_vec_handle(this.matcher(base_adh,cols[i]));
+            this.err_vec_handle(this.matcher_adh(base_adh,cols[i]));
         }
     }
     public void controle_517() {
@@ -4299,7 +4300,7 @@ public class DF {
             this.err_vec_handle(logvec(nrow,true));
             return;
         } else {
-            vec = doublons(col);
+            vec = doublons_by_col(col);
         }
         this.err_vec_handle(vec);
     }
@@ -4314,7 +4315,7 @@ public class DF {
             this.err_vec_handle(logvec(nrow,true));
             return;
         } else {
-            vec = doublons(col);
+            vec = doublons_by_col(col);
         }
         this.err_vec_handle(vec);
     }
@@ -4329,7 +4330,7 @@ public class DF {
             this.err_vec_handle(logvec(nrow,true));
             return;
         } else {
-            vec = doublons(col);
+            vec = doublons_by_col(col);
         }
         this.err_vec_handle(vec);
     }
@@ -4344,7 +4345,7 @@ public class DF {
             this.err_vec_handle(logvec(nrow,true));
             return;
         } else {
-            vec = doublons(col);
+            vec = doublons_by_col(col);
         }
         this.err_vec_handle(vec);
     }
@@ -4566,6 +4567,161 @@ public class DF {
                 }
             }
     }
+    public void fic_hors_la_liste_controle_K0(DF map_fic) {
+        Controle_en_cours = "K0";
+        if (grille_gen_controle_absent()) return;
+
+        int ind = find_in_arr_first_index(map_fic.c(0), "FIC_Clé");
+        String fic_cle = (String) map_fic.c(mapping_fic_col)[ind];
+        fic_cle = fic_cle.substring(fic_cle.indexOf(':')+1).replaceAll("\\s+","");
+        String[] cols = fic_cle.split("&");
+        if (!check_in(cols,this.header)) {
+            err("missing columns");
+            this.err_vec_handle(logvec(this.nrow,true));
+            return;
+        }
+
+        String[] values = new String[this.nrow];
+        Arrays.fill(values,"");
+        for(int i = 0; i < this.nrow; i++) {
+            for (String col : cols) {
+                values[i] = values[i] + this.c(col)[i];
+            }
+        }
+        this.err_vec_handle(doublons(values));
+    }
+    public void fic_controle_K1(DF base_sin) {
+        Controle_en_cours = "K1";
+        if (grille_gen_controle_absent()) return;
+
+        String col = "Numéro_Dossier";
+        boolean[] vec = logvec(nrow,true);
+        if (!check_in(col,this.header) | !check_in(col,base_sin.header)) {
+            err("missing columns");
+            this.err_vec_handle(vec);
+            return;
+        }
+
+        Integer[] match = match_sans_doublons(this.c(col), base_sin.c(col));
+
+        for (int i = 0; i < this.nrow; i++) {
+            if (match[i] != -1) {
+                vec[i] = this.c(col)[i].equals(base_sin.c(col)[match[i]]);
+            }
+        }
+        err_vec_handle(vec);
+    }
+    public void fic_controle_K2(DF base_sin) {
+        Controle_en_cours = "K2";
+        if (grille_gen_controle_absent()) return;
+
+        String num_dossier = "Numéro_Dossier";
+        String col_fic = "FIC_Montant_reglement";
+        String col_sin = "Montant_Total_Règlement";
+        String[] cols_sin = {num_dossier,col_sin};
+        String[] cols_fic = {num_dossier,col_fic};
+        boolean[] vec = logvec(nrow,true);
+        if (!check_in(cols_fic,this.header) | !check_in(cols_sin,base_sin.header)) {
+            err("missing columns");
+            this.err_vec_handle(vec);
+            return;
+        }
+
+        Integer[] match = match_sans_doublons(this.c(num_dossier), base_sin.c(num_dossier));
+
+        HashMap<String, Double> freqs = new HashMap<>();
+        String id;
+        Double value;
+        for (int i = 0; i < this.nrow; i++) {
+            id = (String) this.c(num_dossier)[i];
+            value = (Double) this.c(col_fic)[i];
+            if(!freqs.containsKey(id)) {
+                freqs.put(id,freqs.get(id) + value);
+            } else {
+                freqs.put(id,value);
+            }
+        }
+
+        for (int i = 0; i < this.nrow; i++) {
+            if (match[i] != -1) {
+                vec[i] = freqs.get((String) this.c(col_fic)[i]).equals(base_sin.c(col_sin)[match[i]]);
+            }
+        }
+        err_vec_handle(vec);
+    }
+    public void fic_controle_K3(DF base_sin) {
+        Controle_en_cours = "K3";
+        if (grille_gen_controle_absent()) return;
+
+        String col = "Date_Souscription_Adhésion";
+        err_vec_handle(this.matcher_fic(col,base_sin));
+    }
+    public void fic_controle_K4(DF base_sin) {
+        Controle_en_cours = "K4";
+        if (grille_gen_controle_absent()) return;
+
+        String col = "Date_Déclaration";
+        err_vec_handle(this.matcher_fic(col,base_sin));
+    }
+    public void fic_controle_K5(DF base_sin) {
+        Controle_en_cours = "K5";
+        if (grille_gen_controle_absent()) return;
+
+        String col = "Date_Survenance";
+        err_vec_handle(this.matcher_fic(col,base_sin));
+    }
+    public void fic_controle_K6(DF base_sin) {
+        Controle_en_cours = "K6";
+        if (grille_gen_controle_absent()) return;
+
+        String col = "Libellé_Garantie";
+        err_vec_handle(this.matcher_fic(col,base_sin));
+    }
+    public void fic_controle_K7(DF base_sin) {
+        Controle_en_cours = "K7";
+        if (grille_gen_controle_absent()) return;
+
+        String col = "Numéro_Adhésion";
+        err_vec_handle(this.matcher_fic(col,base_sin));
+    }
+    public void fic_controle_K8(DF base_sin) {
+        Controle_en_cours = "K8";
+        if (grille_gen_controle_absent()) return;
+
+        String col = "Valeur_Achat";
+        err_vec_handle(this.matcher_fic(col,base_sin));
+    }
+    public void fic_controle_K9(DF base_sin) {
+        Controle_en_cours = "K9";
+        if (grille_gen_controle_absent()) return;
+
+        String col = "SKU";
+        err_vec_handle(this.matcher_fic(col,base_sin));
+    }
+    public boolean[] matcher_fic(String col, DF base_sin) {
+        String num_dossier = "Numéro_Dossier";
+
+        String[] cols = {num_dossier,col};
+        boolean[] vec = logvec(nrow,true);
+        if (!check_in(cols,this.header) | !check_in(cols,base_sin.header)) {
+            err("missing columns");
+            return vec;
+        }
+        System.out.println(Arrays.toString(this.c(num_dossier)));
+        System.out.println(Arrays.toString(base_sin.c(num_dossier)));
+        Integer[] match = match_sans_doublons(this.c(num_dossier), base_sin.c(num_dossier));
+        System.out.println("hsdqjk");
+        System.out.println(this.nrow);
+        System.out.println(match.length);
+        for (int i = 0; i < this.nrow; i++) {
+            System.out.println(i);
+            System.out.println(match[i]);
+            if (match[i] != -1 & match[i] != null) {
+                vec[i] = this.c(col)[i].equals(base_sin.c(col)[match[i]]);
+            }
+        }
+        return vec;
+    }
     public boolean[] check_vides (String col) {
         boolean[] vec = logvec(this.nrow,false);
         switch (this.coltypes[find_in_arr_first_index(this.header,col)]) {
@@ -4589,7 +4745,7 @@ public class DF {
             }
         return vec;
     }
-    public boolean[] doublons(String col) {
+    public boolean[] doublons_by_col(String col) {
         boolean[] vec = logvec(this.nrow,false);
         HashMap<String, Integer> map = new HashMap<>();
         for (int i = 0; i < this.nrow; i++) {
@@ -4606,6 +4762,24 @@ public class DF {
         }
         return vec;
     }
+    public boolean[] doublons(String[] col) {
+        boolean[] vec = logvec(this.nrow,false);
+        HashMap<String, Integer> map = new HashMap<>();
+        for (int i = 0; i < this.nrow; i++) {
+            if (map.put(col[i],i) != null) {
+                vec[i] = true;
+            }
+        }
+
+        map = new HashMap<>();
+        for (int i = this.nrow; i > 0; i--) {
+            if (map.put(col[i-1],i) != null) {
+                vec[i-1] = true;
+            }
+        }
+        return vec;
+    }
+
     public boolean[] oshibka_doublons(String col) {
         boolean[] vec = logvec(this.nrow,false);
         Set<String> map = new HashSet<>();
@@ -4625,12 +4799,12 @@ public class DF {
         return vec;
     } // pochemu ne rabotaet
 
-    public boolean[] matcher(DF base_adh, String col) {
+    public boolean[] matcher_adh(DF base_adh, String col) {
         boolean[] vec = logvec(this.nrow,true);
         String adh = "Numéro_Adhésion";
         Integer[] m = match_sans_doublons(this.c(adh), base_adh.c(adh));
         for (int i = 0; i < this.nrow; i++) {
-            if (m[i] != null) {
+            if (m[i] != -1) {
                 vec[i] = !this.c(col)[i].equals(base_adh.c(col)[m[i]]);
             }
         }
@@ -4670,8 +4844,30 @@ public class DF {
             }
         }
         return out;
-    }
+    } // kajetsa toje medlennii
     public Integer[] match_sans_doublons (Object[] a, Object[] b) {
+        Integer[] out = new Integer[a.length];
+        Arrays.fill(out,-1);
+
+        HashMap<String, Integer> map = new HashMap<>();
+        for (int i = 0; i < b.length; i++) {
+            String v = (String) b[i];
+            if (map.put(v,i) != null) {
+                map.put(v,-1);
+            }
+        }
+//        for (String key : map.keySet()) {
+//            if (map.get(key) == -1) {
+//                map.remove(key);
+//            }
+//        }
+        for (int i = 0; i < a.length; i++) {
+           out[i] = map.get((String) a[i]);
+        }
+
+        return out;
+    }
+    public Integer[] match_sans_doublons_dans_le_source (Object[] a, Object[] b) {
         Integer[] out = new Integer[a.length];
 //        Arrays.fill(out,-1);
 
@@ -4679,20 +4875,32 @@ public class DF {
         for (int i = 0; i < b.length; i++) {
             String v = (String) b[i];
             if (map.put(v,i) != null) {
-                map.remove(v);
+                map.put(v,-1);
+            }
+        }
+        for (String key : map.keySet()) {
+            if (map.get(key) == -1) {
+                map.remove(key);
             }
         }
         for (int i = 0; i < a.length; i++) {
-           out[i] = map.get((String) a[i]);
+            out[i] = map.get((String) a[i]);
         }
 
         return out;
     }
     public void subst_columns(DF map) {
         for (int i = 0; i < this.header.length; i++) {
-            int ind = find_in_arr_first_index(map.c(0),this.header[i]);
+//            for (int j = 0; j < map.nrow; j++) {
+//                if (map.c(1)[i] == null){
+//                    System.out.println(map.c(1)[i]);
+//
+//                }
+//            }
+//            String[] nes = (String[]) map.c(1);
+            int ind = find_in_arr_first_index(map.c(1),this.header[i]);
             if (ind > -1) {
-                this.header[i] = (String) map.c(1)[ind];
+                this.header[i] = (String) map.c(0)[ind];
             }
         }
     }
@@ -4721,7 +4929,13 @@ public class DF {
 
         return !this.grille_gen.c("Etat")[(int) whichf(vec)].equals("Oui");
     }
-    
+    public void delete_blanks_first_col() {
+        boolean[] vec = logvec(this.nrow, false);
+        for (int i = 0; i < this.nrow; i++) {
+           vec[i] = this.c(0)[i] != "";
+        }
+        this.keep_rows(vec);
+    }
 //    int[] temp = which(vec);
 //    Integer[] v = new Integer[temp.length];
 //        for (int c = 0; c < temp.length; c++) {

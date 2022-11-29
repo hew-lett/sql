@@ -42,17 +42,23 @@ public class App {
     public static final LocalDate NA_LDAT = to_Date(NA_DAT);
     public static DF mapping_sin_g;
     public static DF mapping_adh_g;
+    public static String mapping_sin_col = "default";
+    public static String mapping_fic_col = "default";
+    public static String mapping_adh_col = "default";
     public static DF grille_gen_g;
     public static String Police_en_cours = "default";
     public static String Police_en_cours_maj = "default";
     public static String Controle_en_cours = "default";
     public static String Flux_en_cours = "default";
+
     public static ArrayList<ArrayList<String>> Rapport = new ArrayList<>();
     public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF.Col_types> coltypes_B = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF> grilles_G = new HashMap<String, DF>();
     public static HashMap<String, Method> controles_G = new HashMap<>();
+    public static HashMap<String, Method> controles_fic_G = new HashMap<>();
     public static HashMap<String, Boolean> params_G = new HashMap<>();
+    public static HashMap<String, Boolean> params_fic_G = new HashMap<>();
 
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         {
@@ -132,8 +138,18 @@ public class App {
                 } else {
                     params_G.put(name,false);
                 }
+            } else if (name.startsWith("fic_controle")) {
+                controles_fic_G.put(name,method);
+                Class<?>[] types = method.getParameterTypes();
+                if (types.length > 0)  {
+                    params_fic_G.put(name,true);
+                } else {
+                    params_fic_G.put(name,false);
+                }
             }
         }
+
+
 
         Flux_en_cours = "Sinistre";
         String encode = "UTF-8";
@@ -141,7 +157,10 @@ public class App {
         String mapping_sin_onglet = "Mapping bases sinistres";
         String mapping_adh_onglet = "Mapping bases adhésions";
         mapping_sin_g = new DF(wd + path_mapping,mapping_sin_onglet,true,false);
-        mapping_sin_g.mapping_traitement();
+        mapping_adh_g = new DF(wd + path_mapping,mapping_adh_onglet,true,false);
+        mapping_sin_g.delete_blanks_first_col();
+        mapping_adh_g.delete_blanks_first_col();
+
 
         String path_gg = "Grille Générique.csv";
         char delim_gg = ';';
@@ -153,18 +172,30 @@ public class App {
         char delim_sin = '|';
         DF base = new DF(wd + path_sin,delim_sin,encode,true);
 
+        String path_fic = "FIC_SPB_France_202210.csv";
+        char delim_fic = '\t';
+        DF base_fic = new DF(wd + path_fic,delim_fic,encode,true);
+
         String path_adh = "Adhesion_Historique_ICIMM101_303_20221102.txt";
         char delim_adh = '|';
         DF base_adh = new DF(wd + path_adh,delim_adh,encode,true);
+
+
         Police_en_cours_maj = get_name_fr(path_sin);
         Police_en_cours = Police_en_cours_maj.toLowerCase();
 
-        String mapping_sin_col = "SPB France / Wakam";
-        DF map_sin = mapping_filtre(mapping_sin_col);
+        mapping_sin_col = "SPB France / Wakam";
+        DF map_sin = mapping_filtre(true);
         base.subst_columns(map_sin);
-        String mapping_adh_col = "SPB France / Wakam";
-        DF map_adh = mapping_filtre(mapping_adh_col);
-        base.subst_columns(map_adh);
+        mapping_fic_col = "FIC France";
+        DF map_fic = mapping_filtre_fic();
+        System.out.println(Arrays.toString(base_fic.header));
+        base_fic.subst_columns(map_fic);
+        System.out.println(Arrays.toString(base_fic.header));
+
+        mapping_adh_col = "SPB France / Wakam";
+        DF map_adh = mapping_filtre(false);
+        base_adh.subst_columns(map_adh);
 
         boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
         boolean[] keep2 = find_in_arr(grille_gen_g.c("Flux"), Flux_en_cours);
@@ -176,16 +207,27 @@ public class App {
 
         startTime = System.nanoTime();
 
+
+
 //        controles_G.get("controle_805").invoke(base);
 
-        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
-            System.out.println(set.getKey());
-            if (params_G.get(set.getKey())) {
-                set.getValue().invoke(base,base_adh);
+//        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
+//            if (params_G.get(set.getKey())) {
+//                set.getValue().invoke(base,base_adh);
+//            } else {
+//                set.getValue().invoke(base);
+//            }
+//        }
+
+        base_fic.fic_hors_la_liste_controle_K0(map_fic);
+        for (Map.Entry<String, Method> set : controles_fic_G.entrySet()) {
+            if (params_fic_G.get(set.getKey())) {
+                set.getValue().invoke(base_fic,base);
             } else {
-                set.getValue().invoke(base);
+                set.getValue().invoke(base_fic);
             }
         }
+
 
 //        rapport_print();
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
@@ -200,13 +242,31 @@ public class App {
             System.out.println();
         }
     }
-    public static DF mapping_filtre(String col) {
-        boolean[] vec = logvec(mapping_sin_g.ncol,false);
-        int ind = find_in_arr_first_index(mapping_sin_g.header, col);
-        assert(ind != -1);
-        vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
-        vec[ind] = true;
-        return new DF(mapping_sin_g,vec,true);
+    public static DF mapping_filtre(boolean sinistre) {
+        if (sinistre) {
+            boolean[] vec = logvec(mapping_sin_g.ncol,false);
+            int ind = find_in_arr_first_index(mapping_sin_g.header, mapping_sin_col);
+            assert(ind != -1);
+            vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
+            vec[ind] = true;
+            return new DF(mapping_sin_g,vec,true);
+        } else {
+            boolean[] vec = logvec(mapping_adh_g.ncol,false);
+            int ind = find_in_arr_first_index(mapping_adh_g.header, mapping_adh_col);
+            assert(ind != -1);
+            vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
+            vec[ind] = true;
+            return new DF(mapping_adh_g,vec,true);
+        }
+
+    }
+    public static DF mapping_filtre_fic() {
+            boolean[] vec = logvec(mapping_sin_g.ncol,false);
+            int ind = find_in_arr_first_index(mapping_sin_g.header, mapping_fic_col);
+            assert(ind != -1);
+            vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
+            vec[ind] = true;
+            return new DF(mapping_sin_g,vec,true);
     }
     public static String get_name_fr (String path) {
         ArrayList<Integer> ind = get_all_occurences(path,'_');
@@ -695,7 +755,6 @@ public class App {
         }
 
         for (String s : sheetNames) {
-            System.out.println(s);
             CSVWriter writer = (CSVWriter) new CSVWriterBuilder(new FileWriter(path_grilles+s+".csv"))
                     .withSeparator('\t')
                     .build();
