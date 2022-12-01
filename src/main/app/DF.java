@@ -47,7 +47,7 @@ public class DF {
     public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
 
     // CONSTRUCTORS
-    public DF (String path, char delim, String encoding, boolean tolower) {
+    public DF (String path, char delim, String encoding, boolean tolower, DF mapping) {
         if (encoding.equals("default")) encoding = "UTF-8";
         String filename = path.substring(path.lastIndexOf("/")+1);
         CsvParserSettings settings = new CsvParserSettings();
@@ -61,7 +61,66 @@ public class DF {
             header = rows.next();
 
             if (filename.length() < 9 & filename.charAt(0) == 'C') {
-                System.out.println(filename);
+                coltypes = get_col_types(header, coltypes_G);
+            } else {
+                this.subst_columns(mapping);
+                coltypes = get_col_types(header, coltypes_B);
+            }
+            nrow = parsedRows.size()-1;
+            assert (coltypes.length == parsedRows.get(0).length);
+            ncol = get_len(coltypes);
+            df = new ArrayList<>(get_len(coltypes));
+            this.df_populate(coltypes);
+
+            if (tolower) {
+                int i = 0;
+                while(rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != Col_types.SKP) {
+                            df.get(j)[i] = get_lowercase_cell_of_type(s,coltypes[k]);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            } else {
+                int i = 0;
+                while(rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != Col_types.SKP) {
+                            df.get(j)[i] = get_cell_of_type(s,coltypes[k]);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        this.header_refactor();
+    }
+    public DF (String path, char delim, String encoding, boolean tolower) {
+        if (encoding.equals("default")) encoding = "UTF-8";
+        String filename = path.substring(path.lastIndexOf("/")+1);
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+        try(Reader inputReader = new InputStreamReader(Files.newInputStream(
+                new File(path).toPath()), encoding)){
+            CsvParser parser = new CsvParser(settings);
+            List<String[]> parsedRows = parser.parseAll(inputReader);
+            Iterator<String[]> rows = parsedRows.iterator();
+            header = rows.next();
+
+            if (filename.length() < 9 & filename.charAt(0) == 'C') {
                 coltypes = get_col_types(header, coltypes_G);
             } else {
                 coltypes = get_col_types(header, coltypes_B);
@@ -545,6 +604,14 @@ public class DF {
             }
         return false;
     }
+    public boolean check_in(Object what, Object[] arr) {
+        for (Object where : arr) {
+            if (what.equals(where)) {
+                return true;
+            }
+        }
+        return false;
+    }
     // VECTORS
     public int sum_boolean(boolean[] vector_boolean) {
         int sum = 0;
@@ -880,7 +947,6 @@ public class DF {
                 vec[i] = true;
                 continue;
             }
-
             String col = "Valeur_Catalogue";
             String colg = "Valeur_Catalogue Borne haute";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
@@ -1238,24 +1304,23 @@ public class DF {
             colg = "Age";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(header, col1) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 double age_ref = (double) grille.c(colg)[reste_i];
-                LocalDate date_sous = to_Date((Date) this.c(col)[i]);
-                LocalDate date_surv = to_Date((Date) this.c(col1)[i]);
-                if (date_sous != NA_LDAT & date_surv != NA_LDAT) {
-                        String m = (String) grille.c("Date_Souscription_Adhésion borne basse <= Date_Survenance")[reste_i];
-                        int months = NumberUtils.toInt(m.replaceAll("\\D+",""),0);
-                        if (date_sous.plusMonths(months).isBefore(date_surv)) {
-                            vec[i] = true;
-                            continue;
-                        }
-                        int age = Period.between(date_sous.plusMonths(months), date_surv).getYears();
-                        if(!(age == age_ref | Objects.equals(age_ref, NA_DBL))) {
-                            vec[i] = true;
-                            continue;
-                        }
+                if(!Objects.equals(age_ref, NA_DBL)) {
+
+                    LocalDate date_sous = to_Date((Date) this.c(col)[i]);
+                    LocalDate date_surv = to_Date((Date) this.c(col1)[i]);
+                    if (date_sous != NA_LDAT & date_surv != NA_LDAT) {
+                            String m = (String) grille.c("Date_Souscription_Adhésion borne basse <= Date_Survenance")[reste_i];
+                            int months = NumberUtils.toInt(m.replaceAll("\\D+",""),0);
+                            if (date_sous.plusMonths(months).isBefore(date_surv)) {
+                                vec[i] = true;
+                                continue;
+                            }
+                            int age = Period.between(date_sous.plusMonths(months), date_surv).getYears();
+                            if(!(age == age_ref | Objects.equals(age_ref, NA_DBL))) {
+                                vec[i] = true;
+                            }
                     } else {
-                    if(!Objects.equals(age_ref, NA_DBL)) {
                         vec[i] = true;
-                        continue;
                     }
                 }
             }
@@ -1288,7 +1353,6 @@ public class DF {
 
             vec[i] = !compa_signe(mip,mip_ref,signe);
         }
-
         this.err_vec_handle(vec);
     } // g
     public void controle_810() {
@@ -4575,6 +4639,15 @@ public class DF {
         String fic_cle = (String) map_fic.c(mapping_fic_col)[ind];
         fic_cle = fic_cle.substring(fic_cle.indexOf(':')+1).replaceAll("\\s+","");
         String[] cols = fic_cle.split("&");
+
+        DF map = mapping_filtre_fic();
+        for (int i = 0; i < cols.length; i++) {
+            if(check_in(cols[i],map.c(1))) {
+                ind = find_in_arr_first_index(map.c(1),cols[i]);
+                cols[i] = (String) map.c(0)[ind];
+            }
+        }
+
         if (!check_in(cols,this.header)) {
             err("missing columns");
             this.err_vec_handle(logvec(this.nrow,true));
@@ -4635,7 +4708,7 @@ public class DF {
         for (int i = 0; i < this.nrow; i++) {
             id = (String) this.c(num_dossier)[i];
             value = (Double) this.c(col_fic)[i];
-            if(!freqs.containsKey(id)) {
+            if(freqs.containsKey(id)) {
                 freqs.put(id,freqs.get(id) + value);
             } else {
                 freqs.put(id,value);
@@ -4687,7 +4760,7 @@ public class DF {
     public void fic_controle_K8(DF base_sin) {
         Controle_en_cours = "K8";
         if (grille_gen_controle_absent()) return;
-
+        System.out.println(Arrays.toString(this.header));
         String col = "Valeur_Achat";
         err_vec_handle(this.matcher_fic(col,base_sin));
     }
@@ -4707,16 +4780,11 @@ public class DF {
             err("missing columns");
             return vec;
         }
-        System.out.println(Arrays.toString(this.c(num_dossier)));
-        System.out.println(Arrays.toString(base_sin.c(num_dossier)));
+
         Integer[] match = match_sans_doublons(this.c(num_dossier), base_sin.c(num_dossier));
-        System.out.println("hsdqjk");
-        System.out.println(this.nrow);
-        System.out.println(match.length);
+
         for (int i = 0; i < this.nrow; i++) {
-            System.out.println(i);
-            System.out.println(match[i]);
-            if (match[i] != -1 & match[i] != null) {
+            if (match[i] != -1) {
                 vec[i] = this.c(col)[i].equals(base_sin.c(col)[match[i]]);
             }
         }
@@ -4854,15 +4922,23 @@ public class DF {
             String v = (String) b[i];
             if (map.put(v,i) != null) {
                 map.put(v,-1);
+            } else {
+                map.put(v,i);
             }
         }
+//        for (String name : map.keySet()) {
+//            System.out.println(name);
+//        }
 //        for (String key : map.keySet()) {
 //            if (map.get(key) == -1) {
 //                map.remove(key);
 //            }
 //        }
         for (int i = 0; i < a.length; i++) {
-           out[i] = map.get((String) a[i]);
+            String v = (String) a[i];
+            if(map.containsKey(v)) {
+                out[i] = map.get(v);
+            }
         }
 
         return out;
@@ -4888,7 +4964,7 @@ public class DF {
         }
 
         return out;
-    }
+    } // delete?
     public void subst_columns(DF map) {
         for (int i = 0; i < this.header.length; i++) {
 //            for (int j = 0; j < map.nrow; j++) {
@@ -4915,18 +4991,17 @@ public class DF {
     public void err_vec_handle(boolean[] vec) {
         for (int i = 0; i < this.nrow; i++) {
             if(vec[i]) {
-                Rapport.get(0).add(Police_en_cours);
+                Rapport.get(0).add(Police_en_cours_maj);
                 Rapport.get(1).add(Controle_en_cours);
                 Rapport.get(2).add((String) this.c("Numéro_Dossier")[i]);
             }
         }
     }
     public boolean grille_gen_controle_absent() {
-        if (this.grille_gen == null) return false;
+        if (this.grille_gen == null) return true;
         boolean[] vec = find_in_arr(this.grille_gen.c("Contrôle"),Controle_en_cours);
 
         if (sum_boolean(vec) == 0) return true;
-
         return !this.grille_gen.c("Etat")[(int) whichf(vec)].equals("Oui");
     }
     public void delete_blanks_first_col() {

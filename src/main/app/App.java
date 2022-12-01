@@ -166,58 +166,55 @@ public class App {
         char delim_gg = ';';
         grille_gen_g = new DF(wd + path_gg,delim_gg,encode,false);
 
+        mapping_sin_col = "SPB France / Wakam";
+        DF map_sin = mapping_filtre(true);
+        mapping_fic_col = "FIC France";
+        DF map_fic = mapping_filtre_fic();
+        mapping_adh_col = "SPB France / Wakam";
+        DF map_adh = mapping_filtre(false);
+
         long startTime = System.nanoTime();
 
         String path_sin = "Sinistre_Historique_ICIMM101_303_20221106.txt";
         char delim_sin = '|';
-        DF base = new DF(wd + path_sin,delim_sin,encode,true);
+        DF base = new DF(wd + path_sin,delim_sin,encode,true,map_sin);
 
         String path_fic = "FIC_SPB_France_202210.csv";
         char delim_fic = '\t';
-        DF base_fic = new DF(wd + path_fic,delim_fic,encode,true);
+        DF base_fic = new DF(wd + path_fic,delim_fic,encode,true,map_fic);
 
         String path_adh = "Adhesion_Historique_ICIMM101_303_20221102.txt";
         char delim_adh = '|';
-        DF base_adh = new DF(wd + path_adh,delim_adh,encode,true);
+        DF base_adh = new DF(wd + path_adh,delim_adh,encode,true,map_adh);
 
 
         Police_en_cours_maj = get_name_fr(path_sin);
         Police_en_cours = Police_en_cours_maj.toLowerCase();
-
-        mapping_sin_col = "SPB France / Wakam";
-        DF map_sin = mapping_filtre(true);
-        base.subst_columns(map_sin);
-        mapping_fic_col = "FIC France";
-        DF map_fic = mapping_filtre_fic();
-        System.out.println(Arrays.toString(base_fic.header));
-        base_fic.subst_columns(map_fic);
-        System.out.println(Arrays.toString(base_fic.header));
-
-        mapping_adh_col = "SPB France / Wakam";
-        DF map_adh = mapping_filtre(false);
-        base_adh.subst_columns(map_adh);
 
         boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
         boolean[] keep2 = find_in_arr(grille_gen_g.c("Flux"), Flux_en_cours);
 
         boolean[] crit = b_and(keep,keep2);
         base.grille_gen = new DF(grille_gen_g,crit);
-        base.grille_gen.printgrille();
+
+        keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
+        keep2 = find_in_arr(grille_gen_g.c("Flux"), "Comptable");
+        crit = b_and(keep,keep2);
+        base_fic.grille_gen = new DF(grille_gen_g,crit);
+
+
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0+ "sssssss");
 
         startTime = System.nanoTime();
+//        controles_G.get("controle_811").invoke(base);
 
-
-
-//        controles_G.get("controle_805").invoke(base);
-
-//        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
-//            if (params_G.get(set.getKey())) {
-//                set.getValue().invoke(base,base_adh);
-//            } else {
-//                set.getValue().invoke(base);
-//            }
-//        }
+        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
+            if (params_G.get(set.getKey())) {
+                set.getValue().invoke(base,base_adh);
+            } else {
+                set.getValue().invoke(base);
+            }
+        }
 
         base_fic.fic_hors_la_liste_controle_K0(map_fic);
         for (Map.Entry<String, Method> set : controles_fic_G.entrySet()) {
@@ -231,8 +228,10 @@ public class App {
 
 //        rapport_print();
         System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
+        rapport_save();
+        System.out.println(((System.nanoTime() - startTime)/1e7f)/100.0);
 
-}
+    }
     public static void rapport_print () {
         for (int i = 0; i < Rapport.get(0).size(); i++) {
             System.out.print("| ");
@@ -721,10 +720,40 @@ public class App {
         }
         StringBuilder sb = new StringBuilder();
 
-// Append strings from array
         for (Object element : arr) {
             sb.append(element);
             sb.append("\n");
+        }
+
+        try {
+            br.write(sb.toString());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            br.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void rapport_save() {
+        BufferedWriter br = null;
+        try {
+            br = new BufferedWriter(new FileWriter(wd+"Rapport.csv"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        StringBuilder sb = new StringBuilder();
+
+// Append strings from array
+        for (int i = 0; i < Rapport.get(0).size(); i++) {
+            for (ArrayList<String> col : Rapport) {
+                sb.append(col.get(i));
+                sb.append(';');
+            }
+            sb.replace(sb.length() - 1,sb.length(),"\r\n");
+//            sb.append("\r\n");
         }
 
         try {
