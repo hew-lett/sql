@@ -319,6 +319,7 @@ public class DF {
         }
         this.keep_rows(keep);
     }
+
     public DF (DF old_base, boolean[] keep, boolean keep_cols) {
         this.coltypes = old_base.coltypes;
         this.header = old_base.header;
@@ -331,7 +332,7 @@ public class DF {
         }
         this.keep_cols(keep);
     }
-    public DF (String path) throws IOException {
+    public DF (String path, DF mapping) throws IOException {
         String[] listdir = new File(path).list();
         if (listdir == null) return;
         int dim;
@@ -373,6 +374,8 @@ public class DF {
         List<String[]> parsedRows = parser.parseAll(inputReader);
         Iterator<String[]> rows = parsedRows.iterator();
         header = rows.next();
+        String[] header_temp = header;
+        this.subst_columns(mapping);
         coltypes = get_col_types(header, coltypes_B);
 
         nrow = dim;
@@ -396,6 +399,7 @@ public class DF {
             i++;
         }
 
+        String[] header_ref = this.header_refactor(header_temp);
 
         for (String file : listdir) {
             if(file.contains("LaParisienne")) continue;
@@ -404,14 +408,25 @@ public class DF {
             parser = new CsvParser(settings);
             parsedRows = parser.parseAll(inputReader);
             rows = parsedRows.iterator();
-            String[] header_temp = rows.next();
+            header_temp = subst_columns(mapping,rows.next());
+            Col_types[] coltypes_temp = get_col_types(header_temp, coltypes_B);
 
+            System.out.println("sizes");
+            System.out.println(this.df.size());
+            System.out.println(header_ref.length);
+            System.out.println(header_temp.length);
+            System.out.println(Arrays.toString(header_ref));
+            System.out.println(Arrays.toString(header_temp));
                 while(rows.hasNext()) {
                     int k = 0;
+                    int j = 0;
                     String[] parsedRow = rows.next();
                     for (String s : parsedRow) {
-
-                        int index = find_in_arr_first_index(this.header,header_temp[k]);
+                        if(this.coltypes[j] == Col_types.SKP) {
+                            j++;
+                            continue;
+                        }
+                        int index = find_in_arr_first_index(header_ref,header_temp[k]);
                         if (index != -1) {
                             df.get(index)[i] = get_lowercase_cell_of_type(s,coltypes[index]);
                         }
@@ -421,7 +436,7 @@ public class DF {
                 }
         }
 
-        this.header_refactor();
+
         this.remove_leading_zeros();
     }
     public DF (DF old_base, String crit) {
@@ -541,7 +556,7 @@ public class DF {
                 new File(path).toPath()), encoding)){
             CsvParser parser = new CsvParser(settings);
             List<String[]> parsedRows = parser.parseAll(inputReader);
-            out = parsedRows.size();
+            out = parsedRows.size()-1;
         } catch (IOException ignored) {}
         return out;
     }
@@ -558,6 +573,23 @@ public class DF {
         }
         this.coltypes = coltypes_new;
         this.header = header_new;
+    }
+    public String[] header_refactor(String[] head) {
+        String[] header_new = new String[get_len(coltypes)];
+        Col_types[] coltypes_new = new Col_types[get_len(coltypes)];
+        String[] header_temp_new = new String[get_len(coltypes)];
+        int j = 0;
+        for (int i = 0; i < coltypes.length; i++) {
+            if (coltypes[i] != Col_types.SKP) {
+                header_new[j] = header[i];
+                coltypes_new[j] = coltypes[i];
+                header_temp_new[j] = head[i];
+                j++;
+            }
+        }
+        this.coltypes = coltypes_new;
+        this.header = header_new;
+        return header_temp_new;
     }
     public void df_populate (Col_types[] vectypes) {
         for (Col_types coltype : vectypes) {
@@ -686,7 +718,10 @@ public class DF {
         for(String col : cols) {
             if(check_in(col,this.header)) {
                 for (int i = 0; i < this.nrow; i++) {
-                    this.c(col)[i] = ((String) this.c(col)[i]).replaceFirst("^0+", "");
+                    String val = (String) this.c(col)[i];
+                    if (val != null) {
+                        this.c(col)[i] = val.replaceFirst("^0+", "");
+                    }
                 }
             }
         }
@@ -730,6 +765,8 @@ public class DF {
         boolean[] vec = new boolean[nrow];
         Object[] col = this.c(colname);
         for (int i = 0; i < nrow; i++) {
+//            System.out.println(i);
+//            System.out.println(Arrays.toString(this.r(i)));
             vec[i] = col[i].equals(crit);
         }
         return(new DF(this, vec));
@@ -4830,7 +4867,7 @@ public class DF {
 
         for (int i = 0; i < this.nrow; i++) {
             if (match[i] != -1) {
-                vec[i] = freqs.get((String) this.c(col_fic)[i]).equals(base_sin.c(col_sin)[match[i]]);
+                vec[i] = freqs.get( (String) this.c(num_dossier)[i] ).equals(base_sin.c(col_sin)[match[i]]);
             }
         }
         err_vec_handle(vec);
@@ -5080,10 +5117,33 @@ public class DF {
     public void subst_columns(DF map) {
         for (int i = 0; i < this.header.length; i++) {
             int ind = find_in_arr_first_index(map.c(1),this.header[i]);
-            if (ind > -1) {
-                this.header[i] = (String) map.c(0)[ind];
+            if (ind != -1) {
+                String value = (String) map.c(0)[ind];
+                if(!Objects.equals(value, "")) {
+                    this.header[i] = value;
+                }
+            } else {
+                err("col not found" + this.header[i]);
             }
         }
+
+    }
+    public String[] subst_columns(DF map, String[] head) {
+        String[] out = new String[head.length];
+        for (int i = 0; i < head.length; i++) {
+            int ind = find_in_arr_first_index(map.c(1),head[i]);
+            if (ind != -1) {
+                String value = (String) map.c(0)[ind];
+                if(!Objects.equals(value, "")) {
+                    out[i] = value;
+                } else {
+                    out[i] = head[i];
+                }
+            } else {
+                err("col not found" + this.header[i]);
+            }
+        }
+        return out;
     }
     public boolean gg_check_controle(String label) {
         int ind = find_in_arr_first_index(this.c("Contrôle"), label);
@@ -5105,10 +5165,10 @@ public class DF {
     }
     public boolean grille_gen_controle_absent() {
         if (this.grille_gen == null) return true;
-        boolean[] vec = find_in_arr(this.grille_gen.c("Contrôle"),Controle_en_cours);
+        int ind = find_in_arr_first_index(this.grille_gen.c("Contrôle"),Controle_en_cours);
 
-        if (sum_boolean(vec) == 0) return true;
-        return !this.grille_gen.c("Etat")[(int) whichf(vec)].equals("Oui");
+        if (ind == -1) return true;
+        return !this.grille_gen.c("Etat")[ind].equals("Oui");
     }
     public void delete_blanks_first_col() {
         boolean[] vec = logvec(this.nrow, false);
