@@ -105,6 +105,7 @@ public class DF {
         } catch (IOException ignored) {
         }
         this.header_refactor();
+        this.remove_leading_zeros();
     }
     public DF (String path, char delim, boolean tolower) {
         String filename = path.substring(path.lastIndexOf("/")+1);
@@ -163,6 +164,7 @@ public class DF {
         } catch (IOException ignored) {
         }
         this.header_refactor();
+        this.remove_leading_zeros();
     }
     public DF (String path, Object sheet_n) throws IOException {
 
@@ -218,6 +220,9 @@ public class DF {
             }
             row_number++;
         }
+
+        this.header_refactor();
+        this.remove_leading_zeros();
     }
     public DF (String path, Object sheet_n, boolean all_strings, boolean tolower) throws IOException {
 
@@ -295,6 +300,9 @@ public class DF {
 
             row_number++;
         }
+
+        this.header_refactor();
+        this.remove_leading_zeros();
     }
     public DF (ArrayList<Object[]> base) {
         this.df = base;
@@ -326,16 +334,18 @@ public class DF {
     public DF (String path) throws IOException {
         String[] listdir = new File(path).list();
         if (listdir == null) return;
+        int dim;
+
         try {
             Scanner scanner = new Scanner(new File(wd+"fic_france_nb_lignes_M-1.txt"));
-            int dim = scanner.nextInt();
+            dim = scanner.nextInt();
                 for (String name : listdir) {
                     if (name.contains(yyyymm)) {
                         dim += csv_get_nrows(path + name, '\t');
                     }
                 }
         } catch (NoSuchElementException e) {
-            int dim = 0;
+            dim = 0;
             for (String file : listdir) {
                 char delim = ';';
                 if (!file.contains("LaParisienne")) delim = '\t';
@@ -350,51 +360,69 @@ public class DF {
             if(listdir[i].contains("LaParisienne")) {
                 listdir = swap(listdir, 0, i);
             }
-        } // LPA gros fichier en premier
-        for (String file : listdir) {
-            CsvParserSettings settings = new CsvParserSettings();
-            if (file.contains("LaParisienne")) {
-                settings.setDelimiterDetectionEnabled(true, ';');
-            } else {
-                settings.setDelimiterDetectionEnabled(true, '\t');
+        } // swap LPA gros fichier en premier
+
+        String file_main = listdir[0];
+        if (!file_main.contains("LaParisienne")) return;
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, ';');
+        settings.trimValues(true);
+
+        Reader inputReader = new InputStreamReader(Files.newInputStream(new File(path+file_main).toPath()), encoding);
+        CsvParser parser = new CsvParser(settings);
+        List<String[]> parsedRows = parser.parseAll(inputReader);
+        Iterator<String[]> rows = parsedRows.iterator();
+        header = rows.next();
+        coltypes = get_col_types(header, coltypes_B);
+
+        nrow = dim;
+        assert (coltypes.length == parsedRows.get(0).length);
+        ncol = get_len(coltypes);
+        df = new ArrayList<>(get_len(coltypes));
+        this.df_populate(coltypes);
+
+        int i = 0;
+        while(rows.hasNext()) {
+            int j = 0;
+            int k = 0;
+            String[] parsedRow = rows.next();
+            for (String s : parsedRow) {
+                if (coltypes[k] != Col_types.SKP) {
+                    df.get(j)[i] = get_lowercase_cell_of_type(s,coltypes[k]);
+                    j++;
+                }
+                k++;
             }
-            settings.trimValues(true);
-            try(Reader inputReader = new InputStreamReader(Files.newInputStream(
-                    new File(path).toPath()), encoding)){
-                CsvParser parser = new CsvParser(settings);
-                List<String[]> parsedRows = parser.parseAll(inputReader);
-                Iterator<String[]> rows = parsedRows.iterator();
-                header = rows.next();
-                coltypes = get_col_types(header, coltypes_B);
-
-                nrow = parsedRows.size()-1;
-                assert (coltypes.length == parsedRows.get(0).length);
-                ncol = get_len(coltypes);
-                df = new ArrayList<>(get_len(coltypes));
-                this.df_populate(coltypes);
-
-
-                    int i = 0;
-                    while(rows.hasNext()) {
-                        int j = 0;
-                        int k = 0;
-                        String[] parsedRow = rows.next();
-                        for (String s : parsedRow) {
-                            if (coltypes[k] != Col_types.SKP) {
-                                df.get(j)[i] = get_lowercase_cell_of_type(s,coltypes[k]);
-                                j++;
-                            }
-                            k++;
-                        }
-                        i++;
-                    }
-
-            } catch (IOException ignored) {
-            }
+            i++;
         }
 
 
+        for (String file : listdir) {
+            if(file.contains("LaParisienne")) continue;
+            inputReader = new InputStreamReader(Files.newInputStream(new File(path+file).toPath()), encoding);
+            settings.setDelimiterDetectionEnabled(true, '\t');
+            parser = new CsvParser(settings);
+            parsedRows = parser.parseAll(inputReader);
+            rows = parsedRows.iterator();
+            String[] header_temp = rows.next();
+
+                while(rows.hasNext()) {
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+
+                        int index = find_in_arr_first_index(this.header,header_temp[k]);
+                        if (index != -1) {
+                            df.get(index)[i] = get_lowercase_cell_of_type(s,coltypes[index]);
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+        }
+
         this.header_refactor();
+        this.remove_leading_zeros();
     }
     public DF (DF old_base, String crit) {
         this.coltypes = old_base.coltypes;
@@ -431,6 +459,7 @@ public class DF {
         this.print(min(10,this.nrow));
     }
     public void print(int rows) {
+        System.out.println(Arrays.toString(this.header));
         rows = Math.min(rows,this.nrow);
 
         for (int i = 0; i < rows; i++) {
@@ -463,6 +492,42 @@ public class DF {
         }
         int index = find_in_arr_first_index(header, colname);
         return df.get(index);
+    }
+    public Object[] c_filtre(String colname, String col_filtre, String value){
+        int index = find_in_arr_first_index(header, colname);
+        int counter = 0;
+        for (int i = 0; i < this.nrow; i++) {
+            if(this.c(col_filtre)[i].equals(value)) counter++;
+        }
+        if (counter == 0) return null;
+
+        Object[] out = new Object[counter];
+        int j = 0;
+        for (int i = 0; i < this.nrow; i++) {
+            if(this.c(col_filtre)[i].equals(value)) {
+                out[j] = this.c(colname)[i];
+                j++;
+            }
+        }
+        return out;
+    }
+    public Object[] c_filtre_2(String colname, String col_filtre_1, String value_1, String col_filtre_2, String value_2){
+        int index = find_in_arr_first_index(header, colname);
+        int counter = 0;
+        for (int i = 0; i < this.nrow; i++) {
+            if(this.c(col_filtre_1)[i].equals(value_1) & this.c(col_filtre_2)[i].equals(value_2)) counter++;
+        }
+        if (counter == 0) return null;
+
+        Object[] out = new Object[counter];
+        int j = 0;
+        for (int i = 0; i < this.nrow; i++) {
+            if(this.c(col_filtre_1)[i].equals(value_1) & this.c(col_filtre_2)[i].equals(value_2)) {
+                out[j] = this.c(colname)[i];
+                j++;
+            }
+        }
+        return out;
     }
     public Object[] c(int index){
         return df.get(index);
@@ -600,32 +665,32 @@ public class DF {
         }
         return out;
     }
-    public Col_types[] get_col_types (String[] vec,  HashMap<String, DF.Col_types> types) {
-        Col_types[] out = new Col_types[vec.length];
+    public Col_types[] get_col_types (String[] head,  HashMap<String, DF.Col_types> types) {
+        Col_types[] out = new Col_types[head.length];
         int i = 0;
-        for (String s : vec) {
-            out[i] = types.get(s);
-            if(out[i] == null) {
-                out[i] = Col_types.STR;
+        for (String s : head) {
+            if(s == null) {
+                out[i] = Col_types.SKP;
+            } else {
+                out[i] = types.get(s);
+                if(out[i] == null) {
+                    out[i] = Col_types.STR;
+                }
             }
             i++;
         }
         return out;
     }
-    public void mapping_traitement() {
-//        Object[] col1 = this.c(0);
-//       int ind = find_in_arr_first_index(col1,"Numéro_Police");
-//       if (ind == -1){
-//           err("probleme mapping!");
-//       } else {
-//           boolean[] vec = logvec(this.nrow,false);
-//           for (  ; ind < nrow; ind++) {
-//               vec[ind] = true;
-//           }
-//           this.keep_rows(vec);
-//       }
-    } // inutile si corriger la grille manuellement
-
+    public void remove_leading_zeros() {
+        String[] cols = {"Numéro_Dossier","Numéro_Adhésion"};
+        for(String col : cols) {
+            if(check_in(col,this.header)) {
+                for (int i = 0; i < this.nrow; i++) {
+                    this.c(col)[i] = ((String) this.c(col)[i]).replaceFirst("^0+", "");
+                }
+            }
+        }
+    }
     // FILTER
     public void keep_rows (boolean[] keep_bool) {
         if (sum_boolean(keep_bool) == 0){
@@ -667,8 +732,7 @@ public class DF {
         for (int i = 0; i < nrow; i++) {
             vec[i] = col[i].equals(crit);
         }
-       DF df_new = new DF(this, vec);
-       return(df_new);
+        return(new DF(this, vec));
     }
     public void filter_in(Object colname, String crit) {
         boolean[] vec = new boolean[nrow];
@@ -682,6 +746,12 @@ public class DF {
 
 
     // GRILLES
+    public void get_grille_gen() {
+        boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
+        boolean[] keep2 = find_in_arr(grille_gen_g.c("Flux"), Flux_en_cours);
+        boolean[] crit = b_and(keep, keep2);
+        this.grille_gen = new DF(grille_gen_g, crit);
+    }
     public void dna() {
         boolean[] keep = new boolean[ncol];
         Arrays.fill(keep, false);
@@ -857,6 +927,13 @@ public class DF {
             }
         }
         return j;
+//        int j = 0;
+//        for (int i = 0; i < ct.length; i++) {
+//            if (ct[i] != DF.Col_types.SKP & this.header[i] != null) {
+//                j++;
+//            }
+//        }
+//        return j;
     } // gets number of non-SKIP columns
     public boolean compa_signe(Double a, Double b, short signe) {
         switch (signe) {
@@ -5002,13 +5079,6 @@ public class DF {
     } // delete?
     public void subst_columns(DF map) {
         for (int i = 0; i < this.header.length; i++) {
-//            for (int j = 0; j < map.nrow; j++) {
-//                if (map.c(1)[i] == null){
-//                    System.out.println(map.c(1)[i]);
-//
-//                }
-//            }
-//            String[] nes = (String[]) map.c(1);
             int ind = find_in_arr_first_index(map.c(1),this.header[i]);
             if (ind > -1) {
                 this.header[i] = (String) map.c(0)[ind];

@@ -26,7 +26,7 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-    public static final String wd = "C:/Users/ozhukov/Desktop/wd/";
+    public static final String wd = "E:/wd/";
     public static final String path_grilles = wd + "grilles/";
     public static final String encoding = "UTF-8";
     public static final String regex_digits = "[0-9]+";
@@ -53,6 +53,7 @@ public class App {
     public static DF grille_gen_g;
     public static DF paths;
     public static DF parametrage;
+    public static String Pays_en_cours = "default";
     public static String Gestionnaire_en_cours = "default";
     public static String Police_en_cours = "default";
     public static String Police_en_cours_maj = "default";
@@ -82,86 +83,160 @@ public class App {
         long startTime = System.nanoTime();
 
         // RAPPORT SIN
-        Gestionnaire_en_cours = "SPB France";
+        Object[] list_pays = unique_of(paths.c("Pays"));
+        for (Object pays : list_pays) {
+            Pays_en_cours = (String) pays;
+            Object[] list_gestionnaire = paths.c_filtre("Gestionnaire","Pays",Pays_en_cours);
+            for (Object gest : list_gestionnaire) {
+                Gestionnaire_en_cours = (String) gest;
 
-        get_map_cols();
-        DF map_sin = mapping_filtre(true);
-        DF map_fic = mapping_filtre_fic();
-        DF map_adh = mapping_filtre(false);
+                get_map_cols();
+                DF map_sin = mapping_filtre(true);
+                DF map_fic = mapping_filtre_fic();
+                DF map_adh = mapping_filtre(false);
 
-        boolean[] crit1 = paths.bool_filtre("Gestionnaire", Gestionnaire_en_cours);
-        boolean[] crit2 = paths.bool_filtre("Flux", "Sinistre");
-        int ind = (int) whichf(b_and(crit1,crit2));
-        String dossier_sin = (String) paths.c("Paths")[ind];
-        char delim_sin = (char) paths.c("Delimiter")[ind];
+                boolean[] crit1 = paths.bool_filtre("Gestionnaire", Gestionnaire_en_cours);
+                boolean[] crit2 = paths.bool_filtre("Flux", "Sinistre");
 
-        crit2 = paths.bool_filtre("Flux", "Comptable");
-        ind = (int) whichf(b_and(crit1,crit2));
-        String dossier_fic = (String) paths.c("Paths")[ind];
-        char delim_fic = (char) paths.c("Delimiter")[ind];
+                int ind = (int) whichf(b_and(crit1,crit2));
 
-        crit2 = paths.bool_filtre("Flux", "Adhesion");
-        ind = (int) whichf(b_and(crit1,crit2));
-        String dossier_adh = (String) paths.c("Paths")[ind];
-        char delim_adh = (char) paths.c("Delimiter")[ind];
+                String dossier_sin = (String) paths.c("Path")[ind];
+                char delim_sin = get_delim((String) paths.c("Delimiter")[ind]);
 
-        String[] list_sin = new File(dossier_sin).list();
-        String[] list_fic = new File(dossier_fic).list();
-        String[] list_adh = new File(dossier_adh).list();
+                crit2 = paths.bool_filtre("Flux", "Comptable");
+                ind = (int) whichf(b_and(crit1,crit2));
+                String dossier_fic = (String) paths.c("Path")[ind];
+                char delim_fic = get_delim((String) paths.c("Delimiter")[ind]);
 
-//        for (String path_sin : list_sin) {
-//            DF base = new DF(wd + path_sin, delim_sin, true, map_sin);
-//
-//            DF base_fic = get_fic_France(list_fic);
-//                    new DF(wd + path_fic, delim_fic, true, map_fic);
-//            DF base_adh = new DF(wd + path_adh, delim_adh, true, map_adh);
-//        }
-//
-//
-//
-//        Police_en_cours_maj = get_name_fr(path_sin);
-//        Police_en_cours = Police_en_cours_maj.toLowerCase();
-//
-//        boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
-//        boolean[] keep2 = find_in_arr(grille_gen_g.c("Flux"), Flux_en_cours);
-//
-//        boolean[] crit = b_and(keep, keep2);
-//        base.grille_gen = new DF(grille_gen_g, crit);
-//
-//        keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
-//        keep2 = find_in_arr(grille_gen_g.c("Flux"), "Comptable");
-//        crit = b_and(keep, keep2);
-//        base_fic.grille_gen = new DF(grille_gen_g, crit);
-//
-//
-//        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0 + "sssssss");
-//
-//        startTime = System.nanoTime();
-////        controles_G.get("controle_811").invoke(base);
-//
-//        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
-//            if (params_G.get(set.getKey())) {
-//                set.getValue().invoke(base, base_adh);
-//            } else {
-//                set.getValue().invoke(base);
-//            }
-//        }
-//
-//        base_fic.fic_hors_la_liste_controle_K0(map_fic);
-//        for (Map.Entry<String, Method> set : controles_fic_G.entrySet()) {
-//            if (params_fic_G.get(set.getKey())) {
-//                set.getValue().invoke(base_fic, base);
-//            } else {
-//                set.getValue().invoke(base_fic);
-//            }
-//        }
-//
-//
-////        rapport_print();
-//        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
-//        rapport_save();
-//        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+                crit2 = paths.bool_filtre("Flux", "Adhesion");
+                ind = (int) whichf(b_and(crit1,crit2));
+                String dossier_adh = (String) paths.c("Path")[ind];
+                char delim_adh = get_delim((String) paths.c("Delimiter")[ind]);
 
+                String[] list_sin = new File(dossier_sin).list();
+                String[] list_fic = new File(dossier_fic).list();
+                String[] list_adh = new File(dossier_adh).list();
+
+                Flux_en_cours = "Sinistre";
+                if (check_flux(Flux_en_cours)) {
+                    if (list_sin == null) {
+                        err("dossier sinistres vide!");
+                        return;
+                    }
+                    if (list_adh == null) {
+                        err("dossier adhesions vide!");
+                        return;
+                    }
+                    for (String path_sin : list_sin) {
+                        Police_en_cours_maj = get_name(path_sin);
+                        Police_en_cours = Police_en_cours_maj.toLowerCase();
+
+                        DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
+                        DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
+
+                        base.get_grille_gen();
+
+                        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
+                            if (params_G.get(set.getKey())) {
+                                set.getValue().invoke(base, base_adh);
+                            } else {
+                                set.getValue().invoke(base);
+                            }
+                        }
+                    } // par police
+                }
+
+                Flux_en_cours = "Comptable";
+                if (check_flux(Flux_en_cours)) {
+                    if (list_fic == null) {
+                        err("dossier fic vide!");
+                        return;
+                    }
+                    if (list_sin == null) {
+                        err("dossier sinistres vide!");
+                        return;
+                    }
+
+                    DF base_fic_total = new DF();
+                    if(Gestionnaire_en_cours.equals("SPB France")) {
+                        base_fic_total = new DF(wd+dossier_fic);
+                    }
+                    if(Gestionnaire_en_cours.equals("SPB Italie")) {
+                        ind = which_contains_first_index(list_fic,"DBCLAIMS");
+                        base_fic_total = new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
+                    }
+
+                    for (String path_sin : list_sin) {
+                        Police_en_cours_maj = get_name(path_sin);
+                        Police_en_cours = Police_en_cours_maj.toLowerCase();
+
+                        DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
+                        DF base_fic = get_fic(dossier_fic, list_fic, delim_fic, map_fic, base_fic_total);
+
+                        base_fic.get_grille_gen();
+
+                        base_fic.fic_hors_la_liste_controle_K0(map_fic);
+                        for (Map.Entry<String, Method> set : controles_fic_G.entrySet()) {
+                            if (params_fic_G.get(set.getKey())) {
+                                set.getValue().invoke(base_fic, base);
+                            } else {
+                                set.getValue().invoke(base_fic);
+                            }
+                        }
+
+                    } // par police
+                }
+
+                System.out.println(Gestionnaire_en_cours + " terminé à:");
+                System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+
+            } // par gest
+        } // par pays
+
+        rapport_print();
+        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+        rapport_save();
+        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+
+    }
+    public static boolean check_flux(String flux) {
+        return (parametrage.c_filtre_2("Statut", "Gestionnaire", Gestionnaire_en_cours, "Flux", flux)[0].equals("Oui"));
+    }
+    public static DF get_fic(String dossier_fic, String[] list_fic, char delim_fic, DF map_fic, DF base_fic_total) {
+        switch (Gestionnaire_en_cours) {
+            case "SPB France":
+            case "SPB Italie":
+                return base_fic_total.filter_out("Police", Police_en_cours_maj);
+            case "Expert":
+                int ind = which_contains_first_index(list_fic,"EXPERT");
+                return new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
+            case "Distante":
+                ind = which_contains_first_index(list_fic,"DISTANTE");
+                return new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
+            case "Gamestop":
+                ind = which_contains_first_index(list_fic,"GS");
+                return new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
+            case "SPB Pologne":
+                ind = which_contains_first_index(list_fic,Police_en_cours_maj);
+                return new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
+            default:
+                return new DF();
+        }
+    }
+    public static String get_path_adh(String[] listfiles) {
+        for (String listfile : listfiles) {
+            if (listfile.contains(Police_en_cours_maj)) {
+                return listfile;
+            }
+        }
+        return "";
+    }
+    public static char get_delim(String delim) {
+        if(delim.length() > 1) {
+            return '\t';
+        } else {
+            return delim.charAt(0);
+        }
     }
     public static void get_yyyymm() {
         Date today = new Date();
@@ -186,8 +261,8 @@ public class App {
         String mapping_adh_onglet = "Mapping bases adhésions";
         mapping_sin_g = new DF(wd + path_mapping, mapping_sin_onglet, true, false);
         mapping_adh_g = new DF(wd + path_mapping, mapping_adh_onglet, true, false);
-        mapping_sin_g.delete_blanks_first_col();
-        mapping_adh_g.delete_blanks_first_col();
+//        mapping_sin_g.delete_blanks_first_col();
+//        mapping_adh_g.delete_blanks_first_col();
     }
     public static void get_controles() {
         Class<DF> classobj = DF.class;
@@ -290,7 +365,7 @@ public class App {
         mapping_fic_col = (String) paths.c("Mapping")[ind];
         crit1 = paths.bool_filtre("Flux", "Adhesion");
         ind = (int) whichf(b_and(crit1,crit2));
-        mapping_fic_col = (String) paths.c("Mapping")[ind];
+        mapping_adh_col = (String) paths.c("Mapping")[ind];
     }
     public static DF mapping_filtre(boolean sinistre) {
         if (sinistre) {
@@ -320,16 +395,85 @@ public class App {
         return new DF(mapping_sin_g, vec, true);
     }
 
-    public static String get_name_fr(String path) {
-        ArrayList<Integer> ind = get_all_occurences(path, '_');
-        if (ind.isEmpty()) {
-            err("pb naming france: " + path);
-            return "";
-        } else {
-            return path.substring(ind.get(1) + 1, ind.get(2));
-        }
-    }
+    public static String get_name_old(String path) {
+        switch (Gestionnaire_en_cours) {
+            case "SPB France":
+                ArrayList<Integer> ind = get_all_occurences(path, '_');
+                if (ind.isEmpty()) {
+                    err("pb naming france: " + path);
+                    return "";
+                } else {
+                    return path.substring(ind.get(1) + 1, ind.get(2));
+                }
+            case "SPB Italie":
+            case "Expert":
+            case "Distante":
+                ind = get_all_occurences(path, '-');
+                ArrayList<Integer> ind2 = get_all_occurences(path, '.');
+                if (ind.isEmpty()) {
+                    err("pb naming italie: " + path);
+                    return "";
+                } else {
+                    return path.substring(ind.get(1) + 1, ind2.get(0));
+                }
+            case "Gamestop":
 
+            case "SPB Pologne":
+            case "SPB Espagne":
+            case "Supporter":
+                ind = get_all_occurences(path, '_');
+                if (ind.isEmpty()) {
+                    err("pb naming pol/esp/sup: " + path);
+                    return "";
+                } else {
+                    return path.substring( 0, ind.get(1));
+                }
+        }
+        return "";
+    }
+    public static String get_name(String path) {
+        int debut = path.indexOf("ICI");
+
+        switch (Gestionnaire_en_cours) {
+            case "SPB France":
+                ArrayList<Integer> ind = get_all_occurences(path, '_');
+                if (ind.isEmpty()) {
+                    err("pb naming france: " + path);
+                    return "";
+                } else {
+                    return path.substring(debut, ind.get(2));
+                }
+            case "SPB Italie":
+            case "Expert":
+            case "Distante":
+                ind = get_all_occurences(path, '.');
+                if (ind.isEmpty()) {
+                    err("pb naming italie: " + path);
+                    return "";
+                } else {
+                    return path.substring(debut, ind.get(0));
+                }
+            case "Gamestop":
+                int fin = path.indexOf(" at");
+                if (fin == -1) {
+                    err("pb naming italie: " + path);
+                    return "";
+                } else {
+                    return path.substring(debut, fin);
+                }
+            case "SPB Pologne":
+            case "SPB Espagne":
+            case "Supporter":
+                ind = get_all_occurences(path, '_');
+                if (ind.isEmpty()) {
+                    err("pb naming pol/esp/sup: " + path);
+                    return "";
+                } else {
+                    return path.substring(0, ind.get(1));
+                }
+        }
+        return "";
+    }
     public static ArrayList<Integer> get_all_occurences(String str, char c) {
         ArrayList<Integer> ind = new ArrayList<>();
         for (int i = 0; i < str.length(); i++) {
@@ -609,7 +753,19 @@ public class App {
         final int len = arr.length;
         int out = -1;
         for (int i = 0; i < len; i++) {
+            if (arr[i] == null) continue;
             if (arr[i].equals(value)) {
+                out = i;
+            }
+        }
+        return out;
+    }
+    public static int which_contains_first_index(String[] arr, String value) {
+        final int len = arr.length;
+        int out = -1;
+        for (int i = 0; i < len; i++) {
+            if (arr[i] == null) continue;
+            if (arr[i].contains(value)) {
                 out = i;
             }
         }
