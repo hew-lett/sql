@@ -39,6 +39,8 @@ public class DF {
 //    private char delim;
 //    private String path;
     public ArrayList<Object[]> df;
+    public ArrayList<HashMap<Object,List<Integer>>> dff;
+
     public Col_types[] coltypes;
     public String[] header;
     public int ncol;
@@ -47,13 +49,74 @@ public class DF {
     public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
 
     // CONSTRUCTORS
+//    public DF (String path, char delim, boolean tolower, DF mapping) {
+//        String filename = path.substring(path.lastIndexOf("/")+1);
+//        CsvParserSettings settings = new CsvParserSettings();
+//        settings.setDelimiterDetectionEnabled(true, delim);
+//        settings.trimValues(true);
+//        try(Reader inputReader = new InputStreamReader(Files.newInputStream(
+//            new File(path).toPath()), encoding)){
+//            CsvParser parser = new CsvParser(settings);
+//            List<String[]> parsedRows = parser.parseAll(inputReader);
+//            Iterator<String[]> rows = parsedRows.iterator();
+//            header = rows.next();
+//
+//            if (filename.length() < 9 & filename.charAt(0) == 'C') {
+//                coltypes = get_col_types(header, coltypes_G);
+//            } else {
+//                this.subst_columns(mapping);
+//                coltypes = get_col_types(header, coltypes_B);
+//            }
+//            nrow = parsedRows.size()-1;
+//            assert (coltypes.length == parsedRows.get(0).length);
+//            ncol = get_len(coltypes);
+//            df = new ArrayList<>(get_len(coltypes));
+//            this.df_populate(coltypes);
+//
+//            if (tolower) {
+//                int i = 0;
+//                while(rows.hasNext()) {
+//                    System.out.println(i);
+//                    int j = 0;
+//                    int k = 0;
+//                    String[] parsedRow = rows.next();
+//                    for (String s : parsedRow) {
+//                        if (coltypes[k] != Col_types.SKP) {
+//                            df.get(j)[i] = get_lowercase_cell_of_type(s,coltypes[k]);
+//                            j++;
+//                        }
+//                        k++;
+//                    }
+//                    i++;
+//                }
+//            } else {
+//                int i = 0;
+//                while(rows.hasNext()) {
+//                    int j = 0;
+//                    int k = 0;
+//                    String[] parsedRow = rows.next();
+//                    for (String s : parsedRow) {
+//                        if (coltypes[k] != Col_types.SKP) {
+//                            df.get(j)[i] = get_cell_of_type(s,coltypes[k]);
+//                            j++;
+//                        }
+//                        k++;
+//                    }
+//                    i++;
+//                }
+//            }
+//        } catch (IOException ignored) {
+//        }
+//        this.header_refactor();
+//        this.remove_leading_zeros();
+//    }
     public DF (String path, char delim, boolean tolower, DF mapping) {
         String filename = path.substring(path.lastIndexOf("/")+1);
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
         settings.trimValues(true);
         try(Reader inputReader = new InputStreamReader(Files.newInputStream(
-            new File(path).toPath()), encoding)){
+                new File(path).toPath()), encoding)){
             CsvParser parser = new CsvParser(settings);
             List<String[]> parsedRows = parser.parseAll(inputReader);
             Iterator<String[]> rows = parsedRows.iterator();
@@ -68,33 +131,53 @@ public class DF {
             nrow = parsedRows.size()-1;
             assert (coltypes.length == parsedRows.get(0).length);
             ncol = get_len(coltypes);
-            df = new ArrayList<>(get_len(coltypes));
-            this.df_populate(coltypes);
+//            df = new ArrayList<>(get_len(coltypes));
+//            this.df_populate(coltypes);
+            this.dff = new ArrayList<>();
+            for (int i = 0; i < ncol; i++) {
+                this.dff.add(new HashMap<Object, List<Integer>>());
+            }
 
             if (tolower) {
                 int i = 0;
                 while(rows.hasNext()) {
+                    System.out.println(i);
                     int j = 0;
                     int k = 0;
                     String[] parsedRow = rows.next();
                     for (String s : parsedRow) {
                         if (coltypes[k] != Col_types.SKP) {
-                            df.get(j)[i] = get_lowercase_cell_of_type(s,coltypes[k]);
-                            j++;
-                        }
-                        k++;
-                    }
-                    i++;
-                }
-            } else {
-                int i = 0;
-                while(rows.hasNext()) {
-                    int j = 0;
-                    int k = 0;
-                    String[] parsedRow = rows.next();
-                    for (String s : parsedRow) {
-                        if (coltypes[k] != Col_types.SKP) {
-                            df.get(j)[i] = get_cell_of_type(s,coltypes[k]);
+                            switch (coltypes[k]) {
+                                case STR -> {
+                                    if (s == null) {
+                                        dff.get(j).computeIfAbsent("", k1 -> new ArrayList<>());
+                                        dff.get(j).get("").add(i);
+                                    } else {
+                                        dff.get(j).computeIfAbsent(s, k1 -> new ArrayList<>());
+                                        dff.get(j).get(s).add(i);
+                                    }
+                                }
+                                case DBL -> {
+                                    Double value;
+                                    try {
+                                        value = Double.parseDouble(s.replace(",", "."));
+                                    } catch (NullPointerException | NumberFormatException e) {
+                                        value = NA_DBL;
+                                    }
+                                    dff.get(j).computeIfAbsent(value, k1 -> new ArrayList<>());
+                                    dff.get(j).get(value).add(i);
+                                }
+                                case DAT -> {
+                                    Date value_date;
+                                    try {
+                                        value_date = format.parse(s);
+                                    } catch (NullPointerException | ParseException e) {
+                                        value_date = NA_DAT;
+                                    }
+                                    dff.get(j).computeIfAbsent(value_date, k1 -> new ArrayList<>());
+                                    dff.get(j).get(value_date).add(i);
+                                }
+                            }
                             j++;
                         }
                         k++;
@@ -105,7 +188,7 @@ public class DF {
         } catch (IOException ignored) {
         }
         this.header_refactor();
-        this.remove_leading_zeros();
+//        this.remove_leading_zeros();
     }
     public DF (String path, char delim, boolean tolower) {
         String filename = path.substring(path.lastIndexOf("/")+1);
@@ -2598,41 +2681,18 @@ public class DF {
                         Object signe_raw = grille.c("Signe Montant_Indemnité_Principale")[id];
                         short signe = (short) round((Double) signe_raw);
                         Double montant = Double.parseDouble(montant_raw.replace(",", "."));
-                        switch (signe) {
-                            case 1:
-                                temp[ind] = Objects.equals(mip, montant);
-                                ind++;
-                                continue;
-                            case 2:
-                                temp[ind] = mip > montant;
-                                ind++;
-                                continue;
-                            case 3:
-                                temp[ind] = mip < montant;
-                                ind++;
-                                continue;
-                            case 4:
-                                temp[ind] = mip >= montant;
-                                ind++;
-                                continue;
-                            case 5:
-                                temp[ind] = mip <= montant;
-                                ind++;
-                                continue;
-                            case 6:
-                                temp[ind] = !Objects.equals(mip, montant);
-                                ind++;
-                                continue;
-                            default:
-                                err("erreur signe non-renseignée");
-                        }
-                        for (int t = temp.length-1; t >= 0; t--) {
-                            if (temp[t]) {
-                                reste.remove(t);
-                            }
-                        }
+                        temp[ind] = !compa_signe(mip,montant,signe);
+                        ind++;
+                    } else {
+                        temp[ind] = false;
                     }
                 }
+                for (int t = temp.length-1; t >= 0; t--) {
+                    if (temp[t]) {
+                        reste.remove(t);
+                    }
+                }
+
         }
 
             if (reste.size() > 1) {
@@ -5197,7 +5257,7 @@ public class DF {
                     this.header[i] = value;
                 }
             } else {
-                err("col not found" + this.header[i]);
+                err("col not found " + this.header[i]);
             }
         }
 
@@ -5214,7 +5274,7 @@ public class DF {
                     out[i] = head[i];
                 }
             } else {
-                err("col not found" + this.header[i]);
+                err("col not found " + this.header[i]);
             }
         }
         return out;
