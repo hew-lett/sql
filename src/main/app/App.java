@@ -132,7 +132,7 @@ public class App {
                         err("dossier adhesions vide!");
                         return;
                     }
-                    list_sin = new String[]{"Sinistre_Historique_ICIMM101_303_20221106.txt"};
+//                    list_sin = new String[]{"Sinistre_Historique_ICIMM101_303_20221106.txt"};
                     for (String path_sin : list_sin) {
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
@@ -153,6 +153,7 @@ public class App {
                         }
 
                         for (Map.Entry<String, Method> set : controles_G.entrySet()) {
+                            System.out.println(set.getKey());
                             if (params_G.get(set.getKey())) {
                                 set.getValue().invoke(base, base_adh);
                             } else {
@@ -613,7 +614,7 @@ public class App {
         }
     }
     return counter == what.length;
-}
+    }
     public static boolean  check_in(String what, String[] arr) {
         for (String where : arr) {
             if (what.equals(where)) {
