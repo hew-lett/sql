@@ -39,7 +39,7 @@ public class DF {
 //    private char delim;
 //    private String path;
     public ArrayList<Object[]> df;
-    public ArrayList<HashMap<Object,List<Integer>>> dff;
+//    public ArrayList<HashMap<Object,List<Integer>>> dff;
 
     public Col_types[] coltypes;
     public String[] header;
@@ -49,74 +49,13 @@ public class DF {
     public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
 
     // CONSTRUCTORS
-//    public DF (String path, char delim, boolean tolower, DF mapping) {
-//        String filename = path.substring(path.lastIndexOf("/")+1);
-//        CsvParserSettings settings = new CsvParserSettings();
-//        settings.setDelimiterDetectionEnabled(true, delim);
-//        settings.trimValues(true);
-//        try(Reader inputReader = new InputStreamReader(Files.newInputStream(
-//            new File(path).toPath()), encoding)){
-//            CsvParser parser = new CsvParser(settings);
-//            List<String[]> parsedRows = parser.parseAll(inputReader);
-//            Iterator<String[]> rows = parsedRows.iterator();
-//            header = rows.next();
-//
-//            if (filename.length() < 9 & filename.charAt(0) == 'C') {
-//                coltypes = get_col_types(header, coltypes_G);
-//            } else {
-//                this.subst_columns(mapping);
-//                coltypes = get_col_types(header, coltypes_B);
-//            }
-//            nrow = parsedRows.size()-1;
-//            assert (coltypes.length == parsedRows.get(0).length);
-//            ncol = get_len(coltypes);
-//            df = new ArrayList<>(get_len(coltypes));
-//            this.df_populate(coltypes);
-//
-//            if (tolower) {
-//                int i = 0;
-//                while(rows.hasNext()) {
-//                    System.out.println(i);
-//                    int j = 0;
-//                    int k = 0;
-//                    String[] parsedRow = rows.next();
-//                    for (String s : parsedRow) {
-//                        if (coltypes[k] != Col_types.SKP) {
-//                            df.get(j)[i] = get_lowercase_cell_of_type(s,coltypes[k]);
-//                            j++;
-//                        }
-//                        k++;
-//                    }
-//                    i++;
-//                }
-//            } else {
-//                int i = 0;
-//                while(rows.hasNext()) {
-//                    int j = 0;
-//                    int k = 0;
-//                    String[] parsedRow = rows.next();
-//                    for (String s : parsedRow) {
-//                        if (coltypes[k] != Col_types.SKP) {
-//                            df.get(j)[i] = get_cell_of_type(s,coltypes[k]);
-//                            j++;
-//                        }
-//                        k++;
-//                    }
-//                    i++;
-//                }
-//            }
-//        } catch (IOException ignored) {
-//        }
-//        this.header_refactor();
-//        this.remove_leading_zeros();
-//    }
     public DF (String path, char delim, boolean tolower, DF mapping) {
         String filename = path.substring(path.lastIndexOf("/")+1);
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
         settings.trimValues(true);
         try(Reader inputReader = new InputStreamReader(Files.newInputStream(
-                new File(path).toPath()), encoding)){
+            new File(path).toPath()), encoding)){
             CsvParser parser = new CsvParser(settings);
             List<String[]> parsedRows = parser.parseAll(inputReader);
             Iterator<String[]> rows = parsedRows.iterator();
@@ -131,53 +70,33 @@ public class DF {
             nrow = parsedRows.size()-1;
             assert (coltypes.length == parsedRows.get(0).length);
             ncol = get_len(coltypes);
-//            df = new ArrayList<>(get_len(coltypes));
-//            this.df_populate(coltypes);
-            this.dff = new ArrayList<>();
-            for (int i = 0; i < ncol; i++) {
-                this.dff.add(new HashMap<Object, List<Integer>>());
-            }
+            df = new ArrayList<>(get_len(coltypes));
+            this.df_populate(coltypes);
 
             if (tolower) {
                 int i = 0;
                 while(rows.hasNext()) {
-                    System.out.println(i);
                     int j = 0;
                     int k = 0;
                     String[] parsedRow = rows.next();
                     for (String s : parsedRow) {
                         if (coltypes[k] != Col_types.SKP) {
-                            switch (coltypes[k]) {
-                                case STR -> {
-                                    if (s == null) {
-                                        dff.get(j).computeIfAbsent("", k1 -> new ArrayList<>());
-                                        dff.get(j).get("").add(i);
-                                    } else {
-                                        dff.get(j).computeIfAbsent(s, k1 -> new ArrayList<>());
-                                        dff.get(j).get(s).add(i);
-                                    }
-                                }
-                                case DBL -> {
-                                    Double value;
-                                    try {
-                                        value = Double.parseDouble(s.replace(",", "."));
-                                    } catch (NullPointerException | NumberFormatException e) {
-                                        value = NA_DBL;
-                                    }
-                                    dff.get(j).computeIfAbsent(value, k1 -> new ArrayList<>());
-                                    dff.get(j).get(value).add(i);
-                                }
-                                case DAT -> {
-                                    Date value_date;
-                                    try {
-                                        value_date = format.parse(s);
-                                    } catch (NullPointerException | ParseException e) {
-                                        value_date = NA_DAT;
-                                    }
-                                    dff.get(j).computeIfAbsent(value_date, k1 -> new ArrayList<>());
-                                    dff.get(j).get(value_date).add(i);
-                                }
-                            }
+                            df.get(j)[i] = get_lowercase_cell_of_type(s,coltypes[k]);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            } else {
+                int i = 0;
+                while(rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != Col_types.SKP) {
+                            df.get(j)[i] = get_cell_of_type(s,coltypes[k]);
                             j++;
                         }
                         k++;
@@ -188,8 +107,88 @@ public class DF {
         } catch (IOException ignored) {
         }
         this.header_refactor();
-//        this.remove_leading_zeros();
+        this.remove_leading_zeros();
     }
+//    public DF (String path, char delim, boolean tolower, DF mapping) {
+//        String filename = path.substring(path.lastIndexOf("/")+1);
+//        CsvParserSettings settings = new CsvParserSettings();
+//        settings.setDelimiterDetectionEnabled(true, delim);
+//        settings.trimValues(true);
+//        try(Reader inputReader = new InputStreamReader(Files.newInputStream(
+//                new File(path).toPath()), encoding)){
+//            CsvParser parser = new CsvParser(settings);
+//            List<String[]> parsedRows = parser.parseAll(inputReader);
+//            Iterator<String[]> rows = parsedRows.iterator();
+//            header = rows.next();
+//
+//            if (filename.length() < 9 & filename.charAt(0) == 'C') {
+//                coltypes = get_col_types(header, coltypes_G);
+//            } else {
+//                this.subst_columns(mapping);
+//                coltypes = get_col_types(header, coltypes_B);
+//            }
+//            nrow = parsedRows.size()-1;
+//            assert (coltypes.length == parsedRows.get(0).length);
+//            ncol = get_len(coltypes);
+////            df = new ArrayList<>(get_len(coltypes));
+////            this.df_populate(coltypes);
+//            this.dff = new ArrayList<>();
+//            for (int i = 0; i < ncol; i++) {
+//                this.dff.add(new HashMap<Object, List<Integer>>());
+//            }
+//
+//            if (tolower) {
+//                int i = 0;
+//                while(rows.hasNext()) {
+//                    System.out.println(i);
+//                    int j = 0;
+//                    int k = 0;
+//                    String[] parsedRow = rows.next();
+//                    for (String s : parsedRow) {
+//                        if (coltypes[k] != Col_types.SKP) {
+//                            switch (coltypes[k]) {
+//                                case STR -> {
+//                                    if (s == null) {
+//                                        dff.get(j).computeIfAbsent("", k1 -> new ArrayList<>());
+//                                        dff.get(j).get("").add(i);
+//                                    } else {
+//                                        dff.get(j).computeIfAbsent(s, k1 -> new ArrayList<>());
+//                                        dff.get(j).get(s).add(i);
+//                                    }
+//                                }
+//                                case DBL -> {
+//                                    Double value;
+//                                    try {
+//                                        value = Double.parseDouble(s.replace(",", "."));
+//                                    } catch (NullPointerException | NumberFormatException e) {
+//                                        value = NA_DBL;
+//                                    }
+//                                    dff.get(j).computeIfAbsent(value, k1 -> new ArrayList<>());
+//                                    dff.get(j).get(value).add(i);
+//                                }
+//                                case DAT -> {
+//                                    Date value_date;
+//                                    try {
+//                                        value_date = format.parse(s);
+//                                    } catch (NullPointerException | ParseException e) {
+//                                        value_date = NA_DAT;
+//                                    }
+//                                    dff.get(j).computeIfAbsent(value_date, k1 -> new ArrayList<>());
+//                                    dff.get(j).get(value_date).add(i);
+//                                }
+//                            }
+//                            j++;
+//                        }
+//                        k++;
+//                    }
+//                    i++;
+//                }
+//            }
+//        } catch (IOException ignored) {
+//        }
+//        this.header_refactor();
+////        this.remove_leading_zeros();
+//    }
     public DF (String path, char delim, boolean tolower) {
         String filename = path.substring(path.lastIndexOf("/")+1);
         CsvParserSettings settings = new CsvParserSettings();
@@ -4500,12 +4499,21 @@ public class DF {
             vec = logvec(this.nrow,false);
         }
         for (int i = 0; i < this.nrow; i++) {
+            if(this.c("Numéro_Police")[i] != Police_en_cours){
+                vec[i] = true;
+                continue;
+            }
+
             String cell_base = (String) this.c(col3)[i];
             ArrayList<Integer> ind = new ArrayList<>();
             for (int j = 0; j < grille.nrow; j++) {
                 if (grille.c(col3)[j].equals(cell_base) | grille.c(col3)[j].equals(NA_STR)) {
                     ind.add(j);
                 }
+            }
+            if (ind.size() == 0) {
+                vec[i] = true;
+                continue;
             }
             if (ind.size() > 1) {
                 err("grille logic");

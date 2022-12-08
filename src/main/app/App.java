@@ -26,7 +26,7 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-    public static final String wd = "C:/Users/ozhukov/Desktop/wd/";
+    public static final String wd = "E:/java_certif/wd/";
     public static final String path_grilles = wd + "grilles/";
     public static final String encoding = "UTF-8";
     public static final String regex_digits = "[0-9]+";
@@ -70,7 +70,6 @@ public class App {
     public static String yyyymm = "default";
 
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
-
 //        grilles_collect(path_grilles); // le premier lancement chaque mois
         rapport_init();
         get_paths_et_parametrage();
@@ -124,7 +123,7 @@ public class App {
                 String[] list_sin = new File(wd+dossier_sin).list();
                 String[] list_fic = new File(wd+dossier_fic).list();
                 String[] list_adh = new File(wd+dossier_adh).list();
-
+                list_sin = filtre_path_par_gest(list_sin);
                 Flux_en_cours = "Sinistre";
                 if (check_flux(Flux_en_cours)) {
                     if (list_sin == null) {
@@ -137,11 +136,13 @@ public class App {
                     }
 //                    list_sin = new String[]{"Sinistre_Historique_ICIMM101_303_20221106.txt"};
                     for (String path_sin : list_sin) {
+                        System.out.println(path_sin);
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
-                        System.out.println(Police_en_cours_maj);
+                        System.out.println("on fait sin " + Police_en_cours_maj);
 //                        if(Police_en_cours_maj.contains("FRMP")) continue;
                         if(!Police_en_cours_maj.contains("MMPC")) continue;
+                        System.out.println("passé " + Police_en_cours_maj);
 
                         if(!Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
                             get_map_cols();
@@ -189,8 +190,13 @@ public class App {
                     }
 
                     for (String path_sin : list_sin) {
+                        System.out.println(path_sin);
+
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
+                        if(!Police_en_cours_maj.contains("MMPC")) continue;
+                        System.out.println("fic " + Police_en_cours_maj);
+                        base_fic_total.print(100);
 
                         if(!Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
                             get_map_cols();
@@ -226,12 +232,35 @@ public class App {
             } // par gest
         } // par pays
 
-        rapport_print();
+//        rapport_print();
         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
         rapport_save();
         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
     }
+
+    private static String[] filtre_path_par_gest(String[] listSin) {
+        String filtering_pattern;
+        switch (Gestionnaire_en_cours) {
+            case "Supporter", "SPB Pologne", "SPB Espagne", "SPB France" -> {
+                return listSin;
+            }
+            case "SPB Italie" -> filtering_pattern = "ICIMW";
+            case "Expert" -> filtering_pattern = "ICIEXTR";
+            case "Distante" -> filtering_pattern = "ICIEXDI";
+            case "Gamestop" -> {
+                if (Flux_en_cours.equals())
+                filtering_pattern = "Gamestop";
+            }
+            default -> {
+                err_simple("probleme filtering files");
+                return listSin;
+            }
+        }
+
+        return(filter_array_by_containing(listSin, filtering_pattern));
+    }
+
     // INTEGRATION
     public static boolean check_flux(String flux) {
         return (parametrage.c_filtre_2("Statut", "Gestionnaire", Gestionnaire_en_cours, "Flux", flux)[0].equals("oui"));
@@ -354,6 +383,9 @@ public class App {
             case "SPB Italie":
             case "Expert":
             case "Distante":
+                System.out.println("check");
+                System.out.println(path);
+                System.out.println(get_all_occurences(path, '.'));
                 ind = get_all_occurences(path, '.');
                 if (ind.isEmpty()) {
                     err("pb naming italie: " + path);
@@ -541,7 +573,15 @@ public class App {
     public static String[] filter_array_by(String[] arr, String by) {
         return filter_array_by(arr, by, false);
     }
-
+    public static String[] filter_array_by_containing(String[] arr, String by) {
+        ArrayList<String> out_list = new ArrayList<>();
+        for (String s : arr) {
+            if (s.contains(by)) {
+                out_list.add(s);
+            }
+        }
+        return(out_list.toArray(new String[0]));
+    }
     public static String[] filter_array_by(String[] arr, String by, boolean filter_out) {
         int j = 0;
         int i = 0;
