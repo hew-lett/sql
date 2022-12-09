@@ -620,6 +620,22 @@ public class DF {
         }
         return out;
     }
+    public String c_filtre_2_crit_1_value(String colname, String col_filtre_1, String value_1, String col_filtre_2, String value_2){
+        for (int i = 0; i < this.nrow; i++) {
+            if(this.c(col_filtre_1)[i].equals(value_1) & this.c(col_filtre_2)[i].equals(value_2)) {
+                return (String) this.c(colname)[i];
+            }
+        }
+        return null;
+    }
+    public int ind_filtre_2_crit_1_value(String col_filtre_1, String value_1, String col_filtre_2, String value_2){
+        for (int i = 0; i < this.nrow; i++) {
+            if(this.c(col_filtre_1)[i].equals(value_1) & this.c(col_filtre_2)[i].equals(value_2)) {
+                return i;
+            }
+        }
+        return -1;
+    }
     public Object[] c(int index){
         return df.get(index);
     }

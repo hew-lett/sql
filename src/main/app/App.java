@@ -92,57 +92,50 @@ public class App {
             for (Object gest : list_gestionnaire) {
                 Gestionnaire_en_cours = (String) gest;
 
-                DF map_sin = new DF(); DF map_fic = new DF(); DF map_adh = new DF();
-                if(!Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
-                    get_map_cols();
-                    map_sin = mapping_filtre(true);
-                    if(!Objects.equals(mapping_fic_col, "N.A.")){
-                        map_fic = mapping_filtre_fic();
-                    }
-                    map_adh = mapping_filtre(false);
+                get_map_cols();
+                DF map_sin = mapping_filtre(true);
+                DF map_fic = new DF();
+                if(!Objects.equals(mapping_fic_col, "N.A.")){
+                    map_fic = mapping_filtre_fic();
                 }
+                DF map_adh = mapping_filtre(false);
 
-                boolean[] crit1 = paths.bool_filtre("Gestionnaire", Gestionnaire_en_cours);
-                boolean[] crit2 = paths.bool_filtre("Flux", "Sinistre");
-
-                int ind = (int) whichf(b_and(crit1,crit2));
-
+                int ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Sinistre");
                 String dossier_sin = (String) paths.c("Path")[ind];
                 char delim_sin = get_delim((String) paths.c("Delimiter")[ind]);
 
-                crit2 = paths.bool_filtre("Flux", "Comptable");
-                ind = (int) whichf(b_and(crit1,crit2));
+                ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Comptable");
                 String dossier_fic = (String) paths.c("Path")[ind];
                 char delim_fic = get_delim((String) paths.c("Delimiter")[ind]);
 
-                crit2 = paths.bool_filtre("Flux", "Adhesion");
-                ind = (int) whichf(b_and(crit1,crit2));
+                ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Adhesion");
                 String dossier_adh = (String) paths.c("Path")[ind];
                 char delim_adh = get_delim((String) paths.c("Delimiter")[ind]);
 
                 String[] list_sin = new File(wd+dossier_sin).list();
                 String[] list_fic = new File(wd+dossier_fic).list();
                 String[] list_adh = new File(wd+dossier_adh).list();
-                list_sin = filtre_path_par_gest(list_sin);
+                list_sin = filtre_path_par_gest(list_sin,"Sinistre");
+                list_adh = filtre_path_par_gest(list_adh,"Adhésion");
+
                 Flux_en_cours = "Sinistre";
                 if (check_flux(Flux_en_cours)) {
                     if (list_sin == null) {
-                        err("dossier sinistres vide!");
-                        return;
+                        err_simple("dossier sinistres vide!");
+                        continue;
                     }
                     if (list_adh == null) {
-                        err("dossier adhesions vide!");
-                        return;
+                        err_simple("dossier adhesions vide!");
+                        continue;
                     }
-//                    list_sin = new String[]{"Sinistre_Historique_ICIMM101_303_20221106.txt"};
+
                     for (String path_sin : list_sin) {
-                        System.out.println(path_sin);
+//                        System.out.println(path_sin);
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
-                        System.out.println("on fait sin " + Police_en_cours_maj);
-//                        if(Police_en_cours_maj.contains("FRMP")) continue;
                         if(!Police_en_cours_maj.contains("MMPC")) continue;
-                        System.out.println("passé " + Police_en_cours_maj);
+
+                        System.out.println("on fait sin " + Police_en_cours_maj);
 
                         if(!Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
                             get_map_cols();
@@ -172,12 +165,12 @@ public class App {
                 Flux_en_cours = "Comptable";
                 if (check_flux(Flux_en_cours)) {
                     if (list_fic == null) {
-                        err("dossier fic vide!");
-                        return;
+                        err_simple("dossier fic vide!");
+                        continue;
                     }
                     if (list_sin == null) {
-                        err("dossier sinistres vide!");
-                        return;
+                        err_simple("dossier sinistres vide!");
+                        continue;
                     }
 
                     DF base_fic_total = new DF();
@@ -239,7 +232,7 @@ public class App {
 
     }
 
-    private static String[] filtre_path_par_gest(String[] listSin) {
+    private static String[] filtre_path_par_gest(String[] listSin, String flux) {
         String filtering_pattern;
         switch (Gestionnaire_en_cours) {
             case "Supporter", "SPB Pologne", "SPB Espagne", "SPB France" -> {
@@ -249,8 +242,11 @@ public class App {
             case "Expert" -> filtering_pattern = "ICIEXTR";
             case "Distante" -> filtering_pattern = "ICIEXDI";
             case "Gamestop" -> {
-                if (Flux_en_cours.equals())
-                filtering_pattern = "Gamestop";
+                if (flux.equals("Sinistre")) {
+                    filtering_pattern = "Gamestop";
+                } else {
+                    filtering_pattern = "GS";
+                }
             }
             default -> {
                 err_simple("probleme filtering files");
@@ -415,16 +411,23 @@ public class App {
         return "";
     }
     public static void get_map_cols() {
-        boolean[] crit1 = paths.bool_filtre("Flux","Sinistre");
-        boolean[] crit2 = paths.bool_filtre("Gestionnaire", Gestionnaire_en_cours);
-        int ind = (int) whichf(b_and(crit1,crit2));
-        mapping_sin_col = (String) paths.c("Mapping")[ind];
-        crit1 = paths.bool_filtre("Flux", "Comptable");
-        ind = (int) whichf(b_and(crit1,crit2));
-        mapping_fic_col = (String) paths.c("Mapping")[ind];
-        crit1 = paths.bool_filtre("Flux", "Adhesion");
-        ind = (int) whichf(b_and(crit1,crit2));
-        mapping_adh_col = (String) paths.c("Mapping")[ind];
+        if(Gestionnaire_en_cours.equals("Gamestop")) {
+            boolean[] crit1 = paths.bool_filtre("Flux","Comptable");
+            boolean[] crit2 = paths.bool_filtre("Gestionnaire", Gestionnaire_en_cours);
+            int ind = (int) whichf(b_and(crit1,crit2));
+            mapping_fic_col = (String) paths.c("Mapping")[ind];
+        } else {
+            boolean[] crit1 = paths.bool_filtre("Flux","Sinistre");
+            boolean[] crit2 = paths.bool_filtre("Gestionnaire", Gestionnaire_en_cours);
+            int ind = (int) whichf(b_and(crit1,crit2));
+            mapping_sin_col = (String) paths.c("Mapping")[ind];
+            crit1 = paths.bool_filtre("Flux", "Comptable");
+            ind = (int) whichf(b_and(crit1,crit2));
+            mapping_fic_col = (String) paths.c("Mapping")[ind];
+            crit1 = paths.bool_filtre("Flux", "Adhesion");
+            ind = (int) whichf(b_and(crit1,crit2));
+            mapping_adh_col = (String) paths.c("Mapping")[ind];
+        }
     }
     public static String get_path_adh(String[] listfiles) {
         for (String listfile : listfiles) {
@@ -465,7 +468,12 @@ public class App {
             return new DF(mapping_sin_g, vec, true);
         } else {
             boolean[] vec = logvec(mapping_adh_g.ncol, false);
-            int ind = find_in_arr_first_index(mapping_adh_g.header, mapping_adh_col);
+            int ind;
+            if(Gestionnaire_en_cours.equals("Gamestop")) {
+                ind = which_contains_first_index(mapping_adh_g.r(0),Police_en_cours_maj);
+            } else {
+                ind = find_in_arr_first_index(mapping_adh_g.header, mapping_adh_col);
+            }
             assert (ind != -1);
             vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
             vec[ind] = true;
