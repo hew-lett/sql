@@ -879,6 +879,7 @@ public class DF {
         boolean[] crit = b_and(keep, keep2);
         this.grille_gen = new DF(grille_gen_g, crit);
     }
+
     public void dna() {
         boolean[] keep = new boolean[ncol];
         Arrays.fill(keep, false);
@@ -919,7 +920,8 @@ public class DF {
             this.keep_cols(keep);
         }
     }
-    public void err(String msg) {
+    public void err(String msg, int n) {
+        System.err.println(n);
         System.out.println(msg);
         System.out.println(Police_en_cours);
         System.out.println(Controle_en_cours);
@@ -5274,6 +5276,7 @@ public class DF {
     } // delete?
     public void subst_columns(DF map) {
         for (int i = 0; i < this.header.length; i++) {
+            if(this.header[i] == null) continue;
             int ind = find_in_arr_first_index(map.c(1),this.header[i]);
             if (ind != -1) {
                 String value = (String) map.c(0)[ind];

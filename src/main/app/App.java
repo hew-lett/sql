@@ -80,10 +80,9 @@ public class App {
         mapping_global_init();
         get_yyyymm();
 
-      
+      parametrage.print();
         System.out.println(coltypes_B);
         long startTime = System.nanoTime();
-        parametrage.print(100);
         // RAPPORT SIN
         Object[] list_pays = unique_of(paths.c("Pays"));
         for (Object pays : list_pays) {
@@ -93,12 +92,14 @@ public class App {
                 Gestionnaire_en_cours = (String) gest;
 
                 get_map_cols();
-                DF map_sin = mapping_filtre(true);
-                DF map_fic = new DF();
-                if(!Objects.equals(mapping_fic_col, "N.A.")){
-                    map_fic = mapping_filtre_fic();
+                DF map_fic = new DF();  DF map_sin = new DF(); DF map_adh = new DF();
+                if (!Gestionnaire_en_cours.equals("Gamestop")) {
+                    map_sin = mapping_filtre(true);
+                    if(!Objects.equals(mapping_fic_col, "N.A.")){
+                        map_fic = mapping_filtre_fic();
+                    }
+                    map_adh = mapping_filtre(false);
                 }
-                DF map_adh = mapping_filtre(false);
 
                 int ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Sinistre");
                 String dossier_sin = (String) paths.c("Path")[ind];
@@ -133,9 +134,12 @@ public class App {
 //                        System.out.println(path_sin);
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
-                        if(!Police_en_cours_maj.contains("MMPC")) continue;
+                        if(check_grille_gen()) continue;
 
-                        System.out.println("on fait sin " + Police_en_cours_maj);
+//                        if(!Police_en_cours_maj.contains("MMPC")) continue;
+                        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+
+                        System.out.println("sin " + Police_en_cours_maj);
 
                         if(!Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
                             get_map_cols();
@@ -153,6 +157,10 @@ public class App {
                         }
 
                         for (Map.Entry<String, Method> set : controles_G.entrySet()) {
+                            if(Police_en_cours_maj.equals("ICICDDP19")) {
+                                System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+                                System.out.println(set.getKey());
+                            }
 //                            System.out.println(set.getKey());
                             if (params_G.get(set.getKey())) {
                                 set.getValue().invoke(base, base_adh);
@@ -183,15 +191,17 @@ public class App {
                     }
 
                     for (String path_sin : list_sin) {
-                        System.out.println(path_sin);
+//                        System.out.println(path_sin);
 
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
-                        if(!Police_en_cours_maj.contains("MMPC")) continue;
-                        System.out.println("fic " + Police_en_cours_maj);
-                        base_fic_total.print(100);
+//                        if(!Police_en_cours_maj.contains("MMPC")) continue;
+                        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
-                        if(!Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
+                        System.out.println("fic " + Police_en_cours_maj);
+                        if(check_grille_gen()) continue;
+
+                        if(Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
                             get_map_cols();
                             map_sin = mapping_filtre(true);
                             map_fic = mapping_filtre_fic();
@@ -199,6 +209,10 @@ public class App {
 
                         DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
                         DF base_fic = get_fic(dossier_fic, list_fic, delim_fic, map_fic, base_fic_total);
+                        if(base_fic.df == null) {
+                            err_simple("fic absent!");
+                            continue;
+                        }
 
                         base_fic.get_grille_gen();
                         if(base_fic.grille_gen.df == null) {
@@ -206,9 +220,10 @@ public class App {
                             continue;
                         }
 
-                        base_fic.print();
+//                        base_fic.print();
                         base_fic.fic_hors_la_liste_controle_K0(map_fic);
                         for (Map.Entry<String, Method> set : controles_fic_G.entrySet()) {
+
                             if (params_fic_G.get(set.getKey())) {
                                 set.getValue().invoke(base_fic, base);
                             } else {
@@ -258,6 +273,12 @@ public class App {
     }
 
     // INTEGRATION
+    public static boolean check_grille_gen() {
+        boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
+        boolean[] keep2 = find_in_arr(grille_gen_g.c("Flux"), Flux_en_cours);
+        boolean[] crit = b_and(keep, keep2);
+        return (sum_boolean(crit) == 0);
+    }
     public static boolean check_flux(String flux) {
         return (parametrage.c_filtre_2("Statut", "Gestionnaire", Gestionnaire_en_cours, "Flux", flux)[0].equals("oui"));
     }
@@ -379,9 +400,6 @@ public class App {
             case "SPB Italie":
             case "Expert":
             case "Distante":
-                System.out.println("check");
-                System.out.println(path);
-                System.out.println(get_all_occurences(path, '.'));
                 ind = get_all_occurences(path, '.');
                 if (ind.isEmpty()) {
                     err("pb naming italie: " + path);
@@ -1089,6 +1107,7 @@ public class App {
     }
 
     public static void err(String msg) {
+        System.err.println(new Throwable().getStackTrace()[0].getLineNumber());
         System.out.println(msg);
         System.out.println(Police_en_cours);
         System.out.println(Controle_en_cours);
