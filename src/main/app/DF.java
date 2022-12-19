@@ -920,8 +920,8 @@ public class DF {
             this.keep_cols(keep);
         }
     }
-    public void err(String msg, int n) {
-        System.err.println(n);
+    public void err(String msg) {
+//        System.err.println(n);
         System.out.println(msg);
         System.out.println(Police_en_cours);
         System.out.println(Controle_en_cours);
@@ -1018,6 +1018,9 @@ public class DF {
         return vec;
     }
     public boolean[] one_dim_grille(DF grille) {
+//        System.out.println(Controle_en_cours);
+//        grille.printgrille();
+
         String col = grille.header[1];
         String[] refer = Arrays.copyOf(grille.c(col), grille.c(col).length, String[].class);
         boolean[] vec;
@@ -1198,94 +1201,96 @@ public class DF {
                 vec[i] = true;
                 continue;
             }
+
             String col = "Valeur_Catalogue";
             String colg = "Valeur_Catalogue Borne haute";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-
-            cell_base_dbl = (Double) this.c(col)[i];
-            if (cell_base_dbl != null) {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    cell_grille_dbl = (Double) grille.c(colg)[r];
-                    if(!(cell_grille_dbl >= cell_base_dbl | cell_grille_dbl.equals(NA_DBL))){
-                        temp[ind] = true;
+                cell_base_dbl = (Double) this.c(col)[i];
+                if (cell_base_dbl != null) {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dbl = (Double) grille.c(colg)[r];
+                        if(!(cell_grille_dbl >= cell_base_dbl | cell_grille_dbl.equals(NA_DBL))){
+                            temp[ind] = true;
+                        }
+                        ind++;
                     }
-                    ind++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
-                    if (temp[t]) {
-                        reste.remove(t);
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
                     }
-                }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    continue;
-                }
-            } else {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    cell_grille_dbl = (Double) grille.c(colg)[r];
-                    if(!cell_grille_dbl.equals(NA_DBL)) {
-                        temp[ind] = true;
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        continue;
                     }
-                    ind++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
-                    if (temp[t]) {
-                        reste.remove(t);
+                } else {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dbl = (Double) grille.c(colg)[r];
+                        if(!cell_grille_dbl.equals(NA_DBL)) {
+                            temp[ind] = true;
+                        }
+                        ind++;
                     }
-                }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    continue;
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        continue;
+                    }
                 }
             }
 
             col = "Valeur_Catalogue";
             colg = "Valeur_Catalogue Borne basse";
-            cell_base_dbl = (Double) this.c(col)[i];
-            if (cell_base_dbl != null) {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    cell_grille_dbl = (Double) grille.c(colg)[r];
-                    if(!(cell_grille_dbl <= cell_base_dbl | cell_grille_dbl.equals(NA_DBL))) {
-                        temp[ind] = true;
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                cell_base_dbl = (Double) this.c(col)[i];
+                if (cell_base_dbl != null) {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dbl = (Double) grille.c(colg)[r];
+                        if(!(cell_grille_dbl <= cell_base_dbl | cell_grille_dbl.equals(NA_DBL))) {
+                            temp[ind] = true;
+                        }
+                        ind++;
                     }
-                    ind++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
+                    for (int t = temp.length-1; t >= 0; t--) {
                         if (temp[t]) {
                             reste.remove(t);
                         }
                     }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    continue;
-                }
-            } else {
-                boolean[] temp = new boolean[reste.size()];
-                int ind = 0;
-                for (int r : reste) {
-                    cell_grille_dbl = (Double) grille.c(colg)[r];
-                    if(!(cell_grille_dbl.equals(NA_DBL))) {
-                        temp[ind] = true;
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        continue;
                     }
-                    ind++;
-                }
-                for (int t = temp.length-1; t >= 0; t--) {
-                    if (temp[t]) {
-                        reste.remove(t);
+                } else {
+                    boolean[] temp = new boolean[reste.size()];
+                    int ind = 0;
+                    for (int r : reste) {
+                        cell_grille_dbl = (Double) grille.c(colg)[r];
+                        if(!(cell_grille_dbl.equals(NA_DBL))) {
+                            temp[ind] = true;
+                        }
+                        ind++;
                     }
-                }
-                if (reste.isEmpty()) {
-                    vec[i] = true;
-                    continue;
+                    for (int t = temp.length-1; t >= 0; t--) {
+                        if (temp[t]) {
+                            reste.remove(t);
+                        }
+                    }
+                    if (reste.isEmpty()) {
+                        vec[i] = true;
+                        continue;
+                    }
                 }
             }
-        }
 
             col = "Code_Client";
             colg = "Retraitement Code_Client";
@@ -1501,8 +1506,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                colg = "Date_Clôture borne basse";
+            colg = "Date_Clôture borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                Date date_clot = (Date) this.c(col)[i];
                 if (date_clot != NA_DAT) {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
@@ -1543,37 +1551,44 @@ public class DF {
                 }
             }
 
-            if (reste.size() > 1) {
-                vec[i] = true;
-                err("error lignes multiples");
-                continue;
-            }
-            int reste_i = reste.get(0);
-
             col = "Date_Souscription_Adhésion";
             String col1 = "Date_Survenance";
             colg = "Age";
+            int reste_age = reste.get(0);
+            int reste_i = -1;
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(header, col1) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-                double age_ref = (double) grille.c(colg)[reste_i];
+                double age_ref = (double) grille.c(colg)[reste_age];
                 if(!Objects.equals(age_ref, NA_DBL)) {
-
                     LocalDate date_sous = to_Date((Date) this.c(col)[i]);
                     LocalDate date_surv = to_Date((Date) this.c(col1)[i]);
                     if (date_sous != NA_LDAT & date_surv != NA_LDAT) {
-                            String m = (String) grille.c("Date_Souscription_Adhésion borne basse <= Date_Survenance")[reste_i];
+                            String m = (String) grille.c("Date_Souscription_Adhésion borne basse <= Date_Survenance")[reste_age];
                             int months = NumberUtils.toInt(m.replaceAll("\\D+",""),0);
                             if (date_sous.plusMonths(months).isBefore(date_surv)) {
                                 vec[i] = true;
                                 continue;
                             }
                             int age = Period.between(date_sous.plusMonths(months), date_surv).getYears();
-                            if(!(age == age_ref | Objects.equals(age_ref, NA_DBL))) {
-                                vec[i] = true;
+                            for (int r : reste) {
+                                if (age == (double) grille.c(colg)[r]) {
+                                    reste_i = r;
+                                    break;
+                                }
                             }
+//                            if(!(age == age_ref | Objects.equals(age_ref, NA_DBL))) {
+//                                vec[i] = true;
+//                            }
                     } else {
                         vec[i] = true;
+                        continue;
                     }
                 }
+            }
+
+            if (reste_i == -1) {
+                vec[i] = true;
+//                err("error age");
+                continue;
             }
 
             col = "Montant_Indemnité_Principale";
@@ -1698,7 +1713,6 @@ public class DF {
             String col = "Valeur_Catalogue";
             String colg = "Valeur_Catalogue Borne haute";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -1739,8 +1753,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                colg = "Valeur_Catalogue Borne basse";
+            col = "Valeur_Catalogue";
+            colg = "Valeur_Catalogue Borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -1968,7 +1985,6 @@ public class DF {
             String col = "Valeur_Catalogue";
             String colg = "Valeur_Catalogue Borne haute";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -2009,9 +2025,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                col = "Valeur_Catalogue";
-                colg = "Valeur_Catalogue Borne basse";
+            col = "Valeur_Catalogue";
+            colg = "Valeur_Catalogue Borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -2162,8 +2180,8 @@ public class DF {
             }
 
             col = "Date_Clôture";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
-                colg = "Date_Clôture borne haute";
+            colg = "Date_Clôture borne haute";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 Date date_clot = (Date) this.c(col)[i];
                 if (date_clot != NA_DAT) {
                     boolean[] temp = new boolean[reste.size()];
@@ -2203,8 +2221,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                colg = "Date_Clôture borne basse";
+            colg = "Date_Clôture borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                Date date_clot = (Date) this.c(col)[i];
                 if (date_clot != NA_DAT) {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
@@ -2244,37 +2265,45 @@ public class DF {
                     }
                 }
             }
-            if (reste.size() > 1) {
-                vec[i] = true;
-                err("error age multiple");
-                break;
-            }
-            int reste_i = reste.get(0);
 
             col = "Date_Souscription_Adhésion";
             String col1 = "Date_Survenance";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(header, col1) != -1 & find_in_arr_first_index(grille.header, "Date_Souscription_Adhésion borne basse <= Date_Survenance") != -1) {
-                double age_ref = (double) grille.c("Age")[reste_i];
-                LocalDate date_sous = to_Date((Date) this.c(col)[i]);
-                LocalDate date_surv = to_Date((Date) this.c(col1)[i]);
-                if (date_sous != NA_LDAT & date_surv != NA_LDAT) {
-                    String m = (String) grille.c("Date_Souscription_Adhésion borne basse <= Date_Survenance")[reste_i];
-                    int months = NumberUtils.toInt(m.replaceAll("\\D+",""),0);
-                    if (date_sous.plusMonths(months).isBefore(date_surv)) {
-                        vec[i] = true;
-                        continue;
-                    }
-                    int age = Period.between(date_sous.plusMonths(months), date_surv).getYears();
-                    if(!(age == age_ref | Objects.equals(age_ref, NA_DBL))) {
-                        vec[i] = true;
-                        continue;
-                    }
-                } else {
-                    if(!Objects.equals(age_ref, NA_DBL)) {
+            colg = "Age";
+            int reste_age = reste.get(0);
+            int reste_i = -1;
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(header, col1) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                double age_ref = (double) grille.c(colg)[reste_age];
+                if(!Objects.equals(age_ref, NA_DBL)) {
+                    LocalDate date_sous = to_Date((Date) this.c(col)[i]);
+                    LocalDate date_surv = to_Date((Date) this.c(col1)[i]);
+                    if (date_sous != NA_LDAT & date_surv != NA_LDAT) {
+                        String m = (String) grille.c("Date_Souscription_Adhésion borne basse <= Date_Survenance")[reste_age];
+                        int months = NumberUtils.toInt(m.replaceAll("\\D+",""),0);
+                        if (date_sous.plusMonths(months).isBefore(date_surv)) {
+                            vec[i] = true;
+                            continue;
+                        }
+                        int age = Period.between(date_sous.plusMonths(months), date_surv).getYears();
+                        for (int r : reste) {
+                            if (age == (double) grille.c(colg)[r]) {
+                                reste_i = r;
+                                break;
+                            }
+                        }
+//                            if(!(age == age_ref | Objects.equals(age_ref, NA_DBL))) {
+//                                vec[i] = true;
+//                            }
+                    } else {
                         vec[i] = true;
                         continue;
                     }
                 }
+            }
+
+            if (reste_i == -1) {
+                vec[i] = true;
+//                err("error age");
+                continue;
             }
 
             col = "Montant_Reprise";
@@ -2313,7 +2342,6 @@ public class DF {
             mr = (Double) this.c(col)[i];
             vec[i] = !compa_signe(mr,mr_ref,signe);
         }
-
 
         this.err_vec_handle(vec);
     } // g
@@ -2406,9 +2434,8 @@ public class DF {
             }
 
             String col = "Valeur_Catalogue";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
-
-                String colg = "Valeur_Catalogue Borne haute";
+            String colg = "Valeur_Catalogue Borne haute";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -2449,9 +2476,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                col = "Valeur_Catalogue";
-                colg = "Valeur_Catalogue Borne basse";
+            col = "Valeur_Catalogue";
+            colg = "Valeur_Catalogue Borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -2495,7 +2524,7 @@ public class DF {
             }
 
             col = "Critère_Identification_Bien_Garanti_1";
-            String colg = "Référentiel Marque";
+            colg = "Référentiel Marque";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_str = (String) this.c(col)[i];
                 switch (cell_base_str) {
@@ -2602,8 +2631,8 @@ public class DF {
             }
 
             col = "Date_Clôture";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, col) != -1) {
-                colg = "Date_Clôture borne haute";
+            colg = "Date_Clôture borne haute";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 Date date_clot = (Date) this.c(col)[i];
                 if (date_clot != NA_DAT) {
                     boolean[] temp = new boolean[reste.size()];
@@ -2643,8 +2672,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                colg = "Date_Clôture borne basse";
+            colg = "Date_Clôture borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                Date date_clot = (Date) this.c(col)[i];
                 if (date_clot != NA_DAT) {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
@@ -2685,9 +2717,9 @@ public class DF {
                 }
             }
 
+            col = "Montant_Indemnité_Principale";
             colg = "Valeur Montant_Indemnité_Principale";
-            if(find_in_arr_first_index(grille.header, colg) != -1) {
-                col = "Montant_Indemnité_Principale";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 boolean[] temp = new boolean[reste.size()];
                 int ind = 0;
                 for (int id : reste) {
@@ -2714,8 +2746,15 @@ public class DF {
 
             if (reste.size() > 1) {
                 vec[i] = true;
-                err("error montant multiple");
-                continue;
+                System.out.println("ERROR");
+                for (int ii : reste) {
+                    System.out.println(Arrays.toString(grille.r(ii)));
+                }
+                System.out.println(reste);
+                System.out.println(i);
+                break;
+//                err("error montant multiple");
+//                continue;
             }
 
             col = "Montant_Frais_Annexe";
@@ -2841,7 +2880,6 @@ public class DF {
             String col = "Valeur_Catalogue";
             String colg = "Valeur_Catalogue Borne haute";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -2882,9 +2920,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                col = "Valeur_Catalogue";
-                colg = "Valeur_Catalogue Borne basse";
+            col = "Valeur_Catalogue";
+            colg = "Valeur_Catalogue Borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -3236,7 +3276,6 @@ public class DF {
             String col = "Valeur_Catalogue";
             String colg = "Valeur_Catalogue Borne haute";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -3277,9 +3316,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                col = "Valeur_Catalogue";
-                colg = "Valeur_Catalogue Borne basse";
+            col = "Valeur_Catalogue";
+            colg = "Valeur_Catalogue Borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -3491,7 +3532,6 @@ public class DF {
             String col = "Valeur_Catalogue";
             String colg = "Valeur_Catalogue Borne haute";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -3532,9 +3572,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                col = "Valeur_Catalogue";
-                colg = "Valeur_Catalogue Borne basse";
+            col = "Valeur_Catalogue";
+            colg = "Valeur_Catalogue Borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_dbl = (Double) this.c(col)[i];
                 if (cell_base_dbl != null) {
                     boolean[] temp = new boolean[reste.size()];
@@ -3791,8 +3833,11 @@ public class DF {
                         continue;
                     }
                 }
+            }
 
-                colg = "Date_Clôture borne basse";
+            colg = "Date_Clôture borne basse";
+            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
+                Date date_clot = (Date) this.c(col)[i];
                 if (date_clot != NA_DAT) {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
@@ -4627,6 +4672,7 @@ public class DF {
             if (grille_gen_controle_absent()) continue; // pochemu ne prohodit
 //            grilles_G.forEach((key, value) -> System.out.println(key + " " + value));
             DF grille = new DF(grilles_G.get(Controle_en_cours), Police_en_cours);
+            if (grille.df == null) continue;
             this.err_vec_handle(this.one_dim_grille(grille));
         }
     }
@@ -4721,7 +4767,7 @@ public class DF {
         String col4 = "Critère_Identification_Bien_Garanti_5";
         String colg = "Nombre Critère_Bien_Garanti_5";
         String[] cols = {"Numéro_Police",col3,col4};
-        String[] crit = {"Statut_Technique_Sinistre", "SKU","Canal_Adhésion"};
+        String[] crit = {"Statut_Technique_Sinistre", "Libellé_Garantie","SKU","Canal_Adhésion"};
 
         boolean[] vec;
         if (!App.check_in(cols,this.header)) {
@@ -4803,6 +4849,10 @@ public class DF {
 
             if (reste.size() > 1) {
                 vec[i] = true;
+                for (int rr : reste) {
+                    System.out.println(Arrays.toString(grille.r(rr)));
+                }
+                System.out.println(i);
                 err("error lignes multiples");
                 continue;
             }
@@ -4943,9 +4993,12 @@ public class DF {
 
         int ind = find_in_arr_first_index(map_fic.c(0), "FIC_Clé");
         String fic_cle = (String) map_fic.c(mapping_fic_col)[ind];
-        fic_cle = fic_cle.substring(fic_cle.indexOf(':')+1).replaceAll("\\s+","");
+        fic_cle = fic_cle.substring(fic_cle.indexOf(':')+1);
+        //.replaceAll("\\s+","")
         String[] cols = fic_cle.split("&");
-
+        for (int i = 0; i < cols.length; i++) {
+            cols[i] = cols[i].trim();
+        }
         DF map = mapping_filtre_fic();
         for (int i = 0; i < cols.length; i++) {
             if(App.check_in(cols[i],map.c(1))) {
@@ -4953,7 +5006,8 @@ public class DF {
                 cols[i] = (String) map.c(0)[ind];
             }
         }
-
+//        System.out.println(Arrays.toString(cols));
+//        System.out.println(Arrays.toString(this.header));
         if (!App.check_in(cols,this.header)) {
             err("missing columns");
             this.err_vec_handle(logvec(this.nrow,true));
@@ -5275,6 +5329,8 @@ public class DF {
         return out;
     } // delete?
     public void subst_columns(DF map) {
+//        System.out.println("checker");
+//        System.out.println(Arrays.toString(map.c(1)));
         for (int i = 0; i < this.header.length; i++) {
             if(this.header[i] == null) continue;
             int ind = find_in_arr_first_index(map.c(1),this.header[i]);
@@ -5284,7 +5340,9 @@ public class DF {
                     this.header[i] = value;
                 }
             } else {
-                err("col not found " + this.header[i]);
+                if(!this.header[i].startsWith("Periode_reglement")) {
+                    err_simple("col not found mapping " + this.header[i]);
+                }
             }
         }
 
@@ -5315,6 +5373,8 @@ public class DF {
         return this.c("Bloquant")[ind].equals("oui");
     }
     public void err_vec_handle(boolean[] vec) {
+        System.out.println("controle" + Controle_en_cours);
+        System.out.println(sum_boolean(vec));
         for (int i = 0; i < this.nrow; i++) {
             if(vec[i]) {
                 Rapport.get(0).add(Police_en_cours_maj);

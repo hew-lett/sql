@@ -90,7 +90,8 @@ public class App {
             Object[] list_gestionnaire = unique_of(paths.c_filtre("Gestionnaire","Pays",Pays_en_cours));
             for (Object gest : list_gestionnaire) {
                 Gestionnaire_en_cours = (String) gest;
-
+                System.out.println();
+                System.out.println("---" + Gestionnaire_en_cours + "---");
                 get_map_cols();
                 DF map_fic = new DF();  DF map_sin = new DF(); DF map_adh = new DF();
                 if (!Gestionnaire_en_cours.equals("Gamestop")) {
@@ -147,8 +148,12 @@ public class App {
                             map_adh = mapping_filtre(false);
                         }
 
+
                         DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
+//                        System.out.println("here?");
+//                        map_adh.printgrille();
                         DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
+//                        System.out.println("after?");
 
                         base.get_grille_gen();
                         if(base.grille_gen.df == null) {
@@ -423,7 +428,7 @@ public class App {
                     err("pb naming pol/esp/sup: " + path);
                     return "";
                 } else {
-                    return path.substring(0, ind.get(1));
+                    return path.substring(0, ind.get(0));
                 }
         }
         return "";
@@ -497,7 +502,6 @@ public class App {
             vec[ind] = true;
             return new DF(mapping_adh_g, vec, true);
         }
-
     }
     public static DF mapping_filtre_fic() {
         boolean[] vec = logvec(mapping_sin_g.ncol, false);
@@ -595,7 +599,6 @@ public class App {
         }
         return out;
     }
-
     public static String[] filter_array_by(String[] arr, String by) {
         return filter_array_by(arr, by, false);
     }
@@ -624,7 +627,6 @@ public class App {
         System.arraycopy(arr, 0, out, 0, j);
         return out;
     }
-
     public static Object[] keep_from_array(Object[] arr, boolean[] which) {
         int len = sum_boolean(which);
         Object[] out = new Object[len];
@@ -637,7 +639,6 @@ public class App {
         }
         return out;
     }
-
     public static String[] keep_from_array(String[] arr, boolean[] which) {
         int len = sum_boolean(which);
         String[] out = new String[len];
@@ -650,7 +651,6 @@ public class App {
         }
         return out;
     }
-
     public static int[] keep_from_array(int[] arr, boolean[] which) {
         int len = sum_boolean(which);
         int[] out = new int[len];
@@ -663,7 +663,6 @@ public class App {
         }
         return out;
     }
-
     public static DF.Col_types[] keep_from_array(DF.Col_types[] arr, boolean[] which) {
         int len = sum_boolean(which);
         DF.Col_types[] out = new DF.Col_types[len];
@@ -677,7 +676,6 @@ public class App {
         }
         return out;
     }
-
     public static int[] which(boolean[] bool) {
         int sum = sum_boolean(bool);
         if (sum == 0) {
@@ -693,7 +691,6 @@ public class App {
         }
         return vec;
     }
-
     public static Object whichf(boolean[] bool) {
         for (int i = 0; i < bool.length; i++) {
             if (bool[i]) {
@@ -702,7 +699,6 @@ public class App {
         }
         return -1;
     }
-
     public static boolean[] find_in_arr(Object[] arr, Object value) {
         final int len = arr.length;
         boolean[] out = new boolean[len];
@@ -711,7 +707,6 @@ public class App {
         }
         return out;
     }
-
     public static boolean[] find_in_arr2(String[] arr, String value1, String value2) {
         final int len = arr.length;
         boolean[] out = new boolean[len];
@@ -720,7 +715,6 @@ public class App {
         }
         return out;
     }
-
     public static boolean[] find_in_arr3(String[] arr, String value1, String value2, String value3) {
         final int len = arr.length;
         boolean[] out = new boolean[len];
@@ -729,7 +723,6 @@ public class App {
         }
         return out;
     }
-
     public static int find_in_arr_first_index(Object[] arr, Object value) {
         final int len = arr.length;
         int out = -1;
@@ -763,19 +756,16 @@ public class App {
         }
         return out;
     }
-
     public static Object[] unique_of(Object[] arr) {
         if (arr.length == 1) return arr;
         Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new Object[0]))); //ofNullable bilo ranshe hz
         return hash.toArray(new Object[0]);
     }
-
     public static Integer[] unique_of(Integer[] arr) {
         if (arr.length == 1) return arr;
         Set<Integer> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new Integer[0]))); //ofNullable bilo ranshe hz
         return hash.toArray(new Integer[0]);
     }
-
     public static int[] unique_of(int[] arr) {
         if (arr.length == 1) return arr;
         HashMap<Integer, Integer> hashmap = new HashMap<Integer, Integer>();
@@ -789,7 +779,6 @@ public class App {
         }
         return int_arr;
     }
-
     public static boolean[] unique_bool(Object[] arr) {
         Set<Object> hash = new LinkedHashSet<>();
         boolean[] out = new boolean[arr.length];
@@ -798,7 +787,6 @@ public class App {
         }
         return out;
     }
-
     public static int sum_boolean(boolean[] vector_boolean) {
         int sum = 0;
         for (boolean b : vector_boolean) {
@@ -806,7 +794,6 @@ public class App {
         }
         return sum;
     }
-
     public static boolean[] b_and(boolean[] arr1, boolean[] arr2) {
         assert (arr1.length == arr2.length);
         boolean[] out = new boolean[arr1.length];
@@ -815,7 +802,6 @@ public class App {
         }
         return out;
     }
-
     public static boolean[] a_and_b_and_c(boolean[] arr1, boolean[] arr2, boolean[] arr3) {
         assert (arr1.length == arr2.length);
         boolean[] out = new boolean[arr1.length];
@@ -824,7 +810,6 @@ public class App {
         }
         return out;
     }
-
     public static Integer[] push_to_end_ind(String[] arr, String[] pushed) {
         Integer[] out = new Integer[arr.length];
         int j = 0;
@@ -840,7 +825,6 @@ public class App {
         }
         return out;
     }
-
     public static Integer[] arr_concat(Integer[] arr1, Integer[] arr2) {
         int fal = arr1.length;
         int sal = arr2.length;
@@ -849,7 +833,6 @@ public class App {
         System.arraycopy(arr2, 0, result, fal, sal);
         return result;
     }
-
     public static Object[] arr_concat(Object[] arr1, Object[] arr2) {
         int fal = arr1.length;
         int sal = arr2.length;
@@ -858,7 +841,6 @@ public class App {
         System.arraycopy(arr2, 0, result, fal, sal);
         return result;
     }
-
     public static Object[] arr_merge(Object[] arr1, Object[] arr2) {
         int fal = arr1.length;
         int sal = arr2.length;
@@ -868,7 +850,6 @@ public class App {
         result = unique_of(result);
         return result;
     }
-
     public static int[] arr_merge(int[] arr1, int[] arr2) {
         int fal = arr1.length;
         int sal = arr2.length;
@@ -878,7 +859,6 @@ public class App {
         result = unique_of(result);
         return result;
     }
-
     public static boolean in(Object str, Object[] arr) {
         for (Object s : arr) {
             if (s.equals(str)) {
@@ -887,7 +867,6 @@ public class App {
         }
         return false;
     }
-
     public static boolean arr1_contains_arr2(String[] arr1, String[] arr2) {
         for (String s : arr2) {
             if (!in(s, arr1)) {
@@ -896,7 +875,6 @@ public class App {
         }
         return true;
     }
-
     public static Integer[] sortIndices(int[] input, boolean descending) {
 
         Integer[] indices = new Integer[input.length];
@@ -921,7 +899,6 @@ public class App {
 
         return indices;
     }
-
     public static Integer[] sort_by_2_vars(int[] arr1, int[] arr2, int interval, int total) {
         int[] var1 = Arrays.copyOf(arr1, arr1.length);
         int[] var2 = Arrays.copyOf(arr2, arr2.length);
@@ -957,7 +934,6 @@ public class App {
 
         return second_sort;
     }
-
     public static Object[] shuffle(Object[] arr, Integer[] idx) {
         int len = arr.length;
         Object[] out = new Object[len];
@@ -966,7 +942,6 @@ public class App {
         }
         return out;
     }
-
     public static int[] shuffle(int[] arr, Integer[] idx) {
         int len = arr.length;
         int[] out = new int[len];
@@ -975,7 +950,6 @@ public class App {
         }
         return out;
     }
-
     public static String[] shuffle(String[] arr, Integer[] idx) {
         int len = arr.length;
         String[] out = new String[len];
@@ -984,7 +958,6 @@ public class App {
         }
         return out;
     }
-
     public static Integer[] shuffle(Integer[] arr, Integer[] idx) {
         int len = arr.length;
         Integer[] out = new Integer[len];
@@ -993,11 +966,9 @@ public class App {
         }
         return out;
     }
-
     public static LocalDate to_Date(Date input) {
         return input.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
     }
-
     public static void write_csv(Integer[] arr) {
         BufferedWriter br = null;
         try {
@@ -1023,7 +994,6 @@ public class App {
             throw new RuntimeException(e);
         }
     }
-
     public static void rapport_save() {
         BufferedWriter br = null;
         try {
@@ -1054,7 +1024,6 @@ public class App {
             throw new RuntimeException(e);
         }
     }
-
     public static void grilles_collect(String path) throws IOException {
         path = wd + path;
         InputStream is = Files.newInputStream(new File(path).toPath());
@@ -1090,7 +1059,6 @@ public class App {
             writer.close();
         }
     }
-
     public static void get_grilles() throws IOException {
         File f = new File(path_grilles);
         String[] grilles = f.list();
@@ -1105,7 +1073,6 @@ public class App {
             grilles_G.put(name, df);
         }
     }
-
     public static void err(String msg) {
         System.err.println(new Throwable().getStackTrace()[0].getLineNumber());
         System.out.println(msg);
@@ -1115,7 +1082,6 @@ public class App {
     public static void err_simple(String msg) {
         System.out.println(msg + Police_en_cours);
     }
-
     public static boolean[] logvec(int dim, boolean values) {
         boolean[] out = new boolean[dim];
         Arrays.fill(out, values);
