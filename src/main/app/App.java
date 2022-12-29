@@ -12,6 +12,7 @@ import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.sql.SQLOutput;
 import java.text.ParseException;
@@ -28,7 +29,8 @@ public class App {
 
     public static final String wd = "E:/java_certif/wd/";
     public static final String path_grilles = wd + "grilles/";
-    public static final String encoding = "UTF-8";
+    public static final String path_grille_SS = "Grille SS sinistre BI.xlsx";
+    public static String encoding = "UTF-8";
     public static final String regex_digits = "[0-9]+";
     public static final String regex_letters = ".*[a-zA-Z].*";
     public static final Double NA_DBL = 9999099d;
@@ -70,7 +72,7 @@ public class App {
     public static String yyyymm = "default";
 
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
-//        grilles_collect(path_grilles); // le premier lancement chaque mois
+        grilles_collect(path_grille_SS); // le premier lancement chaque mois
         rapport_init();
         get_paths_et_parametrage();
         get_coltypes();
@@ -90,6 +92,11 @@ public class App {
             Object[] list_gestionnaire = unique_of(paths.c_filtre("Gestionnaire","Pays",Pays_en_cours));
             for (Object gest : list_gestionnaire) {
                 Gestionnaire_en_cours = (String) gest;
+                if(!Gestionnaire_en_cours.equals("Supporter")) {
+                    encoding = "UTF-8";
+                } else {
+                    encoding = "Cp1252";
+                }
                 System.out.println();
                 System.out.println("---" + Gestionnaire_en_cours + "---");
                 get_map_cols();
@@ -136,8 +143,7 @@ public class App {
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
                         if(check_grille_gen()) continue;
-
-//                        if(!Police_en_cours_maj.contains("MMPC")) continue;
+//                        if(!Police_en_cours_maj.equals("ICIFNAS19")) continue;
                         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
                         System.out.println("sin " + Police_en_cours_maj);
@@ -173,6 +179,7 @@ public class App {
                                 set.getValue().invoke(base);
                             }
                         }
+                        rapport_save();
                     } // par police
                 }
                 Flux_en_cours = "Comptable";
@@ -235,7 +242,7 @@ public class App {
                                 set.getValue().invoke(base_fic);
                             }
                         }
-
+                        rapport_save();
                     } // par police
                 }
 
@@ -247,7 +254,7 @@ public class App {
 
 //        rapport_print();
         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
-        rapport_save();
+//        rapport_save();
         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
     }
@@ -276,7 +283,6 @@ public class App {
 
         return(filter_array_by_containing(listSin, filtering_pattern));
     }
-
     // INTEGRATION
     public static boolean check_grille_gen() {
         boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
@@ -458,7 +464,7 @@ public class App {
                 return listfile;
             }
         }
-        return "";
+        return listfiles[0];
     }
     public static void get_paths_et_parametrage() throws IOException {
         paths = new DF(wd+"paths.xlsx",0,true,false);
@@ -534,6 +540,42 @@ public class App {
                 System.out.print(strings.get(i) + " | ");
             }
             System.out.println();
+        }
+    }
+    public static void rapport_save() {
+        BufferedWriter br = null;
+        try {
+            br = new BufferedWriter(new FileWriter(wd + "Rapports/" + Flux_en_cours + "_" + Police_en_cours_maj + ".csv"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        StringBuilder sb = new StringBuilder();
+
+// Append strings from array
+        for (int i = 0; i < Rapport.get(0).size(); i++) {
+            for (ArrayList<String> col : Rapport) {
+                sb.append(col.get(i));
+                sb.append(';');
+            }
+            sb.replace(sb.length() - 1, sb.length(), "\r\n");
+//            sb.append("\r\n");
+        }
+
+        try {
+            br.write(sb.toString());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            br.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        Rapport = new ArrayList<>();
+        String[] rapport_cols = {"Police", "Flux", "Controle", "ID"};
+        for (int i = 0; i < rapport_cols.length; i++) {
+            Rapport.add(new ArrayList<>());
+            Rapport.get(i).add(rapport_cols[i]);
         }
     }
 
@@ -994,36 +1036,6 @@ public class App {
             throw new RuntimeException(e);
         }
     }
-    public static void rapport_save() {
-        BufferedWriter br = null;
-        try {
-            br = new BufferedWriter(new FileWriter(wd + "Rapport.csv"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        StringBuilder sb = new StringBuilder();
-
-// Append strings from array
-        for (int i = 0; i < Rapport.get(0).size(); i++) {
-            for (ArrayList<String> col : Rapport) {
-                sb.append(col.get(i));
-                sb.append(';');
-            }
-            sb.replace(sb.length() - 1, sb.length(), "\r\n");
-//            sb.append("\r\n");
-        }
-
-        try {
-            br.write(sb.toString());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            br.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
     public static void grilles_collect(String path) throws IOException {
         path = wd + path;
         InputStream is = Files.newInputStream(new File(path).toPath());
@@ -1041,11 +1053,16 @@ public class App {
         }
 
         for (String s : sheetNames) {
+            System.out.println(s);
+            if (!Objects.equals(s, "C210")) continue;
+            System.out.println(s);
+
             CSVWriter writer = (CSVWriter) new CSVWriterBuilder(new FileWriter(path_grilles + s + ".csv"))
                     .withSeparator('\t')
                     .build();
             DF grille = new DF(path, s, true, true);
-
+            System.out.println(s);
+            grille.printgrille();
             grille.dna();
 
             writer.writeNext(grille.header);
@@ -1074,13 +1091,13 @@ public class App {
         }
     }
     public static void err(String msg) {
-        System.err.println(new Throwable().getStackTrace()[0].getLineNumber());
+//        System.err.println(new Throwable().getStackTrace()[0].getLineNumber());
         System.out.println(msg);
         System.out.println(Police_en_cours);
         System.out.println(Controle_en_cours);
     }
     public static void err_simple(String msg) {
-        System.out.println(msg + Police_en_cours);
+        System.out.println(msg + " " + Police_en_cours);
     }
     public static boolean[] logvec(int dim, boolean values) {
         boolean[] out = new boolean[dim];
