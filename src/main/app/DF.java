@@ -194,7 +194,6 @@ public class DF {
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
         settings.trimValues(true);
-        System.out.println(path);
         try(Reader inputReader = new InputStreamReader(Files.newInputStream(
                 new File(path).toPath()), encoding)){
             CsvParser parser = new CsvParser(settings);
@@ -340,60 +339,73 @@ public class DF {
         df = new ArrayList<>(ncol);
         this.df_populate(coltypes);
 
+        System.out.println("--------------------------------------------mapping");
+        System.out.println(path);
         int col_iterator;
-        int ct_iterator;
         int row_number = 0;
-        System.out.println(Arrays.toString(coltypes));
-        int counter = 0;
         while(rowIter.hasNext()) {
             row = rowIter.next();
+            if (i == 73) {
+                System.out.println("+++++++++++++++++++++++");
+                System.out.println(row);
+            }
+            int cell_number = row.getLastCellNum()-1;
             col_iterator = 0;
-            ct_iterator = 0;
             if (tolower) {
-                counter++;
-                System.out.println(row.getPhysicalNumberOfCells());
-                for (Cell c : row) {
-                    if (counter < 16) {
-                        System.out.println("16");
-                        System.out.println(coltypes[ct_iterator] != Col_types.SKP);
-                        System.out.println((c.getCellTypeEnum().name().equals("FORMULA")));
-                        System.out.println("/" + get_lowercase_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]) + "/");
-                    }
-                    if (coltypes[ct_iterator] != Col_types.SKP) {
-                            if(c.getCellTypeEnum().name().equals("FORMULA")) {
-                                if(c.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
-                                    df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(c.getCellFormula(),coltypes[ct_iterator]);      // bad formula
+
+                for (int c = 0; c <= cell_number; c++) {
+                    if (coltypes[c] != Col_types.SKP) {
+                        Cell cell_i = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                        if (cell_i == null) {
+                            switch(coltypes[c]) {
+                                case STR -> df.get(col_iterator)[row_number] = "";
+                                case DBL -> df.get(col_iterator)[row_number] = NA_DBL;
+                                case DAT -> df.get(col_iterator)[row_number] = NA_DAT;
+                            }
+                            col_iterator++;
+                            continue;
+                        }
+                            if(cell_i.getCellTypeEnum().name().equals("FORMULA")) {
+                                if(cell_i.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
+                                    df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(cell_i.getCellFormula(),coltypes[c]);      // bad formula
                                 } else {
-                                    df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);  // good formula
+                                    df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(cell_i.getStringCellValue(),coltypes[c]);  // good formula
                                 }
                             } else {
-                                df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);      // no formula
+                                df.get(col_iterator)[row_number] = get_lowercase_cell_of_type(cell_i.getStringCellValue(),coltypes[c]);      // no formula
                             }
                             col_iterator++;
                         }
-                    ct_iterator++;
                 }
             } else {
-                for (Cell c : row) {
-                    if (coltypes[ct_iterator] != Col_types.SKP) {
-                        if(c.getCellTypeEnum().name().equals("FORMULA")) {
-                            if(c.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
-                                df.get(col_iterator)[row_number] = get_cell_of_type(c.getCellFormula(),coltypes[ct_iterator]);      // bad formula
+                for (int c = 0; c <= cell_number; c++) {
+                    if (coltypes[c] != Col_types.SKP) {
+                        Cell cell_i = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                        if (cell_i == null) {
+                            switch(coltypes[c]) {
+                                case STR -> df.get(col_iterator)[row_number] = "";
+                                case DBL -> df.get(col_iterator)[row_number] = NA_DBL;
+                                case DAT -> df.get(col_iterator)[row_number] = NA_DAT;
+                            }
+                            col_iterator++;
+                            continue;
+                        }
+                        if(cell_i.getCellTypeEnum().name().equals("FORMULA")) {
+                            if(cell_i.getCachedFormulaResultTypeEnum().name().equals("ERROR")) {
+                                df.get(col_iterator)[row_number] = get_cell_of_type(cell_i.getCellFormula(),coltypes[c]);      // bad formula
                             } else {
-                                df.get(col_iterator)[row_number] = get_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);  // good formula
+                                df.get(col_iterator)[row_number] = get_cell_of_type(cell_i.getStringCellValue(),coltypes[c]);  // good formula
                             }
                         } else {
-                            df.get(col_iterator)[row_number] = get_cell_of_type(c.getStringCellValue(),coltypes[ct_iterator]);      // no formula
+                            df.get(col_iterator)[row_number] = get_cell_of_type(cell_i.getStringCellValue(),coltypes[c]);      // no formula
                         }
                         col_iterator++;
                     }
-                    ct_iterator++;
                 }
             }
 
             row_number++;
         }
-
         this.header_refactor();
         this.remove_leading_zeros();
     }
@@ -747,29 +759,31 @@ public class DF {
         return base;
     }
     public Object get_cell_of_type (String cell, Col_types type) {
+        if (cell.contains("Lieu_de")) {
+            System.out.println(cell.trim() + "--------------");
+        }
         Object out = null;
-        switch(type){
-            case STR:
+        switch (type) {
+            case STR -> {
                 if (cell == null) return "";
-                out = cell;
-                break;
-            case DBL:
+                return cell.trim();
+            }
+            case DBL -> {
                 if (cell == null) return NA_DBL;
                 try {
-                    out = Double.parseDouble(cell.replace(",","."));
+                    return Double.parseDouble(cell.replace(",", "."));
                 } catch (NumberFormatException ignored) {
-                    out = NA_DBL;
+                    return NA_DBL;
                 }
-                break;
-            case DAT:
+            }
+            case DAT -> {
                 if (cell == null) return NA_DAT;
                 try {
-                    out = format.parse(cell);
+                    return format.parse(cell);
+                } catch (NullPointerException | ParseException ignored) {
+                    return NA_DAT;
                 }
-                catch (NullPointerException | ParseException ignored) {
-                    out = NA_DAT;
-                }
-                break;
+            }
         }
         return out;
     }
@@ -778,22 +792,22 @@ public class DF {
         switch (type) {
             case STR -> {
                 if (cell == null) return "";
-                out = cell.toLowerCase();
+                return cell.toLowerCase().trim();
             }
             case DBL -> {
                 if (cell == null) return NA_DBL;
                 try {
-                    out = Double.parseDouble(cell.replace(",", "."));
+                    return Double.parseDouble(cell.replace(",", "."));
                 } catch (NumberFormatException ignored) {
-                    out = NA_DBL;
+                    return NA_DBL;
                 }
             }
             case DAT -> {
                 if (cell == null) return NA_DAT;
                 try {
-                    out = format.parse(cell);
+                    return format.parse(cell);
                 } catch (NullPointerException | ParseException ignored) {
-                    out = NA_DAT;
+                    return NA_DAT;
                 }
             }
         }
@@ -1304,9 +1318,13 @@ public class DF {
 
             col = "Code_Client";
             colg = "Retraitement Code_Client";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-                cell_base_str = (String) this.c(col)[i];
-                if (cell_base_str != null) {
+            if(find_in_arr_first_index(grille.header, colg) != -1) {
+                if(find_in_arr_first_index(header, col) == -1) {
+                    cell_base_str = "";
+                } else {
+                    cell_base_str = (String) this.c(col)[i];
+                }
+                if (!Objects.equals(cell_base_str, "")) {
                     if (cell_base_str.matches(regex_digits)) {
                         boolean[] temp = new boolean[reste.size()];
                         int ind = 0;
@@ -3447,6 +3465,7 @@ public class DF {
                 vec[i] = !(gr_v.equals("") | gr_v.equals(NA_STR));
             }
         }
+//        System.out.println(sum_boolean(vec));
         this.err_vec_handle(vec);
     } // g
     public void controle_712() {
@@ -3602,7 +3621,7 @@ public class DF {
             colg = "Valeur_Catalogue Borne basse";
             if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
                 cell_base_dbl = (Double) this.c(col)[i];
-                if (cell_base_dbl != null) {
+                if (!Objects.equals(cell_base_dbl, NA_DBL)) {
                     boolean[] temp = new boolean[reste.size()];
                     int ind = 0;
                     for (int r : reste) {
@@ -3645,9 +3664,13 @@ public class DF {
 
             col = "Code_Client";
             colg = "Retraitement Code_Client";
-            if(find_in_arr_first_index(header, col) != -1 & find_in_arr_first_index(grille.header, colg) != -1) {
-                cell_base_str = (String) this.c(col)[i];
-                if (cell_base_str != null) {
+            if(find_in_arr_first_index(grille.header, colg) != -1) {
+                if(find_in_arr_first_index(header, col) == -1) {
+                    cell_base_str = "";
+                } else {
+                    cell_base_str = (String) this.c(col)[i];
+                }
+                if (!Objects.equals(cell_base_str, "")) {
                     if (cell_base_str.matches(regex_digits)) {
                         boolean[] temp = new boolean[reste.size()];
                         int ind = 0;
@@ -3904,8 +3927,14 @@ public class DF {
 
             if (reste.size() > 1) {
                 vec[i] = true;
-                err("error lignes multiples");
-                continue;
+                System.out.println("ERROR");
+                System.out.println(Controle_en_cours);
+                for (int ii : reste) {
+                    System.out.println(Arrays.toString(grille.r(ii)));
+                }
+                System.out.println(reste);
+                System.out.println(i);
+                break;
             }
             int reste_i = reste.get(0);
 
@@ -4332,7 +4361,7 @@ public class DF {
         String[] cols = new String[]{"Numéro_Extension","Date_Souscription_Adhésion","Date_Achat_Bien_Garanti",
                 "Critère_Identification_Bien_Garanti_1","Critère_Identification_Bien_Garanti_2","Critère_Identification_Bien_Garanti_3",
                 "Critère_Identification_Bien_Garanti_4","Critère_Identification_Bien_Garanti_5","Critère_Identification_Bien_Garanti_6",
-                "Critère_Tarifaire_1","Critère_Tarifaire_2","Critère_Tarifaire_3","Critère_Tarifaire_4","SKU","Valeur_Achat","Qualité_Client"};
+                "Critère_Tarifaire_1","Critère_Tarifaire_2","Critère_Tarifaire_3","Critère_Tarifaire_4","Valeur_Achat","SKU","Qualité_Client"};
         for (int i = 0; i < controles.length; i++) {
             Controle_en_cours = controles[i];
 
@@ -4397,7 +4426,7 @@ public class DF {
         }
 
         boolean[] vec = new boolean[nrow];
-        String[] cols = {"Numéro_Police","Critère_Tarifaire_1","SKU","Valeur_Achat"};
+        String[] cols = {"Numéro_Police","Critère_Tarifaire_1","Valeur_Achat"};
         if (!App.check_in(cols,header)) {
             err("missing columns");
             Arrays.fill(vec,true);
@@ -5355,6 +5384,12 @@ public class DF {
     public void subst_columns(DF map) {
 //        System.out.println("checker");
 //        System.out.println(Arrays.toString(map.c(1)));
+//        System.out.println(Arrays.toString(map.c(1)));
+        for (int i = 0; i < this.header.length; i++) {
+            if (header[i].contains("Lieu")) {
+                System.out.println("/" + header[i] + "/");
+            }
+        }
         for (int i = 0; i < this.header.length; i++) {
             if(this.header[i] == null) continue;
             int ind = find_in_arr_first_index(map.c(1),this.header[i]);

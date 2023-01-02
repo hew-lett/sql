@@ -72,7 +72,7 @@ public class App {
     public static String yyyymm = "default";
 
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
-        grilles_collect(path_grille_SS); // le premier lancement chaque mois
+//        grilles_collect(path_grille_SS); // le premier lancement chaque mois
         rapport_init();
         get_paths_et_parametrage();
         get_coltypes();
@@ -81,9 +81,8 @@ public class App {
         grille_gen_global_init();
         mapping_global_init();
         get_yyyymm();
-
+        paths.print();
       parametrage.print();
-        System.out.println(coltypes_B);
         long startTime = System.nanoTime();
         // RAPPORT SIN
         Object[] list_pays = unique_of(paths.c("Pays"));
@@ -108,8 +107,12 @@ public class App {
                     }
                     map_adh = mapping_filtre(false);
                 }
-
+//                System.out.println("checkk");
+//                System.out.println(Gestionnaire_en_cours);
+//                System.out.println(Flux_en_cours);
                 int ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Sinistre");
+//                System.out.println(ind);
+
                 String dossier_sin = (String) paths.c("Path")[ind];
                 char delim_sin = get_delim((String) paths.c("Delimiter")[ind]);
 
@@ -143,7 +146,7 @@ public class App {
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
                         if(check_grille_gen()) continue;
-//                        if(!Police_en_cours_maj.equals("ICIFNAS19")) continue;
+//                        if(!Police_en_cours_maj.equals("ICIPMTT15")) continue;
                         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
                         System.out.println("sin " + Police_en_cours_maj);
@@ -156,10 +159,7 @@ public class App {
 
 
                         DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
-//                        System.out.println("here?");
-//                        map_adh.printgrille();
                         DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
-//                        System.out.println("after?");
 
                         base.get_grille_gen();
                         if(base.grille_gen.df == null) {
@@ -172,7 +172,6 @@ public class App {
                                 System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
                                 System.out.println(set.getKey());
                             }
-//                            System.out.println(set.getKey());
                             if (params_G.get(set.getKey())) {
                                 set.getValue().invoke(base, base_adh);
                             } else {
@@ -261,6 +260,7 @@ public class App {
 
     private static String[] filtre_path_par_gest(String[] listSin, String flux) {
         String filtering_pattern;
+
         switch (Gestionnaire_en_cours) {
             case "Supporter", "SPB Pologne", "SPB Espagne", "SPB France" -> {
                 return listSin;
@@ -280,7 +280,6 @@ public class App {
                 return listSin;
             }
         }
-
         return(filter_array_by_containing(listSin, filtering_pattern));
     }
     // INTEGRATION
@@ -427,11 +426,19 @@ public class App {
                     return path.substring(debut, fin);
                 }
             case "SPB Pologne":
+                ind = get_all_occurences(path, '_');
+                ArrayList<Integer> ind2 = get_all_occurences(path, '.');
+                if (ind.isEmpty()) {
+                    err("pb naming pol: " + path);
+                    return "";
+                } else {
+                    return path.substring(ind.get(1) + 1, ind2.get(0));
+                }
             case "SPB Espagne":
             case "Supporter":
                 ind = get_all_occurences(path, '_');
                 if (ind.isEmpty()) {
-                    err("pb naming pol/esp/sup: " + path);
+                    err("pb naming esp/sup: " + path);
                     return "";
                 } else {
                     return path.substring(0, ind.get(0));
@@ -519,8 +526,8 @@ public class App {
     }
     public static void mapping_global_init() throws IOException {
         String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
-        String mapping_sin_onglet = "Mapping bases sinistres";
-        String mapping_adh_onglet = "Mapping bases adhésions";
+        String mapping_sin_onglet = "Mapping entrant sinistres";
+        String mapping_adh_onglet = "Mapping entrant adhésions";
         mapping_sin_g = new DF(wd + path_mapping, mapping_sin_onglet, true, false);
         mapping_adh_g = new DF(wd + path_mapping, mapping_adh_onglet, true, false);
 //        mapping_sin_g.delete_blanks_first_col();
@@ -772,6 +779,7 @@ public class App {
             if (arr[i] == null) continue;
             if (arr[i].equals(value)) {
                 out = i;
+                break;
             }
         }
         return out;
@@ -1041,9 +1049,11 @@ public class App {
         InputStream is = Files.newInputStream(new File(path).toPath());
         Workbook workbook = StreamingReader.builder().rowCacheSize(1).bufferSize(4096).open(is);
         List<String> sheetNames = new ArrayList<>();
+        List<String> sheetNames_read = new ArrayList<>();
         for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
             String name = workbook.getSheetName(i);
             if (name.charAt(0) == 'C') {
+                sheetNames_read.add(name);
                 if (name.charAt(1) == 'S') {
                     sheetNames.add(name.replace("S", ""));
                 } else {
@@ -1051,18 +1061,16 @@ public class App {
                 }
             }
         }
-
+//        System.out.println(sheetNames_read);
+//        System.out.println(sheetNames);
+        int sheet_ind = 0;
         for (String s : sheetNames) {
-            System.out.println(s);
-            if (!Objects.equals(s, "C210")) continue;
-            System.out.println(s);
-
+//            System.out.println(s);
+//            System.out.println(sheetNames_read.get(sheet_ind));
             CSVWriter writer = (CSVWriter) new CSVWriterBuilder(new FileWriter(path_grilles + s + ".csv"))
                     .withSeparator('\t')
                     .build();
-            DF grille = new DF(path, s, true, true);
-            System.out.println(s);
-            grille.printgrille();
+            DF grille = new DF(path, sheetNames_read.get(sheet_ind), true, true);
             grille.dna();
 
             writer.writeNext(grille.header);
@@ -1074,6 +1082,8 @@ public class App {
                 writer.writeNext(vec);
             }
             writer.close();
+            sheet_ind++;
+
         }
     }
     public static void get_grilles() throws IOException {
