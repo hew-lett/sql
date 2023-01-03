@@ -18,8 +18,10 @@ import java.sql.SQLOutput;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Month;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import static java.lang.Math.round;
@@ -47,6 +49,7 @@ public class App {
     }
 
     public static final LocalDate NA_LDAT = to_Date(NA_DAT);
+    public static DF dispatch_pol;
     public static DF mapping_sin_g;
     public static DF mapping_adh_g;
     public static String mapping_sin_col = "default";
@@ -62,6 +65,7 @@ public class App {
     public static String Controle_en_cours = "default";
     public static String Flux_en_cours = "default";
     public static ArrayList<ArrayList<String>> Rapport = new ArrayList<>();
+    public static ArrayList<ArrayList<String>> Log_err = new ArrayList<>();
     public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF.Col_types> coltypes_B = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF> grilles_G = new HashMap<String, DF>();
@@ -111,8 +115,6 @@ public class App {
 //                System.out.println(Gestionnaire_en_cours);
 //                System.out.println(Flux_en_cours);
                 int ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Sinistre");
-//                System.out.println(ind);
-
                 String dossier_sin = (String) paths.c("Path")[ind];
                 char delim_sin = get_delim((String) paths.c("Delimiter")[ind]);
 
@@ -142,7 +144,6 @@ public class App {
                     }
 
                     for (String path_sin : list_sin) {
-//                        System.out.println(path_sin);
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
                         if(check_grille_gen()) continue;
@@ -156,7 +157,6 @@ public class App {
                             map_sin = mapping_filtre(true);
                             map_adh = mapping_filtre(false);
                         }
-
 
                         DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
                         DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
@@ -253,7 +253,7 @@ public class App {
 
 //        rapport_print();
         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
-//        rapport_save();
+        log_err_save();
         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
     }
@@ -528,8 +528,12 @@ public class App {
         String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
         String mapping_sin_onglet = "Mapping entrant sinistres";
         String mapping_adh_onglet = "Mapping entrant adhésions";
+        String dispatch_onglet = "Regles calcul dispatch";
         mapping_sin_g = new DF(wd + path_mapping, mapping_sin_onglet, true, false);
         mapping_adh_g = new DF(wd + path_mapping, mapping_adh_onglet, true, false);
+        dispatch_pol = new DF(wd + path_mapping, dispatch_onglet, true, false);
+        dispatch_pol.filter_in("Flux Entrant","FIC Pologne");
+        dispatch_pol.print();
 //        mapping_sin_g.delete_blanks_first_col();
 //        mapping_adh_g.delete_blanks_first_col();
     }
@@ -538,6 +542,12 @@ public class App {
         for (int i = 0; i < rapport_cols.length; i++) {
             Rapport.add(new ArrayList<>());
             Rapport.get(i).add(rapport_cols[i]);
+        }
+
+        String[] rapport_log_cols = {"Police", "Flux", "Controle", "Commentaire"};
+        for (int i = 0; i < rapport_log_cols.length; i++) {
+            Log_err.add(new ArrayList<>());
+            Log_err.get(i).add(rapport_log_cols[i]);
         }
     }
     public static void rapport_print() {
@@ -585,20 +595,72 @@ public class App {
             Rapport.get(i).add(rapport_cols[i]);
         }
     }
+    public static void log_err_save() {
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd.MM HH.mm");
+        LocalDateTime now = LocalDateTime.now();
+        BufferedWriter br = null;
+        try {
+            br = new BufferedWriter(new FileWriter(wd + "Rapports/log "+dtf.format(now)+".csv"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = 0; i < Log_err.get(0).size(); i++) {
+            for (ArrayList<String> col : Log_err) {
+                sb.append(col.get(i));
+                sb.append(';');
+            }
+            sb.replace(sb.length() - 1, sb.length(), "\r\n");
+        }
+
+        try {
+            br.write(sb.toString());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            br.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
 
     // DATA
-    public static boolean  check_in(String[] what, String[] where) {
-    int counter = 0;
-    for (String value : what) {
-        for (String ref : where) {
-            if (value.equals(ref)) {
-                counter++;
-                break;
+    public static ArrayList <String> not_in(String[] what, String[] where) {
+        ArrayList <String> notin = new ArrayList<>();
+        for (String value : what) {
+            for (String ref : where) {
+                if (!value.equals(ref)) {
+                    notin.add(value);
+                }
             }
         }
+        return notin;
     }
-    return counter == what.length;
+    public static ArrayList <String> not_in(String what, String[] where) {
+        ArrayList <String> notin = new ArrayList<>();
+
+        for (String ref : where) {
+            if (!what.equals(ref)) {
+                notin.add(what);
+            }
+        }
+        return notin;
+    }
+
+    public static boolean  check_in(String[] what, String[] where) {
+        int counter = 0;
+        for (String value : what) {
+            for (String ref : where) {
+                if (value.equals(ref)) {
+                    counter++;
+                    break;
+                }
+            }
+        }
+        return counter == what.length;
     }
     public static boolean  check_in(String what, String[] arr) {
         for (String where : arr) {
@@ -810,6 +872,11 @@ public class App {
         if (arr.length == 1) return arr;
         Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new Object[0]))); //ofNullable bilo ranshe hz
         return hash.toArray(new Object[0]);
+    }
+    public static String[] unique_of(String[] arr) {
+        if (arr.length == 1) return arr;
+        Set<String> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new String[0]))); //ofNullable bilo ranshe hz
+        return hash.toArray(new String[0]);
     }
     public static Integer[] unique_of(Integer[] arr) {
         if (arr.length == 1) return arr;
@@ -1107,7 +1174,7 @@ public class App {
         System.out.println(Controle_en_cours);
     }
     public static void err_simple(String msg) {
-        System.out.println(msg + " " + Police_en_cours);
+        System.out.println(msg + " " + Police_en_cours + " " + Flux_en_cours);
     }
     public static boolean[] logvec(int dim, boolean values) {
         boolean[] out = new boolean[dim];
