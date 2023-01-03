@@ -95,13 +95,13 @@ public class App {
             Object[] list_gestionnaire = unique_of(paths.c_filtre("Gestionnaire","Pays",Pays_en_cours));
             for (Object gest : list_gestionnaire) {
                 Gestionnaire_en_cours = (String) gest;
+                System.out.println();
+                System.out.println("---" + Gestionnaire_en_cours + "---");
                 if(!Gestionnaire_en_cours.equals("Supporter")) {
                     encoding = "UTF-8";
                 } else {
                     encoding = "Cp1252";
                 }
-                System.out.println();
-                System.out.println("---" + Gestionnaire_en_cours + "---");
                 get_map_cols();
                 DF map_fic = new DF();  DF map_sin = new DF(); DF map_adh = new DF();
                 if (!Gestionnaire_en_cours.equals("Gamestop")) {
@@ -147,7 +147,7 @@ public class App {
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
                         if(check_grille_gen()) continue;
-//                        if(!Police_en_cours_maj.equals("ICIPMTT15")) continue;
+//                        if(!Police_en_cours_maj.equals("ICICDDP19")) continue;
                         System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
                         System.out.println("sin " + Police_en_cours_maj);
@@ -172,6 +172,7 @@ public class App {
                                 System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
                                 System.out.println(set.getKey());
                             }
+//                            if(!Objects.equals(set.getKey(), "controle_807")) continue;
                             if (params_G.get(set.getKey())) {
                                 set.getValue().invoke(base, base_adh);
                             } else {
@@ -195,6 +196,8 @@ public class App {
                     DF base_fic_total = new DF();
                     if(Gestionnaire_en_cours.equals("SPB France")) {
                         base_fic_total = new DF(wd+dossier_fic, map_fic);
+                        ind = find_in_arr_first_index(base_fic_total.header,"Montant_Indemnité_Principale");  // bequille france
+                        base_fic_total.header[ind] = "FIC_Montant_reglement";  // bequille france
                     }
                     if(Gestionnaire_en_cours.equals("SPB Italie")) {
                         ind = which_contains_first_index(list_fic,"DBCLAIMS");
@@ -630,23 +633,28 @@ public class App {
     // DATA
     public static ArrayList <String> not_in(String[] what, String[] where) {
         ArrayList <String> notin = new ArrayList<>();
+
         for (String value : what) {
+            boolean check = false;
             for (String ref : where) {
-                if (!value.equals(ref)) {
-                    notin.add(value);
+                if (value.equals(ref)) {
+                    check = true;
                 }
             }
+            if (!check) notin.add(value);
         }
         return notin;
     }
     public static ArrayList <String> not_in(String what, String[] where) {
         ArrayList <String> notin = new ArrayList<>();
 
+        boolean check = false;
         for (String ref : where) {
-            if (!what.equals(ref)) {
-                notin.add(what);
+            if (what.equals(ref)) {
+                check = true;
             }
         }
+        if (!check) notin.add(what);
         return notin;
     }
 

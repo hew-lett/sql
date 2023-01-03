@@ -252,6 +252,11 @@ public class DF {
         }
         this.header_refactor();
         this.remove_leading_zeros();
+        for (int i = 0; i < ncol; i++) {
+            if (Objects.equals(header[i], "Statut_Sogedep")) {
+                header[i] = "Type_Indemnisation_2";
+            }
+        }
     }
     public DF (String path, Object sheet_n) throws IOException {
 
@@ -457,7 +462,8 @@ public class DF {
                 dim += csv_get_nrows(path+file, delim);
             }
             FileWriter writer = new FileWriter(wd+"fic_france_nb_lignes_" + yyyymm + ".txt",false);
-            writer.write(dim);
+            System.out.println(dim + " dim");
+            writer.write(""+dim);
             writer.close();
         }
 
@@ -1213,7 +1219,7 @@ public class DF {
         }
 
         String[] crit = {"Statut_Technique_Sinistre","SKU","Type_Indemnisation","Statut_Technique_Sinistre_2","Libellé_Garantie","Critère_Identification_Bien_Garanti_2","Critère_Identification_Bien_Garanti_6",
-                "Critère_Tarifaire_1","Statut_Sogedep" };
+                "Critère_Tarifaire_1","Type_Indemnisation_2" };
 
         for (int i = 0; i < this.nrow; i++) {
 
@@ -1709,7 +1715,7 @@ public class DF {
         }
 
         boolean[] vec = new boolean[nrow];
-        String[] cols = {"Numéro_Police","Statut_Sogedep"};
+        String[] cols = {"Numéro_Police","Type_Indemnisation_2"};
         if (!App.check_in(cols,header)) {
             err_log("missing columns",not_in(cols,header));
             Arrays.fill(vec,true);
@@ -1724,7 +1730,7 @@ public class DF {
             reste_gen.add(r);
         }
 
-        String[] crit = {"Statut_Technique_Sinistre","Statut_Sogedep","Type_Indemnisation"};
+        String[] crit = {"Statut_Technique_Sinistre","Type_Indemnisation_2","Type_Indemnisation"};
         for (int i = 0; i < nrow; i++) {
 
             ArrayList<Integer> reste = new ArrayList<>(reste_gen);
@@ -2462,7 +2468,7 @@ public class DF {
         }
 
         String[] crit = {"Statut_Technique_Sinistre","SKU","Type_Indemnisation","Libellé_Garantie","Critère_Identification_Bien_Garanti_2",
-                "Critère_Identification_Bien_Garanti_6","Statut_Sogedep","Statut_Technique_Sinistre_2"};
+                "Critère_Identification_Bien_Garanti_6","Type_Indemnisation_2","Statut_Technique_Sinistre_2"};
         for (int i = 0; i < nrow; i++) {
 
             ArrayList<Integer> reste = new ArrayList<>(reste_gen);
@@ -2473,52 +2479,53 @@ public class DF {
             Double cell_grille_dbl;
             for (String col : crit) {
 
-                if(find_in_arr_first_index(header, col) == -1 | find_in_arr_first_index(grille.header, col) == -1) {
-                    continue;
-                }
-                cell_base = this.c(col)[i];
+                    if(find_in_arr_first_index(header, col) == -1 | find_in_arr_first_index(grille.header, col) == -1) {
+                        continue;
+                    }
+                    cell_base = this.c(col)[i];
 
-                if (cell_base != "") {
-                    boolean[] temp = new boolean[reste.size()];
-                    int ind = 0;
-                    for (int r : reste) {
+                    if (cell_base != "") {
+                        boolean[] temp = new boolean[reste.size()];
+                        int ind = 0;
+                        for (int r : reste) {
 
-                        cell_grille = grille.c(find_in_arr_first_index(grille.header, col))[r];
-                       if(!(cell_grille.equals(cell_base) | cell_grille.equals("{ renseigné }") | cell_grille.equals(NA_STR))) {
-                            temp[ind] = true;
+                            cell_grille = grille.c(find_in_arr_first_index(grille.header, col))[r];
+                            if(!(cell_grille.equals(cell_base) | cell_grille.equals("{ renseigné }") | cell_grille.equals(NA_STR))) {
+                                temp[ind] = true;
+                            }
+                            ind++;
                         }
-                        ind++;
-                    }
-                    for (int t = temp.length-1; t >= 0; t--) {
-                        if (temp[t]) {
-                            reste.remove(t);
+                        for (int t = temp.length-1; t >= 0; t--) {
+                            if (temp[t]) {
+                                reste.remove(t);
+                            }
                         }
-                    }
-                    if (reste.isEmpty()) {
-                        vec[i] = true;
-                        break;
-                    }
-                } else {
-                    boolean[] temp = new boolean[reste.size()];
-                    int ind = 0;
-                    for (int r : reste) {
-                        cell_grille = grille.c(col)[r];
-                        if(!(cell_grille.equals("") | cell_grille.equals("{ vide }") | cell_grille.equals(NA_STR))) {
-                            temp[ind] = true;
+                        if (reste.isEmpty()) {
+                            vec[i] = true;
+                            break;
                         }
-                        ind++;
-                    }
-                    for (int t = temp.length-1; t >= 0; t--) {
-                        if (temp[t]) {
-                            reste.remove(t);
+                    } else {
+                        boolean[] temp = new boolean[reste.size()];
+                        int ind = 0;
+                        for (int r : reste) {
+                            cell_grille = grille.c(col)[r];
+                            if(!(cell_grille.equals("") | cell_grille.equals("{ vide }") | cell_grille.equals(NA_STR))) {
+                                temp[ind] = true;
+                            }
+                            ind++;
                         }
-                    }
-                    if (reste.isEmpty()) {
-                        vec[i] = true;
-                        break;
+                        for (int t = temp.length-1; t >= 0; t--) {
+                            if (temp[t]) {
+                                reste.remove(t);
+                            }
+                        }
+                        if (reste.isEmpty()) {
+                            vec[i] = true;
+                            break;
+                        }
                     }
                 }
-            }
+
             if (reste.isEmpty()) {
                 vec[i] = true;
                 continue;
@@ -3302,7 +3309,7 @@ public class DF {
             reste_gen.add(r);
         }
 
-        String[] crit = {"Statut_Technique_Sinistre","Statut_Sogedep","Type_Indemnisation","Critère_Identification_Bien_Remplacement_1","Critère_Identification_Bien_Remplacement_2"};
+        String[] crit = {"Statut_Technique_Sinistre","Type_Indemnisation_2","Type_Indemnisation","Critère_Identification_Bien_Remplacement_1","Critère_Identification_Bien_Remplacement_2"};
         for (int i = 0; i < nrow; i++) {
 
             ArrayList<Integer> reste = new ArrayList<>(reste_gen);
@@ -5108,7 +5115,11 @@ public class DF {
                 ind = find_in_arr_first_index(map.c(1),cols[i]);
                 cols[i] = (String) map.c(0)[ind];
             }
+            if(Objects.equals(cols[i], "Montant_Indemnité_Principale")) {
+                cols[i] = "FIC_Montant_reglement";
+            } // bequille france
         }
+
 //        System.out.println(Arrays.toString(cols));
 //        System.out.println(Arrays.toString(this.header));
         if (!App.check_in(cols,this.header)) {
