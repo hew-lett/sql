@@ -12,23 +12,30 @@ import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.sql.SQLOutput;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Month;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Stream;
 
 import static java.lang.Math.round;
 import static java.util.Arrays.fill;
 
 public class App {
 
-    public static final String wd = "E:/java_certif/wd/";
+//    public static final String wd = "E:/java_certif/wd/";
+    public static final String wd = "C:/Users/ozhukov/Desktop/wd/";
     public static final String path_grilles = wd + "grilles/";
-    public static final String encoding = "UTF-8";
+    public static final String path_grille_SS = "Grille SS sinistre BI.xlsx";
+    public static String encoding = "UTF-8";
+    public static CsvParserSettings csv_settings = new CsvParserSettings();
     public static final String regex_digits = "[0-9]+";
     public static final String regex_letters = ".*[a-zA-Z].*";
     public static final Double NA_DBL = 9999099d;
@@ -45,6 +52,7 @@ public class App {
     }
 
     public static final LocalDate NA_LDAT = to_Date(NA_DAT);
+    public static DF dispatch_pol;
     public static DF mapping_sin_g;
     public static DF mapping_adh_g;
     public static String mapping_sin_col = "default";
@@ -60,6 +68,8 @@ public class App {
     public static String Controle_en_cours = "default";
     public static String Flux_en_cours = "default";
     public static ArrayList<ArrayList<String>> Rapport = new ArrayList<>();
+    public static ArrayList<ArrayList<String>> Rapport_temps_exec = new ArrayList<>();
+    public static ArrayList<ArrayList<String>> Log_err = new ArrayList<>();
     public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF.Col_types> coltypes_B = new HashMap<String, DF.Col_types>();
     public static HashMap<String, DF> grilles_G = new HashMap<String, DF>();
@@ -70,7 +80,7 @@ public class App {
     public static String yyyymm = "default";
 
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
-//        grilles_collect(path_grilles); // le premier lancement chaque mois
+//        grilles_collect(path_grille_SS); // le premier lancement chaque mois
         rapport_init();
         get_paths_et_parametrage();
         get_coltypes();
@@ -79,19 +89,25 @@ public class App {
         grille_gen_global_init();
         mapping_global_init();
         get_yyyymm();
+        paths.print();
+        parametrage.print();
 
-      parametrage.print();
-        System.out.println(coltypes_B);
-        long startTime = System.nanoTime();
         // RAPPORT SIN
         Object[] list_pays = unique_of(paths.c("Pays"));
         for (Object pays : list_pays) {
+            long startTime = System.nanoTime();
+
             Pays_en_cours = (String) pays;
             Object[] list_gestionnaire = unique_of(paths.c_filtre("Gestionnaire","Pays",Pays_en_cours));
             for (Object gest : list_gestionnaire) {
                 Gestionnaire_en_cours = (String) gest;
                 System.out.println();
                 System.out.println("---" + Gestionnaire_en_cours + "---");
+                if(!Gestionnaire_en_cours.equals("Supporter")) {
+                    encoding = "UTF-8";
+                } else {
+                    encoding = "Cp1252";
+                }
                 get_map_cols();
                 DF map_fic = new DF();  DF map_sin = new DF(); DF map_adh = new DF();
                 if (!Gestionnaire_en_cours.equals("Gamestop")) {
@@ -101,7 +117,9 @@ public class App {
                     }
                     map_adh = mapping_filtre(false);
                 }
-
+//                System.out.println("checkk");
+//                System.out.println(Gestionnaire_en_cours);
+//                System.out.println(Flux_en_cours);
                 int ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Sinistre");
                 String dossier_sin = (String) paths.c("Path")[ind];
                 char delim_sin = get_delim((String) paths.c("Delimiter")[ind]);
@@ -120,6 +138,10 @@ public class App {
                 list_sin = filtre_path_par_gest(list_sin,"Sinistre");
                 list_adh = filtre_path_par_gest(list_adh,"Adhésion");
 
+                if (check_flux("Sinistre") | check_flux("Comptable")) {
+                    write_temps_exec(Gestionnaire_en_cours,"","prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
+                }
+                startTime = System.nanoTime();
                 Flux_en_cours = "Sinistre";
                 if (check_flux(Flux_en_cours)) {
                     if (list_sin == null) {
@@ -132,13 +154,11 @@ public class App {
                     }
 
                     for (String path_sin : list_sin) {
-//                        System.out.println(path_sin);
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
                         if(check_grille_gen()) continue;
-
-//                        if(!Police_en_cours_maj.contains("MMPC")) continue;
-                        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+                        if(!Police_en_cours_maj.equals("ICIMWGP17")) continue;
+//                        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
                         System.out.println("sin " + Police_en_cours_maj);
 
@@ -147,32 +167,37 @@ public class App {
                             map_sin = mapping_filtre(true);
                             map_adh = mapping_filtre(false);
                         }
-
-
-                        DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
-//                        System.out.println("here?");
-//                        map_adh.printgrille();
-                        DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
-//                        System.out.println("after?");
-
+//                        DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
+//                        DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
+                        DF base = new DF("C:/Users/ozhukov/Desktop/b.csv", delim_sin, true, map_sin);
+                        DF base_adh = new DF("C:/Users/ozhukov/Desktop/m.csv", delim_sin, true, map_sin);
                         base.get_grille_gen();
                         if(base.grille_gen.df == null) {
                             err_simple("grille gen absente!");
                             continue;
                         }
 
+                        write_temps_exec(Police_en_cours_maj,Flux_en_cours,"prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
+                        startTime = System.nanoTime();
+
                         for (Map.Entry<String, Method> set : controles_G.entrySet()) {
                             if(Police_en_cours_maj.equals("ICICDDP19")) {
                                 System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
                                 System.out.println(set.getKey());
                             }
-//                            System.out.println(set.getKey());
+//                            if(!Objects.equals(set.getKey(), "controle_807")) continue;
                             if (params_G.get(set.getKey())) {
                                 set.getValue().invoke(base, base_adh);
                             } else {
                                 set.getValue().invoke(base);
                             }
+                            write_temps_exec(Police_en_cours_maj,Flux_en_cours,set.getKey(),((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
+                            startTime = System.nanoTime();
                         }
+                        rapport_save();
+
+                        write_temps_exec(Police_en_cours_maj,Flux_en_cours,"prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
+                        startTime = System.nanoTime();
                     } // par police
                 }
                 Flux_en_cours = "Comptable";
@@ -189,11 +214,16 @@ public class App {
                     DF base_fic_total = new DF();
                     if(Gestionnaire_en_cours.equals("SPB France")) {
                         base_fic_total = new DF(wd+dossier_fic, map_fic);
+                        ind = find_in_arr_first_index(base_fic_total.header,"Montant_Indemnité_Principale");  // bequille france
+                        base_fic_total.header[ind] = "FIC_Montant_reglement";  // bequille france
                     }
                     if(Gestionnaire_en_cours.equals("SPB Italie")) {
                         ind = which_contains_first_index(list_fic,"DBCLAIMS");
                         base_fic_total = new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
                     }
+
+                    write_temps_exec(Gestionnaire_en_cours,"","prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
+                    startTime = System.nanoTime();
 
                     for (String path_sin : list_sin) {
 //                        System.out.println(path_sin);
@@ -201,7 +231,6 @@ public class App {
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
 //                        if(!Police_en_cours_maj.contains("MMPC")) continue;
-                        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
                         System.out.println("fic " + Police_en_cours_maj);
                         if(check_grille_gen()) continue;
@@ -225,35 +254,66 @@ public class App {
                             continue;
                         }
 
-//                        base_fic.print();
-                        base_fic.fic_hors_la_liste_controle_K0(map_fic);
-                        for (Map.Entry<String, Method> set : controles_fic_G.entrySet()) {
+                        write_temps_exec(Police_en_cours_maj,Flux_en_cours,"prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
+                        startTime = System.nanoTime();
 
+                        base_fic.fic_controle_K0(map_fic);
+                        for (Map.Entry<String, Method> set : controles_fic_G.entrySet()) {
+//                            System.out.println(set.getKey());
                             if (params_fic_G.get(set.getKey())) {
                                 set.getValue().invoke(base_fic, base);
                             } else {
                                 set.getValue().invoke(base_fic);
                             }
+                            write_temps_exec(Police_en_cours_maj,Flux_en_cours,set.getKey(),((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
+                            startTime = System.nanoTime();
                         }
+                        rapport_save();
 
+                        write_temps_exec(Police_en_cours_maj,Flux_en_cours,"prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
+                        startTime = System.nanoTime();
                     } // par police
                 }
 
-                System.out.println(Gestionnaire_en_cours + " terminé à:");
-                System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+//                System.out.println(Gestionnaire_en_cours + " terminé à:");
+//                System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
             } // par gest
         } // par pays
-
-//        rapport_print();
-        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
-        rapport_save();
-        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+        System.out.println(Rapport_temps_exec);
+        temps_exec_save();
+        log_err_save();
+//        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
     }
-
-    private static String[] filtre_path_par_gest(String[] listSin, String flux) {
+    public static ArrayList<String> filter_out (ArrayList<ArrayList<String>> df, String crit1, String val1, String crit2, String val2, String field) {
+        ArrayList<String> out = new ArrayList<>();
+        int ncol = df.size();
+        int nrow = df.get(0).size();
+        int ind1 = -1; int ind2 = -1; int ind3 = -1;
+        for (int i = 0; i < ncol; i++) {
+            if (Objects.equals(df.get(i).get(0), crit1)) {
+                ind1 = i;
+            }
+            if (Objects.equals(df.get(i).get(0), crit2)) {
+                ind2 = i;
+            }
+            if (Objects.equals(df.get(i).get(0), field)) {
+                ind3 = i;
+            }
+        }
+        for (int i = 0; i < nrow; i++) {
+            if(df.get(ind1).get(i).equals(val1)) {
+                if(df.get(ind2).get(i).equals(val2)) {
+                    out.add(df.get(ind3).get(i));
+                }
+            }
+        }
+        return out;
+    }
+    public static String[] filtre_path_par_gest(String[] listSin, String flux) {
         String filtering_pattern;
+
         switch (Gestionnaire_en_cours) {
             case "Supporter", "SPB Pologne", "SPB Espagne", "SPB France" -> {
                 return listSin;
@@ -273,10 +333,8 @@ public class App {
                 return listSin;
             }
         }
-
         return(filter_array_by_containing(listSin, filtering_pattern));
     }
-
     // INTEGRATION
     public static boolean check_grille_gen() {
         boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
@@ -352,6 +410,9 @@ public class App {
                     params_G.put(name, false);
                 }
             } else if (name.startsWith("fic_controle")) {
+//                System.out.println(name);
+//                System.out.println(name.startsWith("fic_controle_KO"));
+                if (name.equals("fic_controle_K0")) continue;
                 controles_fic_G.put(name, method);
                 Class<?>[] types = method.getParameterTypes();
                 if (types.length > 0) {
@@ -421,11 +482,19 @@ public class App {
                     return path.substring(debut, fin);
                 }
             case "SPB Pologne":
+                ind = get_all_occurences(path, '_');
+                ArrayList<Integer> ind2 = get_all_occurences(path, '.');
+                if (ind.isEmpty()) {
+                    err("pb naming pol: " + path);
+                    return "";
+                } else {
+                    return path.substring(ind.get(1) + 1, ind2.get(0));
+                }
             case "SPB Espagne":
             case "Supporter":
                 ind = get_all_occurences(path, '_');
                 if (ind.isEmpty()) {
-                    err("pb naming pol/esp/sup: " + path);
+                    err("pb naming esp/sup: " + path);
                     return "";
                 } else {
                     return path.substring(0, ind.get(0));
@@ -458,11 +527,16 @@ public class App {
                 return listfile;
             }
         }
-        return "";
+        return listfiles[0];
     }
     public static void get_paths_et_parametrage() throws IOException {
         paths = new DF(wd+"paths.xlsx",0,true,false);
         parametrage = new DF(wd+"parametrage lancement.xlsx",0,true,false);
+        csv_settings.trimValues(true);
+        csv_settings.setIgnoreLeadingWhitespaces(true);
+        csv_settings.setIgnoreTrailingWhitespaces(true);
+        csv_settings.setIgnoreLeadingWhitespacesInQuotes(true);
+        csv_settings.setIgnoreTrailingWhitespacesInQuotes(true);
     }
     public static void get_yyyymm() {
         Date today = new Date();
@@ -513,18 +587,40 @@ public class App {
     }
     public static void mapping_global_init() throws IOException {
         String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
-        String mapping_sin_onglet = "Mapping bases sinistres";
-        String mapping_adh_onglet = "Mapping bases adhésions";
+        String mapping_sin_onglet = "Mapping entrant sinistres";
+        String mapping_adh_onglet = "Mapping entrant adhésions";
+        String dispatch_onglet = "Regles calcul dispatch";
         mapping_sin_g = new DF(wd + path_mapping, mapping_sin_onglet, true, false);
         mapping_adh_g = new DF(wd + path_mapping, mapping_adh_onglet, true, false);
+        dispatch_pol = new DF(wd + path_mapping, dispatch_onglet, true, false);
+        dispatch_pol.filter_in("Flux Entrant","FIC Pologne");
+        dispatch_pol.print();
 //        mapping_sin_g.delete_blanks_first_col();
 //        mapping_adh_g.delete_blanks_first_col();
+    }
+    public static void write_temps_exec(String quoi, String flux, String controle, String temps) {
+        Rapport_temps_exec.get(0).add(quoi);
+        Rapport_temps_exec.get(1).add(flux);
+        Rapport_temps_exec.get(2).add(controle);
+        Rapport_temps_exec.get(3).add(temps);
     }
     public static void rapport_init() {
         String[] rapport_cols = {"Police", "Flux", "Controle", "ID"};
         for (int i = 0; i < rapport_cols.length; i++) {
             Rapport.add(new ArrayList<>());
             Rapport.get(i).add(rapport_cols[i]);
+        }
+
+        String[] rapport_log_cols = {"Police", "Flux", "Controle", "Commentaire"};
+        for (int i = 0; i < rapport_log_cols.length; i++) {
+            Log_err.add(new ArrayList<>());
+            Log_err.get(i).add(rapport_log_cols[i]);
+        }
+
+        String[] temps_exec_cols = {"Police", "Flux", "Controle", "Temps"};
+        for (int i = 0; i < temps_exec_cols.length; i++) {
+            Rapport_temps_exec.add(new ArrayList<>());
+            Rapport_temps_exec.get(i).add(temps_exec_cols[i]);
         }
     }
     public static void rapport_print() {
@@ -536,20 +632,217 @@ public class App {
             System.out.println();
         }
     }
+    public static void rapport_save() {
+        BufferedWriter br = null;
+        try {
+            br = new BufferedWriter(new FileWriter(wd + "Rapports/" + Flux_en_cours + "_" + Police_en_cours_maj + ".csv"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        StringBuilder sb = new StringBuilder();
+
+// Append strings from array
+        for (int i = 0; i < Rapport.get(0).size(); i++) {
+            for (ArrayList<String> col : Rapport) {
+                sb.append(col.get(i));
+                sb.append(';');
+            }
+            sb.replace(sb.length() - 1, sb.length(), "\r\n");
+//            sb.append("\r\n");
+        }
+
+        try {
+            br.write(sb.toString());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            br.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        Rapport = new ArrayList<>();
+        String[] rapport_cols = {"Police", "Flux", "Controle", "ID"};
+        for (int i = 0; i < rapport_cols.length; i++) {
+            Rapport.add(new ArrayList<>());
+            Rapport.get(i).add(rapport_cols[i]);
+        }
+    }
+    public static void log_err_save() {
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd.MM HH.mm");
+        LocalDateTime now = LocalDateTime.now();
+        BufferedWriter br = null;
+        try {
+            br = new BufferedWriter(new FileWriter(wd + "Rapports/log "+dtf.format(now)+".csv"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = 0; i < Log_err.get(0).size(); i++) {
+            for (ArrayList<String> col : Log_err) {
+                sb.append(col.get(i));
+                sb.append(';');
+            }
+            sb.replace(sb.length() - 1, sb.length(), "\r\n");
+        }
+
+        try {
+            br.write(sb.toString());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            br.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    public static void temps_exec_save() {
+        int nrow = Rapport_temps_exec.get(0).size();
+
+        boolean[] rem = logvec(nrow,false);
+
+        for (int i = 1; i < nrow; i++) {
+            if (Rapport_temps_exec.get(2).get(i).equals("prep") & (i != nrow-1)) {
+                for (int j = i+1; j < nrow; j++) {
+                    if (Rapport_temps_exec.get(2).get(j).equals("prep") & Rapport_temps_exec.get(0).get(j).equals(Rapport_temps_exec.get(0).get(i))) {
+                        double v1 = Double.parseDouble(Rapport_temps_exec.get(3).get(i));
+                        double v2 = Double.parseDouble(Rapport_temps_exec.get(3).get(j));
+                        double v3 = v1 + v2;
+                        Rapport_temps_exec.get(3).set(i,v3 + "");
+                        rem[j] = true;
+                    }
+                }
+            }
+        }
+        for (int i = nrow-1; i > -1; i--) {
+            if (rem[i]) {
+                for (int k = 0; k < 4; k++) {
+                    Rapport_temps_exec.get(k).remove(i);
+                }
+            }
+        }
+
+        Object[] controles_obj = unique_of(Rapport_temps_exec.get(2).toArray());
+        Object[] polices_obj = unique_of(Rapport_temps_exec.get(0).toArray());
+        String[] controles = Arrays.stream(controles_obj).map(Object::toString).
+                toArray(String[]::new);
+        String[] polices = Arrays.stream(polices_obj).map(Object::toString).
+                toArray(String[]::new);
+        int ncol = polices.length + 1;
+        nrow = controles.length;
+        ArrayList<ArrayList<String>> df = new ArrayList<>();
+        df.add(new ArrayList<String>());
+        for (int i = 0; i < nrow; i++) {
+            df.get(0).add(controles[i]);
+        }
+
+        for (int i = 1; i < ncol; i++) {
+//            if (Objects.equals(polices[i - 1], "Police")) continue;
+            df.add(new ArrayList<String>());
+            if (i == ncol-1) {
+                df.get(i).add("total");
+            } else {
+                df.get(i).add(polices[i]);
+            }
+            for (int j = 1; j < nrow; j++) {
+                df.get(i).add("");
+            }
+        }
+
+        int nrow_1 = Rapport_temps_exec.get(0).size();
+        for (int i = 1; i < nrow; i++) {
+            for (int j = 1; j < ncol-1; j++) {
+                String pol = polices[j];
+                String controle = controles[i];
+//                if (Objects.equals(pol, "Police") | Objects.equals(controle, "Controle")) continue;
+                for (int k = 1; k < nrow_1; k++) {
+                    if(Rapport_temps_exec.get(0).get(k).equals(pol) & Rapport_temps_exec.get(2).get(k).equals(controle)) {
+                        df.get(j).set(i,Rapport_temps_exec.get(3).get(k));
+                    }
+                }
+            }
+            double sum = 0;
+            for (int j = 1; j < ncol-1; j++) {
+                if (!Objects.equals(df.get(j).get(i), "")) {
+                    sum += Double.parseDouble(df.get(j).get(i));
+                }
+            }
+            df.get(ncol-1).set(i, String.valueOf(sum));
+        }
+
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd.MM HH.mm");
+        LocalDateTime now = LocalDateTime.now();
+        BufferedWriter br = null;
+        try {
+            br = new BufferedWriter(new FileWriter(wd + "Rapports/temps exec "+dtf.format(now)+".csv"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        StringBuilder sb = new StringBuilder();
+
+
+        for (int i = 0; i < nrow; i++) {
+            for (ArrayList<String> col : df) {
+                sb.append(col.get(i));
+                sb.append(';');
+            }
+            sb.replace(sb.length() - 1, sb.length(), "\r\n");
+        }
+
+        try {
+            br.write(sb.toString());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            br.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
 
     // DATA
-    public static boolean  check_in(String[] what, String[] where) {
-    int counter = 0;
-    for (String value : what) {
+    public static ArrayList <String> not_in(String[] what, String[] where) {
+        ArrayList <String> notin = new ArrayList<>();
+
+        for (String value : what) {
+            boolean check = false;
+            for (String ref : where) {
+                if (value.equals(ref)) {
+                    check = true;
+                }
+            }
+            if (!check) notin.add(value);
+        }
+        return notin;
+    }
+    public static ArrayList <String> not_in(String what, String[] where) {
+        ArrayList <String> notin = new ArrayList<>();
+
+        boolean check = false;
         for (String ref : where) {
-            if (value.equals(ref)) {
-                counter++;
-                break;
+            if (what.equals(ref)) {
+                check = true;
             }
         }
+        if (!check) notin.add(what);
+        return notin;
     }
-    return counter == what.length;
+
+    public static boolean  check_in(String[] what, String[] where) {
+        int counter = 0;
+        for (String value : what) {
+            for (String ref : where) {
+                if (value.equals(ref)) {
+                    counter++;
+                    break;
+                }
+            }
+        }
+        return counter == what.length;
     }
     public static boolean  check_in(String what, String[] arr) {
         for (String where : arr) {
@@ -730,6 +1023,7 @@ public class App {
             if (arr[i] == null) continue;
             if (arr[i].equals(value)) {
                 out = i;
+                break;
             }
         }
         return out;
@@ -760,6 +1054,11 @@ public class App {
         if (arr.length == 1) return arr;
         Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new Object[0]))); //ofNullable bilo ranshe hz
         return hash.toArray(new Object[0]);
+    }
+    public static String[] unique_of(String[] arr) {
+        if (arr.length == 1) return arr;
+        Set<String> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new String[0]))); //ofNullable bilo ranshe hz
+        return hash.toArray(new String[0]);
     }
     public static Integer[] unique_of(Integer[] arr) {
         if (arr.length == 1) return arr;
@@ -994,44 +1293,16 @@ public class App {
             throw new RuntimeException(e);
         }
     }
-    public static void rapport_save() {
-        BufferedWriter br = null;
-        try {
-            br = new BufferedWriter(new FileWriter(wd + "Rapport.csv"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        StringBuilder sb = new StringBuilder();
-
-// Append strings from array
-        for (int i = 0; i < Rapport.get(0).size(); i++) {
-            for (ArrayList<String> col : Rapport) {
-                sb.append(col.get(i));
-                sb.append(';');
-            }
-            sb.replace(sb.length() - 1, sb.length(), "\r\n");
-//            sb.append("\r\n");
-        }
-
-        try {
-            br.write(sb.toString());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            br.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
     public static void grilles_collect(String path) throws IOException {
         path = wd + path;
         InputStream is = Files.newInputStream(new File(path).toPath());
         Workbook workbook = StreamingReader.builder().rowCacheSize(1).bufferSize(4096).open(is);
         List<String> sheetNames = new ArrayList<>();
+        List<String> sheetNames_read = new ArrayList<>();
         for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
             String name = workbook.getSheetName(i);
             if (name.charAt(0) == 'C') {
+                sheetNames_read.add(name);
                 if (name.charAt(1) == 'S') {
                     sheetNames.add(name.replace("S", ""));
                 } else {
@@ -1039,13 +1310,16 @@ public class App {
                 }
             }
         }
-
+//        System.out.println(sheetNames_read);
+//        System.out.println(sheetNames);
+        int sheet_ind = 0;
         for (String s : sheetNames) {
+//            System.out.println(s);
+//            System.out.println(sheetNames_read.get(sheet_ind));
             CSVWriter writer = (CSVWriter) new CSVWriterBuilder(new FileWriter(path_grilles + s + ".csv"))
                     .withSeparator('\t')
                     .build();
-            DF grille = new DF(path, s, true, true);
-
+            DF grille = new DF(path, sheetNames_read.get(sheet_ind), true, true);
             grille.dna();
 
             writer.writeNext(grille.header);
@@ -1057,6 +1331,8 @@ public class App {
                 writer.writeNext(vec);
             }
             writer.close();
+            sheet_ind++;
+
         }
     }
     public static void get_grilles() throws IOException {
@@ -1074,13 +1350,13 @@ public class App {
         }
     }
     public static void err(String msg) {
-        System.err.println(new Throwable().getStackTrace()[0].getLineNumber());
+//        System.err.println(new Throwable().getStackTrace()[0].getLineNumber());
         System.out.println(msg);
         System.out.println(Police_en_cours);
         System.out.println(Controle_en_cours);
     }
     public static void err_simple(String msg) {
-        System.out.println(msg + Police_en_cours);
+        System.out.println(msg + " " + Police_en_cours + " " + Flux_en_cours);
     }
     public static boolean[] logvec(int dim, boolean values) {
         boolean[] out = new boolean[dim];
