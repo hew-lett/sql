@@ -157,8 +157,7 @@ public class App {
                         Police_en_cours_maj = get_name(path_sin);
                         Police_en_cours = Police_en_cours_maj.toLowerCase();
                         if(check_grille_gen()) continue;
-                        if(!Police_en_cours_maj.equals("ICIMWGP17")) continue;
-//                        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
+//                        if(!Police_en_cours_maj.equals("ICIMWGP17")) continue;
 
                         System.out.println("sin " + Police_en_cours_maj);
 
@@ -167,10 +166,12 @@ public class App {
                             map_sin = mapping_filtre(true);
                             map_adh = mapping_filtre(false);
                         }
-//                        DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
-//                        DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
-                        DF base = new DF("C:/Users/ozhukov/Desktop/b.csv", delim_sin, true, map_sin);
-                        DF base_adh = new DF("C:/Users/ozhukov/Desktop/m.csv", delim_sin, true, map_sin);
+
+                        DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
+                        DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
+
+//                        DF base = new DF("C:/Users/ozhukov/Desktop/b.csv", delim_sin, true, map_sin);
+//                        DF base_adh = new DF("C:/Users/ozhukov/Desktop/m.csv", delim_sin, true, map_sin);
                         base.get_grille_gen();
                         if(base.grille_gen.df == null) {
                             err_simple("grille gen absente!");
@@ -286,6 +287,7 @@ public class App {
 //        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
     }
+
     public static ArrayList<String> filter_out (ArrayList<ArrayList<String>> df, String crit1, String val1, String crit2, String val2, String field) {
         ArrayList<String> out = new ArrayList<>();
         int ncol = df.size();
