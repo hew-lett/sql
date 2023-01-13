@@ -63,7 +63,7 @@ public class DF {
                 Iterator<String[]> rows = parsedRows.iterator();
                 header = rows.next();
                 for (int i = 0; i < header.length; i++) {
-                    header[i] = header[i].trim().replace("\u00a0","");
+                    header[i] = header[i].trim().replace("(^\\h*)|(\\h*$)","");
                 }
                 if (filename.length() < 9 & filename.charAt(0) == 'C') {
                     coltypes = get_col_types(header, coltypes_G);
