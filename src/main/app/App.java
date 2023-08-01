@@ -281,7 +281,7 @@ public class App {
 
             } // par gest
         } // par pays
-        System.out.println(Rapport_temps_exec);
+       // System.out.println(Rapport_temps_exec);
         temps_exec_save();
         log_err_save();
 //        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
