@@ -1,39 +1,32 @@
 package main.app;
 
-import com.monitorjbl.xlsx.StreamingReader;
-import com.opencsv.CSVWriter;
-import com.opencsv.CSVWriterBuilder;
-import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
-import org.w3c.dom.ls.LSOutput;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.sql.SQLOutput;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.Month;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Stream;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.lang.Math.round;
 import static java.util.Arrays.fill;
 
 public class App {
 
-//    public static final String wd = "E:/java_certif/wd/";
-    public static final String wd = "C:/Users/ozhukov/Desktop/wd/";
-    public static final String path_grilles = wd + "grilles/";
-    public static final String path_grille_SS = "Grille SS sinistre BI.xlsx";
+    public static final String wd = "C:/Users/jukov/Downloads/202305/202305/wd/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
     public static final String regex_digits = "[0-9]+";
@@ -42,7 +35,6 @@ public class App {
     public static final String NA_STR = "n.a.";
     public static final SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
     public static final Date NA_DAT;
-
     static {
         try {
             NA_DAT = format.parse("01/01/2100");
@@ -50,244 +42,371 @@ public class App {
             throw new RuntimeException(e);
         }
     }
-
     public static final LocalDate NA_LDAT = to_Date(NA_DAT);
-    public static DF dispatch_pol;
-    public static DF mapping_sin_g;
-    public static DF mapping_adh_g;
-    public static String mapping_sin_col = "default";
-    public static String mapping_fic_col = "default";
-    public static String mapping_adh_col = "default";
-    public static DF grille_gen_g;
-    public static DF paths;
-    public static DF parametrage;
-    public static String Pays_en_cours = "default";
-    public static String Gestionnaire_en_cours = "default";
-    public static String Police_en_cours = "default";
-    public static String Police_en_cours_maj = "default";
-    public static String Controle_en_cours = "default";
-    public static String Flux_en_cours = "default";
     public static ArrayList<ArrayList<String>> Rapport = new ArrayList<>();
     public static ArrayList<ArrayList<String>> Rapport_temps_exec = new ArrayList<>();
     public static ArrayList<ArrayList<String>> Log_err = new ArrayList<>();
-    public static HashMap<String, DF.Col_types> coltypes_G = new HashMap<String, DF.Col_types>();
-    public static HashMap<String, DF.Col_types> coltypes_B = new HashMap<String, DF.Col_types>();
-    public static HashMap<String, DF> grilles_G = new HashMap<String, DF>();
-    public static HashMap<String, Method> controles_G = new HashMap<>();
-    public static HashMap<String, Method> controles_fic_G = new HashMap<>();
-    public static HashMap<String, Boolean> params_G = new HashMap<>();
-    public static HashMap<String, Boolean> params_fic_G = new HashMap<>();
     public static String yyyymm = "default";
+    public static DF ref_triangle;
+    public static DF ref_prog;
+    public static DF mapping;
+    public static SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
+    public static int rowchecker = 0;
+    public static Map<String, ArrayList<String>> statuts = new HashMap<>();
+    public static ArrayList<String> cols_triangle = new ArrayList<>();
+    public static ArrayList<DF> bases_sinistres = new ArrayList<>();
+    private static final String CURRENT_MONTH;
+    private static final String PREVIOUS_MONTH;
 
+    static {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMM");
+        LocalDate now = LocalDate.now();
+
+        CURRENT_MONTH = now.format(formatter);
+        PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
+    }
+    public static final HashMap<String, Integer> monthMap = new HashMap<String, Integer>() {{
+        put("jan.", Calendar.JANUARY);
+        put("feb.", Calendar.FEBRUARY);
+        put("mar.", Calendar.MARCH);
+        put("apr.", Calendar.APRIL);
+        put("may.", Calendar.MAY);
+        put("jun.", Calendar.JUNE);
+        put("jul.", Calendar.JULY);
+        put("aug.", Calendar.AUGUST);
+        put("sep.", Calendar.SEPTEMBER);
+        put("oct.", Calendar.OCTOBER);
+        put("nov.", Calendar.NOVEMBER);
+        put("dec.", Calendar.DECEMBER);
+    }};
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
-//        grilles_collect(path_grille_SS); // le premier lancement chaque mois
-        rapport_init();
-        get_paths_et_parametrage();
-        get_coltypes();
-        get_controles();
-        get_grilles();
-        grille_gen_global_init();
-        mapping_global_init();
-        get_yyyymm();
-        paths.print();
-        parametrage.print();
+        long startTime = System.nanoTime();long endTime;long duration;long minutes;long seconds;
+        ref_prog = new DF(wd+"Référentiel programmes.csv", ';');
+        ref_triangle = new DF(wd + "ref_triangle.xlsx");
+        mapping = new DF(wd + "mapping.xlsx");
+        mapping.printDataFrame();
+//        String path_sin = wd + "SINISTRE par gestionnaire pour les triangles/";
+//        ArrayList<DF> bases_sinistres = loadDataFrames(wd + "dataframes.ser");
+//        ArrayList<DF> dataframes = getDataFramesFromFolder(path_sin);
+//        saveDataFrames(dataframes, wd + "dataframes.ser");
+//        statuts = groupAndCombineStatuts(bases_sinistres);
+//        cols_triangle = generateColumnNames();
 
-        // RAPPORT SIN
-        Object[] list_pays = unique_of(paths.c("Pays"));
-        for (Object pays : list_pays) {
-            long startTime = System.nanoTime();
+//        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/Garantie Privée.xlsx");
+//        processFilesInFolder(wd + "TDB estimate par gestionnaire/");
+//        for (Map.Entry<String, ArrayList<String>> entry : statuts.entrySet()) {
+//            String key = entry.getKey();
+//            ArrayList<String> statut = entry.getValue(); // Changed from Set<String> to ArrayList<String>
+//
+//            System.out.println("Key: " + key);
+//            System.out.println("Statuts:");
+//            for (String s : statut) {
+//                System.out.println("\t" + s);
+//            }
+//        }
 
-            Pays_en_cours = (String) pays;
-            Object[] list_gestionnaire = unique_of(paths.c_filtre("Gestionnaire","Pays",Pays_en_cours));
-            for (Object gest : list_gestionnaire) {
-                Gestionnaire_en_cours = (String) gest;
-                System.out.println();
-                System.out.println("---" + Gestionnaire_en_cours + "---");
-                if(!Gestionnaire_en_cours.equals("Supporter")) {
-                    encoding = "UTF-8";
-                } else {
-                    encoding = "Cp1252";
-                }
-                get_map_cols();
-                DF map_fic = new DF();  DF map_sin = new DF(); DF map_adh = new DF();
-                if (!Gestionnaire_en_cours.equals("Gamestop")) {
-                    map_sin = mapping_filtre(true);
-                    if(!Objects.equals(mapping_fic_col, "N.A.")){
-                        map_fic = mapping_filtre_fic();
-                    }
-                    map_adh = mapping_filtre(false);
-                }
-//                System.out.println("checkk");
-//                System.out.println(Gestionnaire_en_cours);
-//                System.out.println(Flux_en_cours);
-                int ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Sinistre");
-                String dossier_sin = (String) paths.c("Path")[ind];
-                char delim_sin = get_delim((String) paths.c("Delimiter")[ind]);
+//        for (DF d: dataframes) {
+//            System.out.println(d.fileName);
+//            d.print(10);
+//        }
 
-                ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Comptable");
-                String dossier_fic = (String) paths.c("Path")[ind];
-                char delim_fic = get_delim((String) paths.c("Delimiter")[ind]);
-
-                ind = paths.ind_filtre_2_crit_1_value("Gestionnaire",Gestionnaire_en_cours,"Flux","Adhesion");
-                String dossier_adh = (String) paths.c("Path")[ind];
-                char delim_adh = get_delim((String) paths.c("Delimiter")[ind]);
-
-                String[] list_sin = new File(wd+dossier_sin).list();
-                String[] list_fic = new File(wd+dossier_fic).list();
-                String[] list_adh = new File(wd+dossier_adh).list();
-                list_sin = filtre_path_par_gest(list_sin,"Sinistre");
-                list_adh = filtre_path_par_gest(list_adh,"Adhésion");
-
-                if (check_flux("Sinistre") | check_flux("Comptable")) {
-                    write_temps_exec(Gestionnaire_en_cours,"","prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
-                }
-                startTime = System.nanoTime();
-                Flux_en_cours = "Sinistre";
-                if (check_flux(Flux_en_cours)) {
-                    if (list_sin == null) {
-                        err_simple("dossier sinistres vide!");
-                        continue;
-                    }
-                    if (list_adh == null) {
-                        err_simple("dossier adhesions vide!");
-                        continue;
-                    }
-
-                    for (String path_sin : list_sin) {
-                        Police_en_cours_maj = get_name(path_sin);
-                        Police_en_cours = Police_en_cours_maj.toLowerCase();
-                        if(check_grille_gen()) continue;
-//                        if(!Police_en_cours_maj.equals("ICIMWGP17")) continue;
-
-                        System.out.println("sin " + Police_en_cours_maj);
-
-                        if(!Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
-                            get_map_cols();
-                            map_sin = mapping_filtre(true);
-                            map_adh = mapping_filtre(false);
-                        }
-
-                        DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
-                        DF base_adh = new DF(wd + dossier_adh + get_path_adh(list_adh), delim_adh, true, map_adh);
-
-//                        DF base = new DF("C:/Users/ozhukov/Desktop/b.csv", delim_sin, true, map_sin);
-//                        DF base_adh = new DF("C:/Users/ozhukov/Desktop/m.csv", delim_sin, true, map_sin);
-                        base.get_grille_gen();
-                        if(base.grille_gen.df == null) {
-                            err_simple("grille gen absente!");
-                            continue;
-                        }
-
-                        write_temps_exec(Police_en_cours_maj,Flux_en_cours,"prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
-                        startTime = System.nanoTime();
-
-                        for (Map.Entry<String, Method> set : controles_G.entrySet()) {
-                            if(Police_en_cours_maj.equals("ICICDDP19")) {
-                                System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
-                                System.out.println(set.getKey());
-                            }
-//                            if(!Objects.equals(set.getKey(), "controle_807")) continue;
-                            if (params_G.get(set.getKey())) {
-                                set.getValue().invoke(base, base_adh);
-                            } else {
-                                set.getValue().invoke(base);
-                            }
-                            write_temps_exec(Police_en_cours_maj,Flux_en_cours,set.getKey(),((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
-                            startTime = System.nanoTime();
-                        }
-                        rapport_save();
-
-                        write_temps_exec(Police_en_cours_maj,Flux_en_cours,"prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
-                        startTime = System.nanoTime();
-                    } // par police
-                }
-                Flux_en_cours = "Comptable";
-                if (check_flux(Flux_en_cours)) {
-                    if (list_fic == null) {
-                        err_simple("dossier fic vide!");
-                        continue;
-                    }
-                    if (list_sin == null) {
-                        err_simple("dossier sinistres vide!");
-                        continue;
-                    }
-
-                    DF base_fic_total = new DF();
-                    if(Gestionnaire_en_cours.equals("SPB France")) {
-                        base_fic_total = new DF(wd+dossier_fic, map_fic);
-                        ind = find_in_arr_first_index(base_fic_total.header,"Montant_Indemnité_Principale");  // bequille france
-                        base_fic_total.header[ind] = "FIC_Montant_reglement";  // bequille france
-                    }
-                    if(Gestionnaire_en_cours.equals("SPB Italie")) {
-                        ind = which_contains_first_index(list_fic,"DBCLAIMS");
-                        base_fic_total = new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
-                    }
-
-                    write_temps_exec(Gestionnaire_en_cours,"","prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
-                    startTime = System.nanoTime();
-
-                    for (String path_sin : list_sin) {
-//                        System.out.println(path_sin);
-
-                        Police_en_cours_maj = get_name(path_sin);
-                        Police_en_cours = Police_en_cours_maj.toLowerCase();
-//                        if(!Police_en_cours_maj.contains("MMPC")) continue;
-
-                        System.out.println("fic " + Police_en_cours_maj);
-                        if(check_grille_gen()) continue;
-
-                        if(Objects.equals(Gestionnaire_en_cours, "Gamestop")) {
-                            get_map_cols();
-                            map_sin = mapping_filtre(true);
-                            map_fic = mapping_filtre_fic();
-                        }
-
-                        DF base = new DF(wd + dossier_sin + path_sin, delim_sin, true, map_sin);
-                        DF base_fic = get_fic(dossier_fic, list_fic, delim_fic, map_fic, base_fic_total);
-                        if(base_fic.df == null) {
-                            err_simple("fic absent!");
-                            continue;
-                        }
-
-                        base_fic.get_grille_gen();
-                        if(base_fic.grille_gen.df == null) {
-                            err_simple("grille gen absente!");
-                            continue;
-                        }
-
-                        write_temps_exec(Police_en_cours_maj,Flux_en_cours,"prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
-                        startTime = System.nanoTime();
-
-                        base_fic.fic_controle_K0(map_fic);
-                        for (Map.Entry<String, Method> set : controles_fic_G.entrySet()) {
-//                            System.out.println(set.getKey());
-                            if (params_fic_G.get(set.getKey())) {
-                                set.getValue().invoke(base_fic, base);
-                            } else {
-                                set.getValue().invoke(base_fic);
-                            }
-                            write_temps_exec(Police_en_cours_maj,Flux_en_cours,set.getKey(),((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
-                            startTime = System.nanoTime();
-                        }
-                        rapport_save();
-
-                        write_temps_exec(Police_en_cours_maj,Flux_en_cours,"prep",((System.nanoTime() - startTime) / 1e7f) / 100.0 + "");
-                        startTime = System.nanoTime();
-                    } // par police
-                }
-
-//                System.out.println(Gestionnaire_en_cours + " terminé à:");
-//                System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
-
-            } // par gest
-        } // par pays
-       // System.out.println(Rapport_temps_exec);
-        temps_exec_save();
-        log_err_save();
-//        System.out.println(((System.nanoTime() - startTime) / 1e7f) / 100.0);
 
     }
+    public static void processFilesInFolder(String folderPath) {
+        // Get the start time
+        long startTime = System.currentTimeMillis();
 
+        File folder = new File(folderPath);
+        File[] listOfFiles = folder.listFiles();
+
+        if (listOfFiles != null) {
+            for (File file : listOfFiles) {
+                if (file.isFile() && file.getName().endsWith(".xlsx")) {
+                    try {
+                        // Call the constructor for each Excel file
+                        Estimate estimate = new Estimate(file.getAbsolutePath());
+                        // You can also call other methods on the "estimate" object here if needed
+                    } catch (IOException e) {
+                        System.err.println("An error occurred while processing the file: " + file.getAbsolutePath());
+                        e.printStackTrace();
+                    }
+                }
+            }
+        } else {
+            System.err.println("The specified folder does not exist or is not a directory: " + folderPath);
+        }
+
+        // Get the end time
+        long endTime = System.currentTimeMillis();
+
+        // Print the total time of execution
+        System.out.println("Total execution time: " + (endTime - startTime) + " milliseconds");
+    }
+    public static ArrayList<String> generateColumnNames() {
+        ArrayList<String> columnNames = new ArrayList<>();
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+
+        Calendar start = Calendar.getInstance();
+        Calendar end = Calendar.getInstance();
+
+        // Set the start and end dates
+        start.set(2013, Calendar.NOVEMBER, 1); // 01/11/2013
+        end.set(2026, Calendar.DECEMBER, 1); // 01/12/2026
+
+        while (start.before(end)) {
+            // Add the current date to the list
+            columnNames.add(sdf.format(start.getTime()));
+
+            // Increment the month by 1
+            start.add(Calendar.MONTH, 1);
+        }
+
+        // Add the final date to the list
+        columnNames.add(sdf.format(end.getTime()));
+
+        return columnNames;
+    }
+    public static Map<String, ArrayList<String>> groupAndCombineStatuts(ArrayList<DF> dataFrames) {
+        // Map to hold the groups keyed by the substring of filename up to the first "_"
+        Map<String, Set<String>> groupedStatuts = new HashMap<>();
+
+        for (DF df : dataFrames) {
+            // Extract the key from filename (substring until the first appearance of "_")
+            String key = df.fileName.split("_")[0];
+
+            // Get the existing unique statuts for this key, or create a new set if not present
+            Set<String> uniqueStatuts = groupedStatuts.getOrDefault(key, new HashSet<>());
+
+            // Add all unique statuts from the current DF object
+            uniqueStatuts.addAll(df.statut_unique);
+
+            // Put the updated unique statuts back in the map
+            groupedStatuts.put(key, uniqueStatuts);
+        }
+
+        // Convert the Set values to ArrayList
+        Map<String, ArrayList<String>> result = new HashMap<>();
+        for (Map.Entry<String, Set<String>> entry : groupedStatuts.entrySet()) {
+            result.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+
+        return result;
+    }
+    public static void printTime(long startTime) {
+        long endTime = System.nanoTime();
+        long duration = (endTime - startTime) / 1_000_000; // in milliseconds
+        long minutes = TimeUnit.MILLISECONDS.toMinutes(duration);
+        long seconds = TimeUnit.MILLISECONDS.toSeconds(duration) - TimeUnit.MINUTES.toSeconds(minutes);
+        System.out.println(minutes + " minutes " + seconds + " seconds");
+    }
+    public static ArrayList<DF> getBasesFromFolder(String path) {
+        ArrayList<DF> dataframes = new ArrayList<>();
+        try {
+            Files.list(Paths.get(path))
+                    .filter(Files::isRegularFile)
+                    .forEach(filePath -> {
+                        try {
+                            DF dataframe = new BaseSin(filePath.toString());
+                            dataframes.add(dataframe);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return dataframes;
+    }
+    public static void saveDataFrames(ArrayList<DF> dataframes, String filePath) {
+        try (FileOutputStream fos = new FileOutputStream(filePath);
+             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
+            oos.writeObject(dataframes);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    public static ArrayList<DF> loadDataFrames(String filePath) {
+        ArrayList<DF> loadedDataframes = null;
+        try (FileInputStream fis = new FileInputStream(filePath);
+             ObjectInputStream ois = new ObjectInputStream(fis)) {
+            loadedDataframes = (ArrayList<DF>) ois.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return loadedDataframes;
+    }
+    public static void checkMissingMontantIP(ArrayList<DF> dataFrames) {
+        for (DF df : dataFrames) {
+            System.out.println("Filename: " + df.fileName);
+
+            int columnIndex = -1;
+            for (int i = 0; i < df.header.length; i++) {
+                if (df.header[i].equals("montant_IP")) {
+                    columnIndex = i;
+                    break;
+                }
+            }
+
+            if (columnIndex == -1) {
+                System.out.println("Column 'montant_IP' not found");
+                continue;
+            }
+
+            Object[] column = df.c(columnIndex);
+            List<Integer> missingRows = new ArrayList<>();
+
+            for (int rowIndex = 0; rowIndex < column.length; rowIndex++) {
+                if (column[rowIndex].equals(NA_DBL)) {
+                    missingRows.add(rowIndex);
+                }
+            }
+
+            if (missingRows.isEmpty()) {
+                System.out.println("All values in 'montant_IP' are ok");
+            } else {
+                System.out.println("Rows with missing 'montant_IP' values: " + missingRows);
+            }
+        }
+    }
+    public static void checkexcel(String path) {
+        try {
+            FileInputStream fileInputStream = new FileInputStream(path);
+            Workbook workbook = new XSSFWorkbook(fileInputStream);
+            Sheet sheet = workbook.getSheetAt(0); // Get the first sheet
+
+            Iterator<Row> rowIterator = sheet.rowIterator();
+
+            while (rowIterator.hasNext()) {
+                Row row = rowIterator.next();
+                Iterator<Cell> cellIterator = row.cellIterator();
+
+                while (cellIterator.hasNext()) {
+                    Cell cell = cellIterator.next();
+
+                    // Check the cell type and print accordingly
+                    switch (cell.getCellTypeEnum()) {
+                        case STRING:
+                            System.out.print(cell.getStringCellValue() + "\t");
+                            break;
+                        case NUMERIC:
+                            System.out.print(cell.getNumericCellValue() + "\t");
+                            break;
+                        case BOOLEAN:
+                            System.out.print(cell.getBooleanCellValue() + "\t");
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                System.out.println(); // Print a new line for each row
+            }
+
+            workbook.close();
+            fileInputStream.close();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    public static void checkMissingValues(ArrayList<DF> dataFrames) {
+        for (DF df : dataFrames) {
+            System.out.println("Filename: " + df.fileName);
+
+            boolean allValuesOk = true;
+
+            for (int i = 0; i < df.ncol; i++) {
+                int missingCount = 0;
+                Object[] column = df.c(i);
+
+                switch (df.coltypes[i]) {
+                    case DBL -> {
+                        for (Object value : column) {
+                            if (value.equals(NA_DBL)) {
+                                missingCount++;
+                            }
+                        }
+                    }
+                    case STR -> {
+                        for (Object value : column) {
+                            if (value.equals(NA_STR)) {
+                                missingCount++;
+                            }
+                        }
+                    }
+                    case DAT -> {
+                        for (Object value : column) {
+                            if (value.equals(NA_DAT)) {
+                                missingCount++;
+                            }
+                        }
+                    }
+                }
+
+                if (missingCount > 0) {
+                    allValuesOk = false;
+                    double percentageMissing = ((double) missingCount / df.nrow) * 100;
+                    System.out.println("Column " + df.header[i] + " has " + percentageMissing + "% data missing");
+                }
+            }
+
+            if (allValuesOk) {
+                System.out.println("All values are ok");
+            }
+        }
+    }
+    public static void checkMissingValues_print(ArrayList<DF> dataFrames) {
+        for (DF df : dataFrames) {
+            System.out.println("Filename: " + df.fileName);
+
+            boolean allValuesOk = true;
+
+            for (int i = 0; i < df.ncol; i++) {
+                int missingCount = 0;
+                Object[] column = df.c(i);
+                List<Integer> missingRows = new ArrayList<>();
+
+                switch (df.coltypes[i]) {
+                    case DBL -> {
+                        for (int rowIndex = 0; rowIndex < column.length; rowIndex++) {
+                            Object value = column[rowIndex];
+                            if (value.equals(NA_DBL)) {
+                                missingCount++;
+                                missingRows.add(rowIndex);
+                            }
+                        }
+                    }
+                    case STR -> {
+                        for (int rowIndex = 0; rowIndex < column.length; rowIndex++) {
+                            Object value = column[rowIndex];
+                            if (value.equals(NA_STR)) {
+                                missingCount++;
+                                missingRows.add(rowIndex);
+                            }
+                        }
+                    }
+                    case DAT -> {
+                        for (int rowIndex = 0; rowIndex < column.length; rowIndex++) {
+                            Object value = column[rowIndex];
+                            if (value.equals(NA_DAT)) {
+                                missingCount++;
+                                missingRows.add(rowIndex);
+                            }
+                        }
+                    }
+                }
+
+                if (missingCount > 0) {
+                    allValuesOk = false;
+                    double percentageMissing = ((double) missingCount / df.nrow) * 100;
+                    System.out.println("Column " + df.header[i] + " has " + percentageMissing + "% data missing. Missing rows: " + missingRows);
+                }
+            }
+
+            if (allValuesOk) {
+                System.out.println("All values are ok");
+            }
+        }
+    }
     public static ArrayList<String> filter_out (ArrayList<ArrayList<String>> df, String crit1, String val1, String crit2, String val2, String field) {
         ArrayList<String> out = new ArrayList<>();
         int ncol = df.size();
@@ -313,232 +432,12 @@ public class App {
         }
         return out;
     }
-    public static String[] filtre_path_par_gest(String[] listSin, String flux) {
-        String filtering_pattern;
-
-        switch (Gestionnaire_en_cours) {
-            case "Supporter", "SPB Pologne", "SPB Espagne", "SPB France" -> {
-                return listSin;
-            }
-            case "SPB Italie" -> filtering_pattern = "ICIMW";
-            case "Expert" -> filtering_pattern = "ICIEXTR";
-            case "Distante" -> filtering_pattern = "ICIEXDI";
-            case "Gamestop" -> {
-                if (flux.equals("Sinistre")) {
-                    filtering_pattern = "Gamestop";
-                } else {
-                    filtering_pattern = "GS";
-                }
-            }
-            default -> {
-                err_simple("probleme filtering files");
-                return listSin;
-            }
-        }
-        return(filter_array_by_containing(listSin, filtering_pattern));
-    }
-    // INTEGRATION
-    public static boolean check_grille_gen() {
-        boolean[] keep = find_in_arr(grille_gen_g.c("Numero_Police"), Police_en_cours_maj);
-        boolean[] keep2 = find_in_arr(grille_gen_g.c("Flux"), Flux_en_cours);
-        boolean[] crit = b_and(keep, keep2);
-        return (sum_boolean(crit) == 0);
-    }
-    public static boolean check_flux(String flux) {
-        return (parametrage.c_filtre_2("Statut", "Gestionnaire", Gestionnaire_en_cours, "Flux", flux)[0].equals("oui"));
-    }
-    public static void get_coltypes() throws IOException {
-        String coltypes_g = "coltypes.csv";
-        String coltypes_b = "coltypes_base.csv";
-        CsvParserSettings settings = new CsvParserSettings();
-        settings.setDelimiterDetectionEnabled(true, ',');
-        settings.trimValues(true);
-        try (Reader inputReader = new InputStreamReader(Files.newInputStream(
-                new File(wd + coltypes_g).toPath()), encoding)) {
-            CsvParser parser = new CsvParser(settings);
-            List<String[]> parsedRows = parser.parseAll(inputReader);
-            for (String[] values : parsedRows) {
-                switch (values[1]) {
-                    case "1":
-                        coltypes_G.put(values[0], DF.Col_types.STR);
-                        break;
-                    case "2":
-                        coltypes_G.put(values[0], DF.Col_types.DBL);
-                        break;
-                    case "3":
-                        coltypes_G.put(values[0], DF.Col_types.DAT);
-                        break;
-                    case "4":
-                        coltypes_G.put(values[0], DF.Col_types.SKP);
-                }
-            }
-        }
-
-        try (Reader inputReader = new InputStreamReader(Files.newInputStream(
-                new File(wd + coltypes_b).toPath()), encoding)) {
-            CsvParser parser = new CsvParser(settings);
-            List<String[]> parsedRows = parser.parseAll(inputReader);
-            Iterator<String[]> rows = parsedRows.iterator();
-            int i = 0;
-            while (rows.hasNext()) {
-                String[] values = rows.next();
-                switch (values[1]) {
-                    case "1":
-                        coltypes_B.put(values[0], DF.Col_types.STR);
-                        break;
-                    case "2":
-                        coltypes_B.put(values[0], DF.Col_types.DBL);
-                        break;
-                    case "3":
-                        coltypes_B.put(values[0], DF.Col_types.DAT);
-                        break;
-                    case "4":
-                        coltypes_B.put(values[0], DF.Col_types.SKP);
-                }
-            }
-        }
-    }
-    public static void get_controles() {
-        Class<DF> classobj = DF.class;
-        Method[] methods = classobj.getMethods();
-        for (Method method : methods) {
-            String name = method.getName();
-            if (name.startsWith("controle")) {
-                controles_G.put(name, method);
-                Class<?>[] types = method.getParameterTypes();
-                if (types.length > 0) {
-                    params_G.put(name, true);
-                } else {
-                    params_G.put(name, false);
-                }
-            } else if (name.startsWith("fic_controle")) {
-//                System.out.println(name);
-//                System.out.println(name.startsWith("fic_controle_KO"));
-                if (name.equals("fic_controle_K0")) continue;
-                controles_fic_G.put(name, method);
-                Class<?>[] types = method.getParameterTypes();
-                if (types.length > 0) {
-                    params_fic_G.put(name, true);
-                } else {
-                    params_fic_G.put(name, false);
-                }
-            }
-        }
-    }
     public static char get_delim(String delim) {
         if(delim.length() > 1) {
             return '\t';
         } else {
             return delim.charAt(0);
         }
-    }
-    public static DF get_fic(String dossier_fic, String[] list_fic, char delim_fic, DF map_fic, DF base_fic_total) {
-        switch (Gestionnaire_en_cours) {
-            case "SPB France":
-            case "SPB Italie":
-                return base_fic_total.filter_out("Numéro_Police", Police_en_cours);
-            case "Expert":
-                int ind = which_contains_first_index(list_fic,"EXPERT");
-                return new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
-            case "Distante":
-                ind = which_contains_first_index(list_fic,"DISTANTE");
-                return new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
-            case "Gamestop":
-                ind = which_contains_first_index(list_fic,"GS");
-                return new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
-            case "SPB Pologne":
-                ind = which_contains_first_index(list_fic,Police_en_cours_maj);
-                return new DF(wd + dossier_fic + list_fic[ind], delim_fic, true, map_fic);
-            default:
-                return new DF();
-        }
-    }
-    public static String get_name(String path) {
-        int debut = path.indexOf("ICI");
-
-        switch (Gestionnaire_en_cours) {
-            case "SPB France":
-                ArrayList<Integer> ind = get_all_occurences(path, '_');
-                if (ind.isEmpty()) {
-                    err("pb naming france: " + path);
-                    return "";
-                } else {
-                    return path.substring(ind.get(1) + 1, ind.get(2));
-                }
-            case "SPB Italie":
-            case "Expert":
-            case "Distante":
-                ind = get_all_occurences(path, '.');
-                if (ind.isEmpty()) {
-                    err("pb naming italie: " + path);
-                    return "";
-                } else {
-                    return path.substring(debut, ind.get(0));
-                }
-            case "Gamestop":
-                int fin = path.indexOf(" at");
-                if (fin == -1) {
-                    err("pb naming italie: " + path);
-                    return "";
-                } else {
-                    return path.substring(debut, fin);
-                }
-            case "SPB Pologne":
-                ind = get_all_occurences(path, '_');
-                ArrayList<Integer> ind2 = get_all_occurences(path, '.');
-                if (ind.isEmpty()) {
-                    err("pb naming pol: " + path);
-                    return "";
-                } else {
-                    return path.substring(ind.get(1) + 1, ind2.get(0));
-                }
-            case "SPB Espagne":
-            case "Supporter":
-                ind = get_all_occurences(path, '_');
-                if (ind.isEmpty()) {
-                    err("pb naming esp/sup: " + path);
-                    return "";
-                } else {
-                    return path.substring(0, ind.get(0));
-                }
-        }
-        return "";
-    }
-    public static void get_map_cols() {
-        if(Gestionnaire_en_cours.equals("Gamestop")) {
-            boolean[] crit1 = paths.bool_filtre("Flux","Comptable");
-            boolean[] crit2 = paths.bool_filtre("Gestionnaire", Gestionnaire_en_cours);
-            int ind = (int) whichf(b_and(crit1,crit2));
-            mapping_fic_col = (String) paths.c("Mapping")[ind];
-        } else {
-            boolean[] crit1 = paths.bool_filtre("Flux","Sinistre");
-            boolean[] crit2 = paths.bool_filtre("Gestionnaire", Gestionnaire_en_cours);
-            int ind = (int) whichf(b_and(crit1,crit2));
-            mapping_sin_col = (String) paths.c("Mapping")[ind];
-            crit1 = paths.bool_filtre("Flux", "Comptable");
-            ind = (int) whichf(b_and(crit1,crit2));
-            mapping_fic_col = (String) paths.c("Mapping")[ind];
-            crit1 = paths.bool_filtre("Flux", "Adhesion");
-            ind = (int) whichf(b_and(crit1,crit2));
-            mapping_adh_col = (String) paths.c("Mapping")[ind];
-        }
-    }
-    public static String get_path_adh(String[] listfiles) {
-        for (String listfile : listfiles) {
-            if (listfile.contains(Police_en_cours_maj)) {
-                return listfile;
-            }
-        }
-        return listfiles[0];
-    }
-    public static void get_paths_et_parametrage() throws IOException {
-        paths = new DF(wd+"paths.xlsx",0,true,false);
-        parametrage = new DF(wd+"parametrage lancement.xlsx",0,true,false);
-        csv_settings.trimValues(true);
-        csv_settings.setIgnoreLeadingWhitespaces(true);
-        csv_settings.setIgnoreTrailingWhitespaces(true);
-        csv_settings.setIgnoreLeadingWhitespacesInQuotes(true);
-        csv_settings.setIgnoreTrailingWhitespacesInQuotes(true);
     }
     public static void get_yyyymm() {
         Date today = new Date();
@@ -547,58 +446,6 @@ public class App {
         int month = cal.get(Calendar.MONTH) - 1;
         int year = cal.get(Calendar.YEAR);
         yyyymm = year +  String.format("%02d", month);
-    }
-    public static void grille_gen_global_init() {
-        String path_gg = "Grille Générique.csv";
-        char delim_gg = ';';
-        grille_gen_g = new DF(wd + path_gg, delim_gg, false);
-    }
-    public static DF mapping_filtre(boolean sinistre) {
-        if (sinistre) {
-            boolean[] vec = logvec(mapping_sin_g.ncol, false);
-            int ind;
-            if(Gestionnaire_en_cours.equals("Gamestop")) {
-                ind = which_contains_first_index(mapping_sin_g.r(0),Police_en_cours_maj);
-            } else {
-                ind = find_in_arr_first_index(mapping_sin_g.header, mapping_sin_col);
-            }
-            vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
-            vec[ind] = true;
-            return new DF(mapping_sin_g, vec, true);
-        } else {
-            boolean[] vec = logvec(mapping_adh_g.ncol, false);
-            int ind;
-            if(Gestionnaire_en_cours.equals("Gamestop")) {
-                ind = which_contains_first_index(mapping_adh_g.r(0),Police_en_cours_maj);
-            } else {
-                ind = find_in_arr_first_index(mapping_adh_g.header, mapping_adh_col);
-            }
-            assert (ind != -1);
-            vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
-            vec[ind] = true;
-            return new DF(mapping_adh_g, vec, true);
-        }
-    }
-    public static DF mapping_filtre_fic() {
-        boolean[] vec = logvec(mapping_sin_g.ncol, false);
-        int ind = find_in_arr_first_index(mapping_sin_g.header, mapping_fic_col);
-        assert (ind != -1);
-        vec[0] = true; // sous condition que la colonne format ICI était toujours la premiere
-        vec[ind] = true;
-        return new DF(mapping_sin_g, vec, true);
-    }
-    public static void mapping_global_init() throws IOException {
-        String path_mapping = "Mapping des flux adhésion et sinistre gestionnaire.xlsx";
-        String mapping_sin_onglet = "Mapping entrant sinistres";
-        String mapping_adh_onglet = "Mapping entrant adhésions";
-        String dispatch_onglet = "Regles calcul dispatch";
-        mapping_sin_g = new DF(wd + path_mapping, mapping_sin_onglet, true, false);
-        mapping_adh_g = new DF(wd + path_mapping, mapping_adh_onglet, true, false);
-        dispatch_pol = new DF(wd + path_mapping, dispatch_onglet, true, false);
-        dispatch_pol.filter_in("Flux Entrant","FIC Pologne");
-        dispatch_pol.print();
-//        mapping_sin_g.delete_blanks_first_col();
-//        mapping_adh_g.delete_blanks_first_col();
     }
     public static void write_temps_exec(String quoi, String flux, String controle, String temps) {
         Rapport_temps_exec.get(0).add(quoi);
@@ -632,42 +479,6 @@ public class App {
                 System.out.print(strings.get(i) + " | ");
             }
             System.out.println();
-        }
-    }
-    public static void rapport_save() {
-        BufferedWriter br = null;
-        try {
-            br = new BufferedWriter(new FileWriter(wd + "Rapports/" + Flux_en_cours + "_" + Police_en_cours_maj + ".csv"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        StringBuilder sb = new StringBuilder();
-
-// Append strings from array
-        for (int i = 0; i < Rapport.get(0).size(); i++) {
-            for (ArrayList<String> col : Rapport) {
-                sb.append(col.get(i));
-                sb.append(';');
-            }
-            sb.replace(sb.length() - 1, sb.length(), "\r\n");
-//            sb.append("\r\n");
-        }
-
-        try {
-            br.write(sb.toString());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            br.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        Rapport = new ArrayList<>();
-        String[] rapport_cols = {"Police", "Flux", "Controle", "ID"};
-        for (int i = 0; i < rapport_cols.length; i++) {
-            Rapport.add(new ArrayList<>());
-            Rapport.get(i).add(rapport_cols[i]);
         }
     }
     public static void log_err_save() {
@@ -805,7 +616,6 @@ public class App {
         }
     }
 
-
     // DATA
     public static ArrayList <String> not_in(String[] what, String[] where) {
         ArrayList <String> notin = new ArrayList<>();
@@ -833,7 +643,6 @@ public class App {
         if (!check) notin.add(what);
         return notin;
     }
-
     public static boolean  check_in(String[] what, String[] where) {
         int counter = 0;
         for (String value : what) {
@@ -878,7 +687,6 @@ public class App {
         String[] out = new String[dim];
         System.arraycopy(array, 0, out, 0, dim);
         if (a >= dim | b >= dim | a < 0 | b < 0) {
-            err("problem in swap");
             return array;
         } else {
             out[a] = array[b];
@@ -1294,71 +1102,6 @@ public class App {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-    public static void grilles_collect(String path) throws IOException {
-        path = wd + path;
-        InputStream is = Files.newInputStream(new File(path).toPath());
-        Workbook workbook = StreamingReader.builder().rowCacheSize(1).bufferSize(4096).open(is);
-        List<String> sheetNames = new ArrayList<>();
-        List<String> sheetNames_read = new ArrayList<>();
-        for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
-            String name = workbook.getSheetName(i);
-            if (name.charAt(0) == 'C') {
-                sheetNames_read.add(name);
-                if (name.charAt(1) == 'S') {
-                    sheetNames.add(name.replace("S", ""));
-                } else {
-                    sheetNames.add(name);
-                }
-            }
-        }
-//        System.out.println(sheetNames_read);
-//        System.out.println(sheetNames);
-        int sheet_ind = 0;
-        for (String s : sheetNames) {
-//            System.out.println(s);
-//            System.out.println(sheetNames_read.get(sheet_ind));
-            CSVWriter writer = (CSVWriter) new CSVWriterBuilder(new FileWriter(path_grilles + s + ".csv"))
-                    .withSeparator('\t')
-                    .build();
-            DF grille = new DF(path, sheetNames_read.get(sheet_ind), true, true);
-            grille.dna();
-
-            writer.writeNext(grille.header);
-            for (int i = 0; i < grille.nrow; i++) {
-                String[] vec = new String[grille.ncol];
-                for (int j = 0; j < grille.ncol; j++) {
-                    vec[j] = grille.r(i)[j].toString();
-                }
-                writer.writeNext(vec);
-            }
-            writer.close();
-            sheet_ind++;
-
-        }
-    }
-    public static void get_grilles() throws IOException {
-        File f = new File(path_grilles);
-        String[] grilles = f.list();
-        if (grilles == null) {
-            System.out.println("grilles empty!");
-            return;
-        }
-        for (String g : grilles) {
-            String name = g.substring(0, g.indexOf('.'));
-            DF df = new DF(path_grilles + g, '\t',  true);
-            df.dna();
-            grilles_G.put(name, df);
-        }
-    }
-    public static void err(String msg) {
-//        System.err.println(new Throwable().getStackTrace()[0].getLineNumber());
-        System.out.println(msg);
-        System.out.println(Police_en_cours);
-        System.out.println(Controle_en_cours);
-    }
-    public static void err_simple(String msg) {
-        System.out.println(msg + " " + Police_en_cours + " " + Flux_en_cours);
     }
     public static boolean[] logvec(int dim, boolean values) {
         boolean[] out = new boolean[dim];

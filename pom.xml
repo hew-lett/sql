@@ -10,6 +10,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.8.1</version> <!-- Specify the version here -->
         <configuration>
           <source>14</source>
           <target>14</target>
@@ -24,6 +25,12 @@
   </properties>
 
   <dependencies>
+      <dependency>
+        <groupId>com.jcraft</groupId>
+        <artifactId>jsch</artifactId>
+        <version>0.1.54</version> <!-- Use the latest available version -->
+      </dependency>
+
     <dependency>
       <groupId>redis.clients</groupId>
       <artifactId>jedis</artifactId>
