@@ -26,7 +26,7 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-    public static final String wd = "C:/Users/jukov/Downloads/202305/202305/wd/";
+    public static final String wd = "E:/202305/wd/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
     public static final String regex_digits = "[0-9]+";
@@ -81,9 +81,9 @@ public class App {
     }};
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
         long startTime = System.nanoTime();long endTime;long duration;long minutes;long seconds;
-        ref_prog = new DF(wd+"Référentiel programmes.csv", ';');
-        ref_triangle = new DF(wd + "ref_triangle.xlsx");
-        mapping = new DF(wd + "mapping.xlsx");
+//        ref_prog = new DF(wd+"Référentiel programmes.csv", ';');
+//        ref_triangle = new DF(wd + "ref_triangle.xlsx");
+//        mapping = new DF(wd + "mapping.xlsx");
         mapping.printDataFrame();
 //        String path_sin = wd + "SINISTRE par gestionnaire pour les triangles/";
 //        ArrayList<DF> bases_sinistres = loadDataFrames(wd + "dataframes.ser");
@@ -165,32 +165,6 @@ public class App {
         columnNames.add(sdf.format(end.getTime()));
 
         return columnNames;
-    }
-    public static Map<String, ArrayList<String>> groupAndCombineStatuts(ArrayList<DF> dataFrames) {
-        // Map to hold the groups keyed by the substring of filename up to the first "_"
-        Map<String, Set<String>> groupedStatuts = new HashMap<>();
-
-        for (DF df : dataFrames) {
-            // Extract the key from filename (substring until the first appearance of "_")
-            String key = df.fileName.split("_")[0];
-
-            // Get the existing unique statuts for this key, or create a new set if not present
-            Set<String> uniqueStatuts = groupedStatuts.getOrDefault(key, new HashSet<>());
-
-            // Add all unique statuts from the current DF object
-            uniqueStatuts.addAll(df.statut_unique);
-
-            // Put the updated unique statuts back in the map
-            groupedStatuts.put(key, uniqueStatuts);
-        }
-
-        // Convert the Set values to ArrayList
-        Map<String, ArrayList<String>> result = new HashMap<>();
-        for (Map.Entry<String, Set<String>> entry : groupedStatuts.entrySet()) {
-            result.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-        }
-
-        return result;
     }
     public static void printTime(long startTime) {
         long endTime = System.nanoTime();

@@ -1,23 +1,49 @@
 package main.app;
 
 import com.monitorjbl.xlsx.StreamingReader;
+import com.univocity.parsers.csv.CsvParser;
+import com.univocity.parsers.csv.CsvParserSettings;
 import org.apache.poi.ss.usermodel.*;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import static main.app.App.*;
 import static main.app.App.rowchecker;
+import static main.app.DF.Col_types.SKP;
 
-public class BaseSin extends DF {
-    Object[] referentialRow;
+public class BaseSin extends BaseAccum {
     Object[] refProgrammesRow;
     String numPolice = "";
+    char delim = ';';
+    String pays = "";
+    String path = "";
+    public static void main(String[] args) throws IOException {
+        long startTime = System.nanoTime();long endTime;long duration;long minutes;long seconds;
+//        DF fic_FRA = new BaseFic(wd + "source FIC/SPB France/","FIC France");
+//        DF fic_ITA = new BaseFic(wd + "source FIC/SPB Italie/","DB Claims Italie");
+        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB France/","France","SPB France / Wakam");
+        base_aux.print(10);
+        System.out.println(base_aux.nrow);
+        System.out.println(Arrays.toString(base_aux.r(530000)));
+
+//        DF sin_POL = new BaseSin(wd + "source SIN/SPB Pologne/","Pologne","SPB Pologne");
+//        sin_POL.print(10);
+//        System.out.println(sin_POL.nrow);
+//        System.out.println(Arrays.toString(sin_POL.r(130000)));
+        endTime = System.nanoTime();
+        long elapsedTime = endTime - startTime;
+
+        minutes = TimeUnit.NANOSECONDS.toMinutes(elapsedTime);
+        seconds = TimeUnit.NANOSECONDS.toSeconds(elapsedTime) - TimeUnit.MINUTES.toSeconds(minutes);
+
+        System.out.println("Elapsed Time: " + minutes + " minutes " + seconds + " seconds");
+
+    }
     public BaseSin(String path) throws IOException {
         this.fullPath = path;
         // Extracting the filename and keys to find the matching referential row
@@ -34,10 +60,7 @@ public class BaseSin extends DF {
                 .rowCacheSize(1)
                 .bufferSize(4096)
                 .open(is);
-        if (fileName.equals("spb france_cdiscount")) {
-            System.out.println("ok");
-        }
-        //String sheet_name = workbook.getSheetName(0);
+
         String sheet_name;
         if (workbook.getNumberOfSheets() == 1) {
             sheet_name = workbook.getSheetName(0);
@@ -76,10 +99,9 @@ public class BaseSin extends DF {
                 int exactPosition = find_in_arr_first_index(referentialRow,header[i]);
                 coltypes[i] = cols[exactPosition].startsWith("date") ? Col_types.DAT : cols[exactPosition].startsWith("montant") ? Col_types.DBL : Col_types.STR;
             } else {
-                coltypes[i] = Col_types.SKP;
+                coltypes[i] = SKP;
             }
         }
-
 
         ncol = get_len(coltypes);
         df = new ArrayList<>(ncol);
@@ -94,7 +116,7 @@ public class BaseSin extends DF {
             row = rowIter.next();
             col_iterator = 0;
             for (int c = 0; c < this.header.length; c++) {
-                if (coltypes[c] != Col_types.SKP) {
+                if (coltypes[c] != SKP) {
                     Cell cell_i = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
                     if (cell_i == null) {
                         switch(coltypes[c]) {
@@ -114,170 +136,118 @@ public class BaseSin extends DF {
             rowchecker++;
 
         }
-        header_refactor();
+        headerAndColtypesDropSKP();
         header_unify();
         date_autofill_agg();
-        findAndStoreStatuts();
-    }
+        populateUniqueStatuts();
+        populateUniqueNumPoliceValues();
+        computeMinMaxDatesForPolicies();    }
+    public BaseSin(String path, String pays, String mappingColDefault) throws IOException {
+        this.source = true;
+        this.pays = pays;
+        this.path = path;
+        this.referentialRow = getReferentialRow(new String[]{"source"});
 
-    private void header_unify() {
-        for (int i = 0; i < ncol; i++) {
-            int ind = find_in_arr_first_index(this.referentialRow, header[i]);
-            header[i] = ref_triangle.header[ind];
+        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(path).listFiles()));
+        if (fileList.isEmpty()) return;
+
+        if (pays.equals("Pologne")) {
+            delim = '\t';
         }
-    }
-    private void date_autofill_agg() {
-        // Indices for required columns in the current DF
-        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
-        int indexDateSous = find_in_arr_first_index(header, "date_sous");
-        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
-        int indexNumPolice = find_in_arr_first_index(header, "num_police");
-
-        // Indices for required columns in the ref_prog DF
-        int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
-        int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
-        int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
-
-        // Return early if the num_police column doesn't exist
-        if (indexNumPolice == -1) return;
-
-        // If date_surv column doesn't exist, create it
-        if (indexDateSurv == -1) {
-            indexDateSurv = ncol;
-            Object[] newColumn = new Object[nrow];
-            Arrays.fill(newColumn, NA_DAT);
-            df.add(newColumn);
-            ncol++;
+        if (pays.equals("France")) {
+            delim = '|';
         }
 
-        // If date_sous column doesn't exist, create it
-        if (indexDateSous == -1) {
-            indexDateSous = ncol;
-            Object[] newColumn = new Object[nrow];
-            Arrays.fill(newColumn, NA_DAT);
-            df.add(newColumn);
-            ncol++;
-        }
+        int dim = computeDimSIN();
+        System.out.println(dim);
 
-        // Cache for quick lookup of ref_prog data based on num_police/n°contrat
-        Map<String, Date[]> refprogLookup = new HashMap<>();
-        for (int i = 0; i < ref_prog.nrow; i++) {
-            String contrat = ref_prog.c(indexContrat)[i].toString();
-            Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
-            Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
-            refprogLookup.put(contrat, new Date[]{dateDebut, dateFin});
-        }
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
 
-        for (int i = 0; i < nrow; i++) {
-            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
-            String currentNumPolice = c(indexNumPolice)[i].toString();
-            Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
-            if (refDates == null) {
-                System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
-                continue;
+        int i = 0;
+        boolean initialized = false;
+
+        for (File file : fileList) {
+            String mapping_col = "";
+            if (file.toString().contains("FRMP")) {
+                mapping_col = "SPB France / ONEY";
+            } else {
+                mapping_col = mappingColDefault;
             }
+            try (Reader inputReader = Files.newBufferedReader(file.toPath(), Charset.forName(encoding))) {
+                CsvParser parser = new CsvParser(settings);
+                List<String[]> parsedRows = parser.parseAll(inputReader);
+                Iterator<String[]> rows = parsedRows.iterator();
 
-            Date dateDebutRef = refDates[0];
-            Date dateFinRef = refDates[1];
+                if (!initialized) {
+                    header = rows.next();
+                    header = Arrays.stream(header)
+                            .filter(h -> h != null && !h.trim().isEmpty())
+                            .toArray(String[]::new);
+                    ncol = header.length;
 
-            Date dateSurv = (Date) c(indexDateSurv)[i];
-            Date dateSous = (Date) c(indexDateSous)[i];
+                    boolean[] cols_kept = this.mapColnamesAndKeepNeededMain(mapping_col);
+                    header_unify();
+                    coltypes_populate(cols_kept);
 
-            // Date filling logic...
-            if (dateSurv.equals(NA_DAT)) {
-                if (indexDateDecla != -1 && !c(indexDateDecla)[i].equals(NA_DAT)) {
-                    dateSurv = (Date) c(indexDateDecla)[i];
-                } else if (!dateSous.equals(NA_DAT)) {
-                    dateSurv = dateSous;
+                    nrow = dim;
+                    assert (coltypes.length == parsedRows.get(0).length);
+                    ncol = get_len(coltypes);
+                    df = new ArrayList<>(get_len(coltypes));
+                    this.df_populate(coltypes);
+
+                    initialized = true;
                 } else {
-                    dateSurv = dateDebutRef;
+                    rows.next(); // Skipping the header for all subsequent files
                 }
-            }
-            if (dateSous.equals(NA_DAT)) {
-                if(!dateSurv.equals(NA_DAT)){
-                    dateSous = dateSurv;
-                } else {
-                    dateSous = dateDebutRef;
+
+                while (rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    parsedRow = Arrays.copyOf(parsedRow, header.length);
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != SKP) {
+                            df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
                 }
-            }
 
-            // Apply transformations...
-            date_transform(dateSurv, dateDebutRef, dateFinRef, indexDateSurv, i);
-            date_transform(dateSous, dateDebutRef, dateFinRef, indexDateSous, i);
-        }
-    }
-    private void date_transform (Date date, Date dateDebutRef, Date dateFinRef, int columnIndex, int rowIndex) {
-        // Control that dates are in the desired interval
-        if (date.before(dateDebutRef)) {
-            date = dateDebutRef;
-        }
-        if (date.after(dateFinRef)) {
-            date = dateFinRef;
-        }
-
-        // Change the date to the 1st day of the month
-        Calendar cal = Calendar.getInstance();
-        cal.setTime(date);
-        cal.set(Calendar.DAY_OF_MONTH, 1);
-        date = cal.getTime();
-
-        // Update the dates in the DF
-        df.get(columnIndex)[rowIndex] = date;
-    }
-    private Object[] getRefProgrammesRow (String numPolice, SimpleDateFormat refProgDateFormat) {
-        int indexNumContract = find_in_arr_first_index(ref_prog.header, "n°contrat");
-        int indexDateDebut = find_in_arr_first_index(ref_prog.header, "date_debut");
-        int indexDateFin = find_in_arr_first_index(ref_prog.header, "date_fin");
-
-        for (int i = 0; i < ref_prog.nrow; i++) {
-            String contractNumber = (String) ref_prog.c(indexNumContract)[i];
-            if (contractNumber != null && contractNumber.equals(numPolice)) {
-                Object[] refRow = ref_prog.r(i);
-                try {
-                    refRow[indexDateDebut] = refProgDateFormat.parse((String) refRow[indexDateDebut]);
-                    refRow[indexDateFin] = refProgDateFormat.parse((String) refRow[indexDateFin]);
-                } catch (ParseException e) {
-                    e.printStackTrace();
-                }
-                return refRow;
             }
         }
-        return null;
+        headerAndColtypesDropSKP();
+        date_autofill_agg();
+        remove_leading_zeros();
+        populateUniqueStatuts();
+        populateUniqueNumPoliceValues();
+        computeMinMaxDatesForPolicies();
     }
-    private Object[] getReferentialRow(String[] keys) {
-        String gestionnaire = keys[0];
-        String precision = keys.length > 1 ? keys[1] : null;
+    private int computeDimSIN() throws IOException {
+        File[] files = new File(path).listFiles();
+        if (files == null || files.length == 0) return 0;
 
-        for (int rowIndex = 0; rowIndex < ref_triangle.nrow; rowIndex++) {
-            Object[] row = ref_triangle.r(rowIndex);
-            if (row[0].equals(gestionnaire)) {
-                // If precision is not provided or matches the referential, return the row
-                if (precision == null || row[1].equals(precision)) {
-                    return row;
-                }
-            }
+        List<File> fileList = new ArrayList<>(Arrays.asList(files));
+
+        int dim;
+        String metadataCurrent = wd + "metadata/sin_" + pays + "_nb_lignes_" + CURRENT_MONTH + ".txt";
+        if (new File(metadataCurrent).exists()) {
+            return readDimFromMetadata(metadataCurrent);
         }
 
-        throw new RuntimeException("Referential row not found for keys: " + Arrays.toString(keys));
+        dim = getDimFrom0_SIN(fileList, delim);
+        writeDimToMetadata(metadataCurrent, dim);
+
+        return dim;
     }
-    public String[] getColsToTake() {
-        List<String> colsList = new ArrayList<>();
-        for (int i = 2; i < referentialRow.length - 1; i++) {
-            String colValue = referentialRow[i].toString().toLowerCase().trim();
-            if (!colValue.isEmpty()) {
-                colsList.add(colValue);
-            }
+    private int getDimFrom0_SIN(List<File> fileList, char delim) throws IOException {
+        int dim = 0;
+        for (File file : fileList) {
+            dim += csv_get_nrows(file.getPath(), delim);
         }
-        return colsList.toArray(new String[0]);
+        return dim;
     }
-    public SimpleDateFormat getDateFormatter(String dateFormatString) {
-        String pattern = switch (dateFormatString) {
-            case "#yyyy-mm-dd#" -> "yyyy-MM-dd";
-            case "dd/mm/yyyy" -> "dd/MM/yyyy";
-            default -> throw new IllegalArgumentException("Unknown date format: " + dateFormatString);
-        };
-
-        return new SimpleDateFormat(pattern);
-    }
-
 }

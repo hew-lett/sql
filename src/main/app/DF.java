@@ -5,13 +5,9 @@ import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
 
 import java.io.*;
-import java.lang.reflect.Array;
 import java.nio.file.Files;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.LocalDate;
-import java.time.Period;
-import java.time.ZoneId;
 import java.util.*;
 import java.io.File;
 import java.io.IOException;
@@ -19,27 +15,16 @@ import java.io.InputStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.univocity.parsers.csv.CsvRoutines;
-import org.apache.commons.lang3.math.NumberUtils;
-import org.apache.commons.logging.Log;
-import org.apache.poi.ss.formula.functions.T;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.openxmlformats.schemas.spreadsheetml.x2006.main.STSourceType;
-import org.w3c.dom.ls.LSOutput;
-
-import javax.naming.PartialResultException;
-import javax.naming.ldap.Control;
-import javax.sound.midi.ControllerEventListener;
-import javax.swing.*;
 
 import static java.lang.Math.*;
-import static java.util.stream.IntStream.range;
 import static main.app.App.*;
 import static main.app.DF.Col_types.*;
 
 public class DF implements Serializable {
+    public static final String wd = "E:/202305/wd/";
     public ArrayList<Object[]> df;
     public Col_types[] coltypes;
     public String[] header;
@@ -48,8 +33,6 @@ public class DF implements Serializable {
     public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
     public String fileName;
     public String fullPath;
-    public ArrayList<String> statut_unique = new ArrayList<>();
-    public String key_sin = "";
 
     public DF(String path, char delim) {
         String filename = path.substring(path.lastIndexOf("/") + 1);
@@ -99,7 +82,7 @@ public class DF implements Serializable {
             }
         } catch (IOException ignored) {
         }
-        this.header_refactor();
+        this.headerAndColtypesDropSKP();
         this.remove_leading_zeros();
     } //ref_prog
     public DF(String path, char delim, boolean maj) {
@@ -156,7 +139,7 @@ public class DF implements Serializable {
             }
         } catch (IOException ignored) {
         }
-        this.header_refactor();
+        this.headerAndColtypesDropSKP();
         this.remove_leading_zeros();
     } //ref_prog
     public DF (String path) throws IOException {
@@ -346,19 +329,27 @@ public class DF implements Serializable {
             }
         }
     }
-    public double calculateSum(Date datePeriode, String monthHeader, String status) {
+    public double calculateSum(Date datePeriode, String police, String monthHeader, String status) {
+//        if (monthHeader.equals("mar.19") && police.equals("FREW07") && status.equals("Terminé – accepté")) {
+//            System.out.println("here");
+//        }
         double sum = 0.0;
+        boolean init = false;
         for (int i = 0; i < this.nrow; i++) {
-            if (this.c("date_surv")[i].equals(datePeriode) &&
-                    isSameMonth((Date) this.c("date_sous")[i], monthHeader) &&
+            if (this.c("num_police")[i].equals(police) && this.c("date_sous")[i].equals(datePeriode) &&
+                    isSameMonth(monthHeader,(Date) this.c("date_surv")[i]) &&
                     this.c("statut")[i].equals(status)) {
-
+                init = true;
                 sum += (double) this.c("montant_IP")[i];
             }
         }
-        return sum;
+        if (!init) {
+            return -1.0;
+        } else {
+            return sum;
+        }
     }
-    public boolean isSameMonth(Date date, String monthHeader) {
+    public boolean isSameMonth(String monthHeader, Date date) {
         Calendar cal = Calendar.getInstance();
         cal.setTime(date);
 
@@ -374,37 +365,55 @@ public class DF implements Serializable {
         // Check if the year and month of the passed date match the provided month header.
         return cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) == month;
     }
+    public boolean isLowerMonthSvD(String monthHeader, Date date) { //header lower than date
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
 
-    private String normalize(String input) {
-        return input.replace("é", "e").toLowerCase();
+        // Extract the year from monthHeader.
+        int year = Integer.parseInt("20" + monthHeader.substring(monthHeader.length() - 2));
+
+        // Get the Calendar month constant from the monthMap.
+        Integer month = Estimate.monthMap.get(monthHeader.substring(0, 4));
+        if (month == null) {
+            return false; // If the monthHeader is not recognized.
+        }
+
+        if (cal.get(Calendar.YEAR) > year) {
+            return true;
+        }
+
+        if (cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) > month) {
+            return true;
+        }
+
+        return false;
     }
-    public void findAndStoreStatuts() {
-        // Determine the index of the column containing the pattern "statut"
-        int columnIndex = -1;
-        for (int i = 0; i < header.length; i++) {
-            if (header[i].contains("statut")) {
-                columnIndex = i;
-                break;
-            }
+    public boolean isHigherMonthSvD(String monthHeader, Date date) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+
+        // Extract the year from monthHeader.
+        int year = Integer.parseInt("20" + monthHeader.substring(monthHeader.length() - 2));
+
+        // Get the Calendar month constant from the monthMap.
+        Integer month = Estimate.monthMap.get(monthHeader.substring(0, 4));
+        if (month == null) {
+            return false; // If the monthHeader is not recognized.
         }
 
-        // If the column with the pattern "statut" was found, proceed to extract unique values
-        if (columnIndex != -1) {
-            // Using a HashSet to store unique values
-            Set<String> uniqueStatuts = new HashSet<>();
-
-            // Iterate through the rows of the specified column and collect unique values
-            for (int i = 0; i < nrow; i++) {
-                Object value = df.get(columnIndex)[i];
-                if (value != null) {
-                    uniqueStatuts.add(value.toString()); // Convert the value to String
-                }
-            }
-
-            // Clear the existing statuts and add the unique ones
-            statut_unique.clear();
-            statut_unique.addAll(uniqueStatuts);
+        if (cal.get(Calendar.YEAR) < year) {
+            return true;
         }
+
+        if (cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) < month) {
+            return true;
+        }
+
+        return false;
+    }
+
+    String normalize(String input) {
+        return input.replace("é", "e").toLowerCase();
     }
     public void checkMissingMontantIP() {
         System.out.println("Filename: " + fileName);
@@ -633,7 +642,19 @@ public class DF implements Serializable {
 
         workbook.close();
     }
-
+    int readDimFromMetadata(String metadataPath) {
+        try (Scanner scanner = new Scanner(new File(metadataPath))) {
+            return scanner.nextInt();
+        } catch (FileNotFoundException e) {
+            // This should not happen since we check the file's existence before calling this method
+            return 0;
+        }
+    }
+    void writeDimToMetadata(String metadataPath, int dim) throws IOException {
+        try (FileWriter writer = new FileWriter(metadataPath, false)) {
+            writer.write(String.valueOf(dim));
+        }
+    }
     // PRINT
     public void print() {
         this.print(min(10,this.nrow));
@@ -753,21 +774,31 @@ public class DF implements Serializable {
         } catch (IOException ignored) {}
         return out;
     }
-    public void header_refactor() {
-        String[] header_new = new String[get_len(coltypes)];
-        Col_types[] coltypes_new = new Col_types[get_len(coltypes)];
+    public void headerAndColtypesDropSKP() {
+        int newSize = 0;
+        for (Col_types type : coltypes) {
+            if (type != Col_types.SKP) {
+                newSize++;
+            }
+        }
+
+        String[] headerNew = new String[newSize];
+        Col_types[] coltypesNew = new Col_types[newSize];
+
         int j = 0;
         for (int i = 0; i < coltypes.length; i++) {
             if (coltypes[i] != Col_types.SKP) {
-                header_new[j] = header[i];
-                coltypes_new[j] = coltypes[i];
+                headerNew[j] = header[i];
+                coltypesNew[j] = coltypes[i];
                 j++;
             }
         }
-        this.coltypes = coltypes_new;
-        this.header = header_new;
+
+        this.coltypes = coltypesNew;
+        this.header = headerNew;
     }
-    public String[] header_refactor(String[] head) {
+
+    public String[] headerAndColtypesDropSKP(String[] head) {
         String[] header_new = new String[get_len(coltypes)];
         Col_types[] coltypes_new = new Col_types[get_len(coltypes)];
         String[] header_temp_new = new String[get_len(coltypes)];
