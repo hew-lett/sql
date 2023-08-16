@@ -13,6 +13,7 @@ import static main.app.DF.Col_types.DAT;
 import static main.app.DF.Col_types.SKP;
 
 public class BaseAccum extends DF {
+//    public Map<String, ArrayList<Object[]>> dfMap;
     public static final char DEFAULT_DELIMITER = ';';
     public static final char TAB_DELIMITER = '\t';
     static DF ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
@@ -367,5 +368,23 @@ public class BaseAccum extends DF {
             }
         }
     }
-
+    public String extractKeyFromFileName(String fileName) {
+        int start = fileName.indexOf("ICI");
+        int end = fileName.indexOf("_", start);
+        if (start != -1 && end != -1) {
+            return fileName.substring(start, end);
+        }
+        return fileName; // Default to full file name if pattern not found
+    }
+    public void validateHeader(String[] referenceHeader, String[] currentHeader, String fileName) throws IOException {
+        if (referenceHeader.length != currentHeader.length) {
+            throw new IOException("File " + fileName + " has a header of different length");
+        }
+        for (int i = 0; i < referenceHeader.length; i++) {
+            if (!referenceHeader[i].equals(currentHeader[i])) {
+                System.out.println("Wrong header at position " + i + " for the file " + fileName);
+                throw new IOException("Invalid header in file " + fileName);
+            }
+        }
+    }
 }

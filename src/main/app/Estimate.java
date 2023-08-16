@@ -22,6 +22,7 @@ public class Estimate extends DF {
     int lastAppendSize = 0;
     protected Set<String> uniqueNumPoliceValues = new HashSet<>();
     boolean[] mask_col;
+    protected Stopwatch stopwatch = new Stopwatch();
 
     public static final HashMap<String, Integer> monthMap = new HashMap<String, Integer>() {{
         put("jan.", Calendar.JANUARY);
@@ -55,15 +56,23 @@ public class Estimate extends DF {
 //        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB France/","France","SPB France / Wakam");
 //        stopwatch.printElapsedTime("basesin");
 
-        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/Garantie Privée.xlsx");
+        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/SPB Italie.xlsx");
         stopwatch.printElapsedTime("estimate");
 
-        BaseSin base_aux = new BaseSin(wd+"aux SIN/Garantie Privée.xlsm");
+        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB Italie/","Italie","SPB Italie");
         stopwatch.printElapsedTime("basesin");
+
+//        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/Garantie Privée.xlsx");
+//        stopwatch.printElapsedTime("estimate");
+//
+//        BaseSin base_aux = new BaseSin(wd+"aux SIN/Garantie Privée.xlsm");
+//        stopwatch.printElapsedTime("basesin");
 
         estimate.addColumnByType('M',true, base_aux);
         stopwatch.printElapsedTime("addcols");
-        estimate.printFilteredHeadersAndSubheaders();
+//        estimate.printFilteredHeadersAndSubheaders();
+//        estimate.stopwatch = new Stopwatch();
+//        estimate.stopwatch.start();
         estimate.populateColumns(base_aux);
         stopwatch.printElapsedTime("calcul");
 
@@ -76,7 +85,6 @@ public class Estimate extends DF {
 //        estimate.addColumnByType('M',true, base_aux);
 //        estimate.populateColumns(base_aux);
 //        estimate.saveToFile();
-
 
     }
     public Estimate(String path) throws IOException {
@@ -245,19 +253,20 @@ public class Estimate extends DF {
         int ind = find_in_arr_first_index(this.header, "Date Periode");
         int begin = ncol - lastAppendSize;
         for (String police : this.uniqueNumPoliceValues) {
-            if (police.equals("ICICEDV16")) {
-                System.out.println("here");
-            } else {
-                continue;
-            }
-
+//            if (police.equals("ICICEDV16")) {
+//                System.out.println("here");
+//            } else {
+//                continue;
+//            }
+            System.out.println(police);
+//            this.stopwatch.start();
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (this.c("Contrat")[row].equals(police)) {
                     mask_row[row] = true;
                 }
             }
-
+//            this.stopwatch.printElapsedTime("made mask row");
             String currentStatus = null;
             Date minDateForStatus = null;
             Date maxDateForStatus = null;
@@ -284,6 +293,8 @@ public class Estimate extends DF {
                             this.mask_col[c] = true;
                         }
                     }
+//                    this.stopwatch.printElapsedTime("made mask col");
+
                 } // update status, create mask_col
                 maskIndex++;
                 if (!temp_mask_col[maskIndex]) continue;
@@ -300,9 +311,12 @@ public class Estimate extends DF {
                             this.df.get(col)[row] = String.format("%.2f", sum);
                         }
                     }
+
                 }
+//                this.stopwatch.printElapsedTime("made col " + col);
+
             }
-            System.out.println("hello");
+//            System.out.println("hello");
         }
     }
 

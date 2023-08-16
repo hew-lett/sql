@@ -831,6 +831,23 @@ public class DF implements Serializable {
             }
         }
     }
+    public ArrayList<Object[]> df_populate_i (Col_types[] vectypes, ArrayList<Object[]> base) {
+        for (Col_types coltype : vectypes) {
+            switch (coltype) {
+                case STR:
+                    base.add(new String[nrow]);
+                    break;
+                case DBL:
+                    base.add(new Double[nrow]);
+                    break;
+                case DAT:
+                    base.add(new Date[nrow]);
+                    break;
+                default:
+            }
+        }
+        return base;
+    }
     public ArrayList<Object[]> df_populate (ArrayList<Object[]> base, Col_types[] coltypes) {
         for (Col_types coltype : coltypes) {
             switch (coltype) {
