@@ -62,7 +62,8 @@ public class BaseAccum extends DF {
         }
         List<String> refTriangleHeaders = Arrays.asList(ref_triangle.header);
         for (int colIndex = 0; colIndex < header.length; colIndex++) {
-            if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex]) && header[colIndex].startsWith("date")) {
+            if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex]) &&
+                    header[colIndex].startsWith("date")) {
                 coltypes[colIndex] = DAT;
             }
         }
@@ -77,6 +78,86 @@ public class BaseAccum extends DF {
         return new SimpleDateFormat(pattern);
     }
     void date_autofill_agg() {
+        // Indices for required columns in the current DF
+        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
+        int indexDateSous = find_in_arr_first_index(header, "date_sous");
+        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
+        int indexNumPolice = find_in_arr_first_index(header, "num_police");
+
+        // Indices for required columns in the ref_prog DF
+        int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
+        int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
+        int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
+
+        // Return early if the num_police column doesn't exist
+        if (indexNumPolice == -1) return;
+
+        // If date_surv column doesn't exist, create it
+        if (indexDateSurv == -1) {
+            indexDateSurv = ncol;
+            Object[] newColumn = new Object[nrow];
+            Arrays.fill(newColumn, NA_DAT);
+            df.add(newColumn);
+            ncol++;
+        }
+
+        // If date_sous column doesn't exist, create it
+        if (indexDateSous == -1) {
+            indexDateSous = ncol;
+            Object[] newColumn = new Object[nrow];
+            Arrays.fill(newColumn, NA_DAT);
+            df.add(newColumn);
+            ncol++;
+        }
+
+        // Cache for quick lookup of ref_prog data based on num_police/n°contrat
+        Map<String, Date[]> refprogLookup = new HashMap<>();
+        for (int i = 0; i < ref_prog.nrow; i++) {
+            String contrat = ref_prog.c(indexContrat)[i].toString();
+            Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
+            Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
+            refprogLookup.put(contrat, new Date[]{dateDebut, dateFin});
+        }
+
+        for (int i = 0; i < nrow; i++) {
+//            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
+            String currentNumPolice = c(indexNumPolice)[i].toString();
+            Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
+            if (refDates == null) {
+                System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
+                continue;
+            }
+
+            Date dateDebutRef = refDates[0];
+            Date dateFinRef = refDates[1];
+
+            Date dateSurv = (Date) c(indexDateSurv)[i];
+            Date dateSous = (Date) c(indexDateSous)[i];
+
+            // Date filling logic...
+            if (dateSurv.equals(NA_DAT)) {
+                if (indexDateDecla != -1 && !c(indexDateDecla)[i].equals(NA_DAT)) {
+                    dateSurv = (Date) c(indexDateDecla)[i];
+                } else if (!dateSous.equals(NA_DAT)) {
+                    dateSurv = dateSous;
+                } else {
+                    dateSurv = dateDebutRef;
+                }
+            }
+            if (dateSous.equals(NA_DAT)) {
+                if(!dateSurv.equals(NA_DAT)){
+                    dateSous = dateSurv;
+                } else {
+                    dateSous = dateDebutRef;
+                }
+            }
+
+            // Apply transformations...
+            date_transform(dateSurv, dateDebutRef, dateFinRef, indexDateSurv, i);
+            date_transform(dateSous, dateDebutRef, dateFinRef, indexDateSous, i);
+        }
+    }
+    void date_autofill_agg_par_police(ArrayList<Object[]> df) {
         // Indices for required columns in the current DF
         int indexDateSurv = find_in_arr_first_index(header, "date_surv");
         int indexDateSous = find_in_arr_first_index(header, "date_sous");
@@ -218,6 +299,16 @@ public class BaseAccum extends DF {
             }
         }
     }
+    String[] header_unify_aux(String[] header) {
+        String[] outputHeader = Arrays.copyOf(header, header.length);
+        for (int i = 0; i < header.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
+            if (ind != -1) {
+                outputHeader[i] = ref_triangle.header[ind];
+            }
+        }
+        return outputHeader;
+    }
     String[] header_unify_return(String[] inputHeader) {
         String[] unifiedHeader = new String[inputHeader.length];
         for (int i = 0; i < inputHeader.length; i++) {
@@ -241,6 +332,36 @@ public class BaseAccum extends DF {
         return colsList.toArray(new String[0]);
     }
     boolean[] mapColnamesAndKeepNeededMain (String mapping_col) {
+
+        DF map_filtered = mapping.mappingFiltre(mapping_col);
+
+        boolean[] columnsKept = new boolean[header.length];
+
+        for (int i = 0; i < header.length; i++) {
+            columnsKept[i] = false;
+
+            for (int j = 0; j < map_filtered.nrow; j++) {
+                // Getting the Format ICI value (from the first column) and the desired format (from the second column)
+                String formatICI = (String) map_filtered.df.get(0)[j];
+                String desiredFormat = (String) map_filtered.df.get(1)[j];
+
+                // If either value is null, continue to next iteration
+                if (Objects.equals(formatICI, "") || desiredFormat.equals("")) continue;
+
+                // Check if the header matches the desired format (ignoring case and special characters)
+                if (normalize(header[i]).equalsIgnoreCase(normalize(desiredFormat))) {
+                    // Check if the Format ICI value is present in referentialRow
+                    if (Arrays.asList(referentialRow).contains(formatICI)) {
+                        header[i] = formatICI;
+                        columnsKept[i] = true; // We keep this column
+                        break; // No need to continue searching for this header
+                    }
+                }
+            }
+        }
+        return columnsKept;
+    }
+    boolean[] mapColnamesAndKeepNeededAux (String mapping_col, String[] header) {
 
         DF map_filtered = mapping.mappingFiltre(mapping_col);
 
@@ -370,21 +491,43 @@ public class BaseAccum extends DF {
     }
     public String extractKeyFromFileName(String fileName) {
         int start = fileName.indexOf("ICI");
+        if (start == -1) {
+            start = fileName.indexOf("FRMP");
+        }
         int end = fileName.indexOf("_", start);
+
         if (start != -1 && end != -1) {
             return fileName.substring(start, end);
         }
+
         return fileName; // Default to full file name if pattern not found
     }
-    public void validateHeader(String[] referenceHeader, String[] currentHeader, String fileName) throws IOException {
+    public boolean validateHeader(String[] referenceHeader, String[] currentHeader, String fileName)  {
         if (referenceHeader.length != currentHeader.length) {
-            throw new IOException("File " + fileName + " has a header of different length");
+            System.out.println("Wrong header length " + fileName);
+            return false;
         }
         for (int i = 0; i < referenceHeader.length; i++) {
             if (!referenceHeader[i].equals(currentHeader[i])) {
                 System.out.println("Wrong header at position " + i + " for the file " + fileName);
-                throw new IOException("Invalid header in file " + fileName);
+                return false;
             }
         }
+        return true;
     }
+    public Object[] r(int index, ArrayList<Object[]> df){
+        Object[] row = new Object[ncol];
+        for(int i = 0; i<this.ncol; i++){
+            row[i] = df.get(i)[index];
+        }
+        return row;
+    }
+    public Object[] c(String colName, ArrayList<Object[]> df){
+        int index = find_in_arr_first_index(header, colName);
+        return df.get(index);
+    }
+    public Object[] c(int index, ArrayList<Object[]> df){
+        return df.get(index);
+    }
+
 }

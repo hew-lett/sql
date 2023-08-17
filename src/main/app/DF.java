@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -797,7 +798,18 @@ public class DF implements Serializable {
         this.coltypes = coltypesNew;
         this.header = headerNew;
     }
-
+    public static int countBool(boolean[] array) {
+        return (int) IntStream.range(0, array.length)
+                .filter(i -> array[i])
+                .count();
+    }
+    public static int[] matchHeaders(String[] A, String[] B) {
+        int[] output = new int[A.length];
+        for (int i = 0; i < B.length; i++) {
+            output[i] = find_in_arr_first_index(A, B[i]);
+        }
+        return output;
+    }
     public String[] headerAndColtypesDropSKP(String[] head) {
         String[] header_new = new String[get_len(coltypes)];
         Col_types[] coltypes_new = new Col_types[get_len(coltypes)];
@@ -818,16 +830,11 @@ public class DF implements Serializable {
     public void df_populate (Col_types[] vectypes) {
         for (Col_types coltype : vectypes) {
             switch (coltype) {
-                case STR:
-                    this.df.add(new String[nrow]);
-                    break;
-                case DBL:
-                    this.df.add(new Double[nrow]);
-                    break;
-                case DAT:
-                    this.df.add(new Date[nrow]);
-                    break;
-                default:
+                case STR -> this.df.add(new String[nrow]);
+                case DBL -> this.df.add(new Double[nrow]);
+                case DAT -> this.df.add(new Date[nrow]);
+                default -> {
+                }
             }
         }
     }
