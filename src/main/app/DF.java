@@ -6,12 +6,14 @@ import com.univocity.parsers.csv.CsvParserSettings;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.sql.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Date;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
@@ -34,8 +36,76 @@ public class DF implements Serializable {
     public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
     public String fileName;
     public String fullPath;
+    public String tableName;
+    private static Connection connection;
+    private int lastID = 0;
+    private static final int BATCH_SIZE = 10000;
 
+    public static void main(String[] args) throws IOException, SQLException {
+        ref_prog = new DF(wd+"Référentiel programmes.csv", ';');
+    }
     public DF(String path, char delim) {
+        fileName = path.substring(path.lastIndexOf("/") + 1);
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+
+        this.tableName = "ref_prog";  // or derive it from filename, e.g., filename.replace(".csv", "")
+        try (Reader inputReader = new InputStreamReader(Files.newInputStream(
+                new File(path).toPath()), encoding)) {
+            CsvParser parser = new CsvParser(settings);
+            List<String[]> parsedRows = parser.parseAll(inputReader);
+            Iterator<String[]> rows = parsedRows.iterator();
+            header = rows.next();
+            for (int i = 0; i < header.length; i++) {
+                header[i] = header[i].toLowerCase();
+            }
+
+            coltypes = new Col_types[header.length];
+            String[] strColumns = {
+                    "pays", "gestionnaire_1", "n°contrat", "acquisition des primes", "fait generateur", "produit eligible"
+            };
+
+            String[] dateColumns = {
+                    "date_debut", "date_fin"
+            };
+
+            for (int i = 0; i < header.length; i++) {
+                if (Arrays.asList(strColumns).contains(header[i])) {
+                    coltypes[i] = STR;
+                } else if (Arrays.asList(dateColumns).contains(header[i])) {
+                    coltypes[i] = DAT; // Assuming you have a DAT enum value for date type columns
+                } else {
+                    coltypes[i] = SKP;
+                }
+            }
+            nrow = parsedRows.size() - 1;
+            ncol = get_len(coltypes);
+            this.headerDropSKP();
+            try {
+                // Initialize database connection
+                initializeConnection();
+
+                // Create table in MySQL
+                createTable(tableName, header, coltypes);
+
+                // Populate table
+                insertData(tableName, parsedRows, header, coltypes, dateDefault);
+
+                this.coltypesDropSKP();
+            } catch (SQLException | ParseException ex) {
+                ex.printStackTrace();
+            } finally {
+                try {
+                    closeConnection();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        } catch (IOException ignored) {
+        }
+    }
+    public DF(String path, char delim, int old) {
         String filename = path.substring(path.lastIndexOf("/") + 1);
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
@@ -257,6 +327,260 @@ public class DF implements Serializable {
     }
     public DF () {
 
+    }
+    @SuppressWarnings("SqlResolve")
+    public void date_autofill_sql() throws SQLException {
+        String updateSQL = "UPDATE `" + tableName + "` AS t " +
+                "JOIN ref_prog AS r ON t.num_police = r.n°contrat " +
+                "SET " +
+                "t.date_surv = CASE " +
+                "WHEN t.date_surv IS NULL AND t.date_decla IS NOT NULL THEN LAST_DAY(t.date_decla - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "WHEN t.date_surv IS NULL AND t.date_sous IS NOT NULL THEN LAST_DAY(t.date_sous - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "WHEN t.date_surv IS NULL THEN LAST_DAY(r.date_debut - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "WHEN t.date_surv < r.date_debut THEN LAST_DAY(r.date_debut - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "WHEN t.date_surv > r.date_fin THEN LAST_DAY(r.date_fin - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "ELSE LAST_DAY(t.date_surv - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "END, " +
+                "t.date_sous = CASE " +
+                "WHEN t.date_sous IS NULL AND t.date_surv IS NOT NULL THEN LAST_DAY(t.date_surv - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "WHEN t.date_sous IS NULL THEN LAST_DAY(r.date_debut - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "WHEN t.date_sous < r.date_debut THEN LAST_DAY(r.date_debut - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "WHEN t.date_sous > r.date_fin THEN LAST_DAY(r.date_fin - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "ELSE LAST_DAY(t.date_sous - INTERVAL 1 MONTH) + INTERVAL 1 DAY " +
+                "END";
+
+        try (Statement stmt = connection.createStatement()) {
+            stmt.executeUpdate(updateSQL);
+        }
+    }
+
+    private void date_transform(ResultSet rs, Date date, Date dateDebutRef, Date dateFinRef, String columnName) throws SQLException {
+        if (date.before(dateDebutRef)) {
+            date = dateDebutRef;
+        }
+        if (date.after(dateFinRef)) {
+            date = dateFinRef;
+        }
+
+        // Change the date to the 1st day of the month
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.set(Calendar.DAY_OF_MONTH, 1);
+        date = cal.getTime();
+
+        // Update the date in the current ResultSet row
+        rs.updateDate(columnName, new java.sql.Date(date.getTime()));
+        rs.updateRow();
+    }
+    public static void initializeConnection() throws SQLException {
+        String url = "jdbc:mysql://localhost:3306/ici";
+        String username = "root";
+        String password = "Hewlett77*";
+        connection = DriverManager.getConnection(url, username, password);
+    }
+    public static void closeConnection() throws SQLException {
+        if (connection != null) {
+            connection.close();
+        }
+    }
+    private String mapColTypeToSQLType(Col_types colType) {
+        return switch (colType) {
+            case DAT -> "DATE";
+            case DBL -> "DOUBLE";
+            case SKP -> ""; // This might not be necessary in SQL since you are skipping.
+            default -> "VARCHAR(255)";
+        };
+    }
+    void createTable(String tableName, String[] headers, Col_types[] coltypes) throws SQLException {
+        StringBuilder createTableSQL = new StringBuilder("CREATE TABLE `" + tableName + "` (");
+        int h = 0;
+        for (Col_types coltype : coltypes) {
+            if (coltype != Col_types.SKP) {
+                createTableSQL.append("`").append(headers[h]).append("` ").append(mapColTypeToSQLType(coltype)).append(",");
+                h++;
+            }
+        }
+        createTableSQL.setLength(createTableSQL.length() - 1);  // remove last comma
+        createTableSQL.append(")");
+
+        String sqlToExecute = createTableSQL.toString();
+        System.out.println(sqlToExecute);  // Log it or print it for debugging purposes
+
+        Statement stmt = connection.createStatement();
+        stmt.execute(sqlToExecute);
+    }
+
+    void insertData(String tableName, List<String[]> dataList, String[] headers, Col_types[] coltypes, SimpleDateFormat dateDefault) throws SQLException, ParseException, ParseException {
+        dataList.remove(0);//skip header
+        StringBuilder insertSQL = new StringBuilder("INSERT INTO `" + tableName + "` (");
+
+        // Adding columns based on coltypes
+        int h = 0;
+        for (Col_types coltype : coltypes) {
+            if (coltype != Col_types.SKP) {
+                insertSQL.append("`").append(headers[h]).append("`,");  // Added backticks around column names
+                h++;
+            }
+        }
+        insertSQL.setLength(insertSQL.length() - 1);  // remove last comma before adding values
+        insertSQL.append(") VALUES (");
+
+        // Add placeholders for values (excluding the ID column)
+        for (int i = 0; i < coltypes.length; i++) {
+            if (coltypes[i] != Col_types.SKP) {
+                insertSQL.append("?,");
+            }
+        }
+        insertSQL.setLength(insertSQL.length() - 1);  // remove last comma
+        insertSQL.append(")");
+
+        PreparedStatement pstmt = connection.prepareStatement(insertSQL.toString());
+        int rowCount = 0;
+
+        SimpleDateFormat sqlDateFormat = new SimpleDateFormat("yyyy-MM-dd"); // MySQL's DATE format
+
+        for (String[] dataRow : dataList) {
+            int parameterIndex = 1;
+            for (int i = 0; i < dataRow.length; i++) {
+                if (coltypes[i] != Col_types.SKP) {
+                    if (coltypes[i] == Col_types.DAT) {
+                        if (dataRow[i] != null && !dataRow[i].isEmpty()) {
+                            try {
+                                // Convert date from dd/MM/yyyy to yyyy-MM-dd
+                                Date date = dateDefault.parse(dataRow[i]);
+                                pstmt.setString(parameterIndex, sqlDateFormat.format(date));
+                            } catch (ParseException e) {
+                                pstmt.setNull(parameterIndex, java.sql.Types.DATE);
+                            }
+                        } else {
+                            pstmt.setNull(parameterIndex, java.sql.Types.DATE);
+                        }
+
+                    } else {
+                        pstmt.setString(parameterIndex, dataRow[i]);
+                    }
+                    parameterIndex++;
+                }
+            }
+            pstmt.addBatch();
+            rowCount++;
+
+            if (rowCount % BATCH_SIZE == 0) {
+                pstmt.executeBatch();
+                pstmt.clearBatch();
+            }
+        }
+        if (rowCount % BATCH_SIZE != 0) {
+            pstmt.executeBatch();
+        }
+    }
+    void insertDataWithIndices(String tableName, List<String[]> dataList, String[] headers, Col_types[] coltypes, SimpleDateFormat dateDefault, int[] indexes) throws SQLException, ParseException, ParseException {
+        dataList.remove(0);//skip header
+        StringBuilder insertSQL = new StringBuilder("INSERT INTO `" + tableName + "` (");
+
+        // Adding columns based on coltypes
+        int h = 0;
+        for (Col_types coltype : coltypes) {
+            if (coltype != Col_types.SKP) {
+                insertSQL.append(headers[h]).append(",");
+                h++;
+            }
+        }
+        insertSQL.setLength(insertSQL.length() - 1);  // remove last comma before adding values
+        insertSQL.append(") VALUES (");
+
+        // Add placeholders for values (excluding the ID column)
+        for (int i = 0; i < coltypes.length; i++) {
+            if (coltypes[i] != Col_types.SKP) {
+                insertSQL.append("?,");
+            }
+        }
+        insertSQL.setLength(insertSQL.length() - 1);  // remove last comma
+        insertSQL.append(")");
+
+        PreparedStatement pstmt = connection.prepareStatement(insertSQL.toString());
+        int rowCount = 0;
+
+        SimpleDateFormat sqlDateFormat = new SimpleDateFormat("yyyy-MM-dd"); // MySQL's DATE format
+
+        for (String[] dataRow : dataList) {
+            int parameterIndex = 0;
+            for (int i = 0; i < dataRow.length; i++) {
+                if (coltypes[i] != Col_types.SKP) {
+                    if (coltypes[i] == Col_types.DAT) {
+                        if (dataRow[i] != null && !dataRow[i].isEmpty()) {
+                            try {
+                                // Convert date from dd/MM/yyyy to yyyy-MM-dd
+                                Date date = dateDefault.parse(dataRow[i]);
+                                pstmt.setString(indexes[parameterIndex] + 1, sqlDateFormat.format(date));
+                            } catch (ParseException e) {
+                                pstmt.setNull(indexes[parameterIndex] + 1, java.sql.Types.DATE);
+                            }
+                        } else {
+                            pstmt.setNull(indexes[parameterIndex] + 1, java.sql.Types.DATE);
+                        }
+
+                    } else {
+                        pstmt.setString(indexes[parameterIndex] + 1, dataRow[i]);
+                    }
+                    parameterIndex++;
+                }
+            }
+            pstmt.addBatch();
+            rowCount++;
+
+            if (rowCount % BATCH_SIZE == 0) {
+                pstmt.executeBatch();
+                pstmt.clearBatch();
+            }
+        }
+        if (rowCount % BATCH_SIZE != 0) {
+            pstmt.executeBatch();
+        }
+    }
+    public static List<Object> getColumn(String tableName, String columnName, Col_types colType) throws SQLException {
+        List<Object> columnData = new ArrayList<>();
+        String query = "SELECT " + columnName + " FROM `" + tableName + "`";
+        PreparedStatement pstmt = connection.prepareStatement(query);
+        ResultSet rs = pstmt.executeQuery();
+        while (rs.next()) {
+            switch (colType) {
+                case STR -> {
+                    while (rs.next()) {
+                        columnData.add(rs.getString(columnName));
+                    }
+                }
+                case DAT -> {
+                    while (rs.next()) {
+                        columnData.add(rs.getDate(columnName));
+                    }
+                }
+                case DBL -> {
+                    while (rs.next()) {
+                        columnData.add(rs.getDouble(columnName));
+                    }
+                }
+                default -> {}
+            }
+        }
+        return columnData;
+    }
+    public static Object[] getRowByOrder(String tableName, int order) throws SQLException {
+        String query = "SELECT * FROM `" + tableName + "` WHERE ID = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, order);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    Object[] row = new Object[rs.getMetaData().getColumnCount()];
+                    for (int i = 0; i < row.length; i++) {
+                        row[i] = rs.getObject(i + 1);
+                    }
+                    return row;
+                } else {
+                    throw new IllegalArgumentException("No row found with the specified order.");
+                }
+            }
+        }
     }
     public String getNameItaly(String fileName) {
         // Pattern for the first type of file (GS files).
@@ -667,8 +991,6 @@ public class DF implements Serializable {
         for (int i = 0; i < rows; i++) {
             System.out.println(Arrays.toString(this.r(i)));
         }
-        int ncoll = this.df.size();
-        int nrowl = this.df.get(0).length;
     }
     public void print_cols() {
         for (int i = 0; i < this.ncol; i++) {
@@ -798,17 +1120,81 @@ public class DF implements Serializable {
         this.coltypes = coltypesNew;
         this.header = headerNew;
     }
+    public void headerDropSKP() {
+        int newSize = 0;
+        for (Col_types type : coltypes) {
+            if (type != Col_types.SKP) {
+                newSize++;
+            }
+        }
+
+        String[] headerNew = new String[newSize];
+
+        int j = 0;
+        for (int i = 0; i < coltypes.length; i++) {
+            if (coltypes[i] != Col_types.SKP) {
+                headerNew[j] = header[i];
+                j++;
+            }
+        }
+
+        this.header = headerNew;
+    }
+    public void coltypesDropSKP() {
+        int newSize = 0;
+        for (Col_types type : coltypes) {
+            if (type != Col_types.SKP) {
+                newSize++;
+            }
+        }
+
+        Col_types[] coltypesNew = new Col_types[newSize];
+
+        int j = 0;
+        for (int i = 0; i < coltypes.length; i++) {
+            if (coltypes[i] != Col_types.SKP) {
+                coltypesNew[j] = coltypes[i];
+                j++;
+            }
+        }
+
+        this.coltypes = coltypes;
+    }
+    public String[] headerDropSKP(String[] header, Col_types[] coltypes) {
+        int newSize = 0;
+        for (Col_types type : coltypes) {
+            if (type != Col_types.SKP) {
+                newSize++;
+            }
+        }
+
+        String[] headerNew = new String[newSize];
+
+        int j = 0;
+        for (int i = 0; i < coltypes.length; i++) {
+            if (coltypes[i] != Col_types.SKP) {
+                headerNew[j] = header[i];
+                j++;
+            }
+        }
+
+        return headerNew;
+    }
     public static int countBool(boolean[] array) {
         return (int) IntStream.range(0, array.length)
                 .filter(i -> array[i])
                 .count();
     }
     public static int[] matchHeaders(String[] A, String[] B) {
-        int[] output = new int[A.length];
+        List<Integer> matchedIndices = new ArrayList<>();
+
         for (int i = 0; i < B.length; i++) {
-            output[i] = find_in_arr_first_index(A, B[i]);
+            int index = find_in_arr_first_index(A, B[i]);
+            if (index != -1) {
+                matchedIndices.add(index);
+            }
         }
-        return output;
+        return matchedIndices.stream().mapToInt(Integer::intValue).toArray();
     }
     public String[] headerAndColtypesDropSKP(String[] head) {
         String[] header_new = new String[get_len(coltypes)];
@@ -1019,14 +1405,7 @@ public class DF implements Serializable {
             }
         }
         return j;
-//        int j = 0;
-//        for (int i = 0; i < ct.length; i++) {
-//            if (ct[i] != DF.Col_types.SKP & this.header[i] != null) {
-//                j++;
-//            }
-//        }
-//        return j;
-    } // gets number of non-SKIP columns
+    }
     public boolean[] doublons_by_col(String col) {
         boolean[] vec = logvec(this.nrow,false);
         HashMap<String, Integer> map = new HashMap<>();

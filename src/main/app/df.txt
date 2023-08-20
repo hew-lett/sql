@@ -1,0 +1,153 @@
+ public static final String LAPARISIENNE = "LaParisienne";
+    public static final char DEFAULT_DELIMITER = ';';
+    public boolean source = false;
+    Object[] referentialRow;
+    public BaseFic(String path) throws IOException {
+        this.source = true;
+        referentialRow = getReferentialRow(new String[]{"Source"});
+        String map_col = "FIC France";
+
+        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(path).listFiles()));
+        if (fileList.isEmpty()) return;
+
+        int dim = computeTotalRows(path);
+
+        fileList.sort(Comparator.comparing(f -> !f.getName().contains(LAPARISIENNE)));
+
+        File mainFile = fileList.get(0);
+        if (!mainFile.getName().contains(LAPARISIENNE)) return;
+
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, DEFAULT_DELIMITER);
+        settings.trimValues(true);
+
+        try (Reader inputReader = Files.newBufferedReader(mainFile.toPath(), Charset.forName(encoding))) {
+            CsvParser parser = new CsvParser(settings);
+            List<String[]> parsedRows = parser.parseAll(inputReader);
+            Iterator<String[]> rows = parsedRows.iterator();
+            header = rows.next();
+            boolean[] cols_kept = this.mapColnamesAndKeepNeeded(mapping.mappingFiltre(map_col));
+            header_unify();
+
+            coltypes = new Col_types[ncol];
+            for (int i = 0; i < ncol; i++) {
+                if (cols_kept[i]) {
+                    coltypes[i] = Col_types.STR;
+                } else {
+                    coltypes[i] = Col_types.SKP;
+                }
+            }
+
+            nrow = dim;
+            assert (coltypes.length == parsedRows.get(0).length);
+            ncol = get_len(coltypes);
+            df = new ArrayList<>(get_len(coltypes));
+            this.df_populate(coltypes);
+
+            int i = 0;
+            while (rows.hasNext()) {
+                int j = 0;
+                int k = 0;
+                String[] parsedRow = rows.next();
+                for (String s : parsedRow) {
+                    if (coltypes[k] != DF.Col_types.SKP) {
+                        df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                        j++;
+                    }
+                    k++;
+                }
+                i++;
+            }
+
+            for (File file : fileList) {
+                if (file.getName().contains(LAPARISIENNE)) continue;
+
+                try (Reader secondaryInputReader = Files.newBufferedReader(file.toPath(), Charset.forName(encoding))) {
+                    settings.setDelimiterDetectionEnabled(true, '\t');
+                    parser = new CsvParser(settings);
+                    parsedRows = parser.parseAll(secondaryInputReader);
+                    rows = parsedRows.iterator();
+
+                    // 1. Header treatment
+                    String[] auxHeader = rows.next();
+                    boolean[] auxColsKept = this.mapColnamesAndKeepNeeded(mapping.mappingFiltre(map_col));
+                    // Assuming header_unify is a method that can take a header and unify it
+                    String[] auxUnifiedHeader = this.header_unify_return(auxHeader);
+
+                    // 2. Map positions from auxiliary header to main header
+                    int[] auxToMainMapping = new int[auxUnifiedHeader.length];
+                    for (int j = 0; j < auxUnifiedHeader.length; j++) {
+                        auxToMainMapping[j] = find_in_arr_first_index(header, auxUnifiedHeader[j]);
+                    }
+
+                    // 3. Populate main data frame based on mapped positions
+                    while (rows.hasNext()) {
+                        String[] parsedRow = rows.next();
+                        for (int j = 0, k = 0; j < parsedRow.length; j++) {
+                            if (this.coltypes[j] == DF.Col_types.SKP) {
+                                j++;
+                                continue;
+                            }
+                            int mainIndex = auxToMainMapping[k];
+                            if (mainIndex != -1) {
+                                df.get(mainIndex)[i] = get_lowercase_cell_of_type(parsedRow[j], coltypes[mainIndex], dateDefault);
+                            }
+                            k++;
+                        }
+                        i++;
+                    }
+                }
+            }
+
+            this.remove_leading_zeros();
+        }
+    }
+    public boolean[] mapColnamesAndKeepNeeded (DF mapping) {
+
+        boolean[] columnsKept = new boolean[header.length];
+
+        for (int i = 0; i < header.length; i++) {
+            columnsKept[i] = false;
+
+            for (int j = 0; j < mapping.nrow; j++) {
+                // Getting the Format ICI value (from the first column) and the desired format (from the second column)
+                String formatICI = (String) mapping.df.get(0)[j];
+                String desiredFormat = (String) mapping.df.get(1)[j];
+
+                // Check if the header matches the desired format (ignoring case and special characters)
+                if (normalize(header[i]).equalsIgnoreCase(normalize(desiredFormat))) {
+                    // Check if the Format ICI value is present in referentialRow
+                    if (Arrays.asList(referentialRow).contains(formatICI)) {
+                        header[i] = formatICI;
+                        columnsKept[i] = true; // We keep this column
+                        break; // No need to continue searching for this header
+                    }
+                }
+            }
+        }
+        return columnsKept;
+    }
+
+    // Helper method to normalize strings (ignoring special characters and case)
+    private String normalize(String input) {
+        return input.replace('é', 'e').toLowerCase();
+    }
+    private String[] header_unify_return(String[] inputHeader) {
+        String[] unifiedHeader = new String[inputHeader.length];
+        for (int i = 0; i < inputHeader.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, inputHeader[i]);
+            if (ind != -1) {
+                unifiedHeader[i] = ref_triangle.header[ind];
+            } else {
+                unifiedHeader[i] = inputHeader[i];
+            }
+        }
+        return unifiedHeader;
+    }
+
+    private void header_unify() {
+        for (int i = 0; i < ncol; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, header[i]);
+            header[i] = ref_triangle.header[ind];
+        }
+    }

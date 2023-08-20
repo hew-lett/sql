@@ -16,6 +16,11 @@
           <target>14</target>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-site-plugin</artifactId>
+        <version>4.0.0-M8</version>
+      </plugin>
     </plugins>
   </build>
 
@@ -30,11 +35,10 @@
         <artifactId>jsch</artifactId>
         <version>0.1.54</version> <!-- Use the latest available version -->
       </dependency>
-
     <dependency>
-      <groupId>redis.clients</groupId>
-      <artifactId>jedis</artifactId>
-      <version>4.3.1</version>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>8.0.28</version>
     </dependency>
     <dependency>
       <groupId>com.univocity</groupId>
@@ -68,7 +72,7 @@
       <dependency>
           <groupId>org.jetbrains</groupId>
           <artifactId>annotations-java5</artifactId>
-          <version>RELEASE</version>
+          <version>15.0</version>
           <scope>compile</scope>
       </dependency>
     <!-- dependency used for XLSX file format -->

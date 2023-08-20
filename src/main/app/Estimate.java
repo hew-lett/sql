@@ -59,7 +59,7 @@ public class Estimate extends DF {
         Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/SPB Italie.xlsx");
         stopwatch.printElapsedTime("estimate");
 
-        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB Italie/","Italie","SPB Italie");
+        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB Italie/","Italie","SPB Italie", true);
         stopwatch.printElapsedTime("basesin");
 
 //        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/Garantie Privée.xlsx");

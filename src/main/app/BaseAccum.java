@@ -52,8 +52,26 @@ public class BaseAccum extends DF {
     protected Map<String, Date> overallMinDateByStatut = new HashMap<>();
     protected Map<String, Date> overallMaxDateByStatut = new HashMap<>();
     void coltypes_populate(boolean[] cols_kept) {
+        int ncol = cols_kept.length;
         coltypes = new Col_types[ncol];
         for (int colIndex = 0; colIndex < ncol; colIndex++) {
+            if (cols_kept[colIndex]) {
+                coltypes[colIndex] = Col_types.STR;
+            } else {
+                coltypes[colIndex] = SKP;
+            }
+        }
+        List<String> refTriangleHeaders = Arrays.asList(ref_triangle.header);
+        for (int colIndex = 0; colIndex < ncol; colIndex++) {
+            if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex]) &&
+                    header[colIndex].startsWith("date")) {
+                coltypes[colIndex] = DAT;
+            }
+        }
+    }
+    Col_types[] coltypes_populate_aux(boolean[] cols_kept, String[] header) {
+        Col_types[] coltypes = new Col_types[header.length];
+        for (int colIndex = 0; colIndex < header.length; colIndex++) {
             if (cols_kept[colIndex]) {
                 coltypes[colIndex] = Col_types.STR;
             } else {
@@ -67,6 +85,7 @@ public class BaseAccum extends DF {
                 coltypes[colIndex] = DAT;
             }
         }
+        return coltypes;
     }
     SimpleDateFormat getDateFormatter(String dateFormatString) {
         String pattern = switch (dateFormatString) {
@@ -292,7 +311,7 @@ public class BaseAccum extends DF {
         throw new RuntimeException("Referential row not found for keys: " + Arrays.toString(keys));
     }
     void header_unify() {
-        for (int i = 0; i < ncol; i++) {
+        for (int i = 0; i < header.length; i++) {
             int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
             if (ind != -1) {
                 header[i] = ref_triangle.header[ind];
@@ -331,7 +350,7 @@ public class BaseAccum extends DF {
         }
         return colsList.toArray(new String[0]);
     }
-    boolean[] mapColnamesAndKeepNeededMain (String mapping_col) {
+    boolean[] mapColnamesAndGetColsKept(String mapping_col) {
 
         DF map_filtered = mapping.mappingFiltre(mapping_col);
 
@@ -341,27 +360,23 @@ public class BaseAccum extends DF {
             columnsKept[i] = false;
 
             for (int j = 0; j < map_filtered.nrow; j++) {
-                // Getting the Format ICI value (from the first column) and the desired format (from the second column)
                 String formatICI = (String) map_filtered.df.get(0)[j];
                 String desiredFormat = (String) map_filtered.df.get(1)[j];
 
-                // If either value is null, continue to next iteration
                 if (Objects.equals(formatICI, "") || desiredFormat.equals("")) continue;
 
-                // Check if the header matches the desired format (ignoring case and special characters)
                 if (normalize(header[i]).equalsIgnoreCase(normalize(desiredFormat))) {
-                    // Check if the Format ICI value is present in referentialRow
                     if (Arrays.asList(referentialRow).contains(formatICI)) {
                         header[i] = formatICI;
-                        columnsKept[i] = true; // We keep this column
-                        break; // No need to continue searching for this header
+                        columnsKept[i] = true;
+                        break;
                     }
                 }
             }
         }
         return columnsKept;
     }
-    boolean[] mapColnamesAndKeepNeededAux (String mapping_col, String[] header) {
+    boolean[] mapColnamesAndGetColsKept(String mapping_col, String[] header) {
 
         DF map_filtered = mapping.mappingFiltre(mapping_col);
 

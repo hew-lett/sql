@@ -57,7 +57,7 @@ public class BaseFic extends BaseAccum {
                             .filter(h -> h != null && !h.trim().isEmpty())
                             .toArray(String[]::new);
                     ncol = header.length;
-                    boolean[] cols_kept = this.mapColnamesAndKeepNeededMain(map_col);
+                    boolean[] cols_kept = this.mapColnamesAndGetColsKept(map_col);
                     header_unify();
 
                     coltypes = new Col_types[ncol];
@@ -186,7 +186,7 @@ public class BaseFic extends BaseAccum {
                                     .filter(h -> h != null && !h.trim().isEmpty())
                                     .toArray(String[]::new);
                             ncol = header.length;
-                            boolean[] cols_kept = this.mapColnamesAndKeepNeededMain(map_col);
+                            boolean[] cols_kept = this.mapColnamesAndGetColsKept(map_col);
                             header_unify();
                             coltypes_populate(cols_kept);
 
@@ -252,7 +252,7 @@ public class BaseFic extends BaseAccum {
                                     .filter(h -> h != null && !h.trim().isEmpty())
                                     .toArray(String[]::new);
                             ncol = header.length;
-                            boolean[] cols_kept = this.mapColnamesAndKeepNeededMain(map_col);
+                            boolean[] cols_kept = this.mapColnamesAndGetColsKept(map_col);
                             header_unify();
                             coltypes_populate(cols_kept);
 
