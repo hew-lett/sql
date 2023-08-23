@@ -1,5 +1,7 @@
 package main.app;
 
+import org.apache.commons.lang3.tuple.Pair;
+
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -9,14 +11,13 @@ import java.util.*;
 
 import static main.app.App.*;
 import static main.app.App.NA_DAT;
-import static main.app.DF.Col_types.DAT;
-import static main.app.DF.Col_types.SKP;
+import static main.app.DF.Col_types.*;
 
 public class BaseAccum extends DF {
 //    public Map<String, ArrayList<Object[]>> dfMap;
     public static final char DEFAULT_DELIMITER = ';';
     public static final char TAB_DELIMITER = '\t';
-    static DF ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
+//    static DF ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
     static DF ref_triangle;
     static {
         try {
@@ -42,15 +43,14 @@ public class BaseAccum extends DF {
         CURRENT_MONTH = now.format(formatter);
         PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
     }
+    String numPolice = "";
+    Map<String, Map<String, Map<String, Double>>> pivotTable = new HashMap<>();
     protected Set<String> uniqueStatuts = new HashSet<>();
     protected Set<String> uniqueNumPoliceValues = new HashSet<>();
+    public Map<String, List<Date>> statutDateRangeMap = new HashMap<>();
     protected Object[] referentialRow;
     protected boolean source = false;
     protected String key_sin = "";
-    protected Map<String, Map<String, Date>> minDateMap = new HashMap<>();
-    protected Map<String, Map<String, Date>> maxDateMap = new HashMap<>();
-    protected Map<String, Date> overallMinDateByStatut = new HashMap<>();
-    protected Map<String, Date> overallMaxDateByStatut = new HashMap<>();
     void coltypes_populate(boolean[] cols_kept) {
         int ncol = cols_kept.length;
         coltypes = new Col_types[ncol];
@@ -63,9 +63,12 @@ public class BaseAccum extends DF {
         }
         List<String> refTriangleHeaders = Arrays.asList(ref_triangle.header);
         for (int colIndex = 0; colIndex < ncol; colIndex++) {
-            if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex]) &&
-                    header[colIndex].startsWith("date")) {
-                coltypes[colIndex] = DAT;
+            if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex])) {
+                if (header[colIndex].startsWith("date")) {
+                    coltypes[colIndex] = DAT;
+                } else if (header[colIndex].startsWith("montant")) {
+                    coltypes[colIndex] = DBL;
+                }
             }
         }
     }
@@ -412,6 +415,39 @@ public class BaseAccum extends DF {
             uniqueNumPoliceValues.add((String) obj);
         }
     }
+    public void populateStatutDateRangeMap() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        for (String statut : uniqueStatuts) {
+            Date minDate = null;
+            Date maxDate = null;
+
+            Map<String, Map<String, Double>> middleMap = pivotTable.get(statut);
+            if (middleMap != null) {
+                for (Map<String, Double> innerMap : middleMap.values()) {
+                    for (String date_surv : innerMap.keySet()) {
+                        try {
+                            Date currentDate = format.parse(date_surv);
+                            if (minDate == null || currentDate.before(minDate)) {
+                                minDate = currentDate;
+                            }
+                            if (maxDate == null || currentDate.after(maxDate)) {
+                                maxDate = currentDate;
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace(); // handle parsing exceptions
+                        }
+                    }
+                }
+
+                List<Date> dateRange = new ArrayList<>();
+                dateRange.add(minDate);
+                dateRange.add(maxDate);
+                statutDateRangeMap.put(statut, dateRange);
+            }
+        }
+    }
+
     boolean[] mapColnamesAndKeepNeededAux (String[] localHeader, DF mapping) {
         boolean[] columnsKept = new boolean[localHeader.length];
 
@@ -455,61 +491,19 @@ public class BaseAccum extends DF {
             uniqueStatuts.add((String) obj);
         }
     }
-    public void computeMinMaxDatesForPolicies() {
-        // Initialize dictionaries with extreme Date values for each policy number and each statut
-        for (String numPolice : uniqueNumPoliceValues) {
-            minDateMap.put(numPolice, new HashMap<>());
-            maxDateMap.put(numPolice, new HashMap<>());
-            for (String statut : uniqueStatuts) {
-                minDateMap.get(numPolice).put(statut, new Date(Long.MAX_VALUE));
-                maxDateMap.get(numPolice).put(statut, new Date(Long.MIN_VALUE));
+    public String extractKeyFromFileName(String fileName, String pays) {
+        int start = -1;
+        int end = -1;
+        if (pays.equals("France")) {
+            start = fileName.indexOf("ICI");
+            if (start == -1) {
+                start = fileName.indexOf("FRMP");
             }
+            end = fileName.indexOf("_", start);
+        } else if (pays.equals("Italie")) {
+            start = fileName.indexOf("ICI");
+            end = fileName.indexOf(".csv", start);
         }
-
-        // Initially set the overall min and max dates for each statut to extreme values
-        for (String statut : uniqueStatuts) {
-            overallMinDateByStatut.put(statut, new Date(Long.MAX_VALUE));
-            overallMaxDateByStatut.put(statut, new Date(Long.MIN_VALUE));
-        }
-
-        // Fetch all the dates, policy numbers, and statuts from the dataframe
-        Date[] dates = (Date[]) this.c("date_surv");
-        String[] numPolices = (String[]) this.c("num_police");
-        String[] statuts = (String[]) this.c("statut");
-
-        // Iterate and update the dictionaries
-        for (int i = 0; i < dates.length; i++) {
-            Date currentDate = dates[i];
-            String currentNumPolice = numPolices[i];
-            String currentStatut = statuts[i];
-
-            // If current date is before the stored min date for the current policy and statut, update it
-            if (currentDate.before(minDateMap.get(currentNumPolice).get(currentStatut))) {
-                minDateMap.get(currentNumPolice).put(currentStatut, currentDate);
-            }
-
-            // If current date is after the stored max date for the current policy and statut, update it
-            if (currentDate.after(maxDateMap.get(currentNumPolice).get(currentStatut))) {
-                maxDateMap.get(currentNumPolice).put(currentStatut, currentDate);
-            }
-
-            // Update overall minimum date for current statut if necessary
-            if (currentDate.before(overallMinDateByStatut.get(currentStatut))) {
-                overallMinDateByStatut.put(currentStatut, currentDate);
-            }
-
-            // Update overall maximum date for current statut if necessary
-            if (currentDate.after(overallMaxDateByStatut.get(currentStatut))) {
-                overallMaxDateByStatut.put(currentStatut, currentDate);
-            }
-        }
-    }
-    public String extractKeyFromFileName(String fileName) {
-        int start = fileName.indexOf("ICI");
-        if (start == -1) {
-            start = fileName.indexOf("FRMP");
-        }
-        int end = fileName.indexOf("_", start);
 
         if (start != -1 && end != -1) {
             return fileName.substring(start, end);

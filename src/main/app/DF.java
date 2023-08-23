@@ -37,14 +37,13 @@ public class DF implements Serializable {
     public String fileName;
     public String fullPath;
     public String tableName;
-    private static Connection connection;
-    private int lastID = 0;
+    static Connection connection;
     private static final int BATCH_SIZE = 10000;
 
     public static void main(String[] args) throws IOException, SQLException {
         ref_prog = new DF(wd+"Référentiel programmes.csv", ';');
     }
-    public DF(String path, char delim) {
+    public DF(String path, char delim, int sql) {
         fileName = path.substring(path.lastIndexOf("/") + 1);
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
@@ -104,8 +103,8 @@ public class DF implements Serializable {
             }
         } catch (IOException ignored) {
         }
-    }
-    public DF(String path, char delim, int old) {
+    } //ref prog sql
+    public DF(String path, char delim) {
         String filename = path.substring(path.lastIndexOf("/") + 1);
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
@@ -121,15 +120,21 @@ public class DF implements Serializable {
             }
 
             coltypes = new Col_types[header.length];
-            String[] array = {
-                    "pays", "gestionnaire_1", "n°contrat", "date_debut",
-                    "date_fin", "acquisition des primes", "fait generateur", "produit eligible"
+            String[] strColumns = {
+                    "pays", "gestionnaire_1", "n°contrat", "acquisition des primes", "fait generateur", "produit eligible"
             };
+
+            String[] dateColumns = {
+                    "date_debut", "date_fin"
+            };
+
             for (int i = 0; i < header.length; i++) {
-                if (Arrays.asList(array).contains(header[i])) {
+                if (Arrays.asList(strColumns).contains(header[i])) {
                     coltypes[i] = STR;
+                } else if (Arrays.asList(dateColumns).contains(header[i])) {
+                    coltypes[i] = DAT; // Assuming you have a DAT enum value for date type columns
                 } else {
-                    coltypes[i] = Col_types.SKP;
+                    coltypes[i] = SKP;
                 }
             }
             nrow = parsedRows.size() - 1;
@@ -154,7 +159,6 @@ public class DF implements Serializable {
         } catch (IOException ignored) {
         }
         this.headerAndColtypesDropSKP();
-        this.remove_leading_zeros();
     } //ref_prog
     public DF(String path, char delim, boolean maj) {
         String filename = path.substring(path.lastIndexOf("/") + 1);
@@ -212,7 +216,78 @@ public class DF implements Serializable {
         }
         this.headerAndColtypesDropSKP();
         this.remove_leading_zeros();
+        this.consolidateContractRows();
     } //ref_prog
+    private void consolidateContractRows() {
+        Map<String, Integer> contractIndexMap = new HashMap<>(); // Maps "n°contrat" to its index in df
+        int dateDebutIndex = -1;
+        int dateFinIndex = -1;
+        int noContratIndex = -1;
+
+        // Find the indices of the columns
+        for (int i = 0; i < header.length; i++) {
+            if (header[i].equals("date_debut")) {
+                dateDebutIndex = i;
+            } else if (header[i].equals("date_fin")) {
+                dateFinIndex = i;
+            } else if (header[i].equals("n°contrat")) {
+                noContratIndex = i;
+            }
+        }
+
+        List<Integer> rowsToRemove = new ArrayList<>(); // List to track rows to be removed
+
+        for (int i = 0; i < nrow; i++) {
+            String noContrat = (String) df.get(noContratIndex)[i];
+            if (contractIndexMap.containsKey(noContrat)) {
+                // Compare and update the date_debut and date_fin
+                Date currentDebut = (Date) df.get(dateDebutIndex)[i];
+                Date currentFin = (Date) df.get(dateFinIndex)[i];
+                Date existingDebut = (Date) df.get(dateDebutIndex)[contractIndexMap.get(noContrat)];
+                Date existingFin = (Date) df.get(dateFinIndex)[contractIndexMap.get(noContrat)];
+
+                if (currentDebut.before(existingDebut)) {
+                    df.get(dateDebutIndex)[contractIndexMap.get(noContrat)] = currentDebut;
+                }
+                if (currentFin.after(existingFin)) {
+                    df.get(dateFinIndex)[contractIndexMap.get(noContrat)] = currentFin;
+                }
+
+                // Mark this row to be removed
+                rowsToRemove.add(i);
+
+            } else {
+                // First appearance of this noContrat
+                contractIndexMap.put(noContrat, i);
+            }
+        }
+
+        // Remove marked rows
+        for (int i = rowsToRemove.size() - 1; i >= 0; i--) {
+            int rowIndex = rowsToRemove.get(i);
+            for (int j = 0; j < df.size(); j++) {
+                Object[] col = df.get(j);
+                Object[] newCol = new Object[col.length - 1];
+                for (int k = 0, m = 0; k < col.length; k++) {
+                    if (k != rowIndex) {
+                        newCol[m++] = col[k];
+                    }
+                }
+                df.set(j, newCol);
+            }
+            nrow--; // Decrease the number of rows counter
+        }
+    }
+    void refProgGetPolice(String police) {
+        Object[] polices = this.c("n°contrat");
+        System.out.println(Arrays.toString(this.header));
+
+        for (int i = 0; i<this.nrow; i++) {
+            if (police.equalsIgnoreCase((String) polices[i])) {
+                System.out.println(Arrays.toString(this.r(i)));
+            }
+        }
+    }
     public DF (String path) throws IOException {
 
         InputStream is = Files.newInputStream(new File(path).toPath());
@@ -654,26 +729,6 @@ public class DF implements Serializable {
             }
         }
     }
-    public double calculateSum(Date datePeriode, String police, String monthHeader, String status) {
-//        if (monthHeader.equals("mar.19") && police.equals("FREW07") && status.equals("Terminé – accepté")) {
-//            System.out.println("here");
-//        }
-        double sum = 0.0;
-        boolean init = false;
-        for (int i = 0; i < this.nrow; i++) {
-            if (this.c("num_police")[i].equals(police) && this.c("date_sous")[i].equals(datePeriode) &&
-                    isSameMonth(monthHeader,(Date) this.c("date_surv")[i]) &&
-                    this.c("statut")[i].equals(status)) {
-                init = true;
-                sum += (double) this.c("montant_IP")[i];
-            }
-        }
-        if (!init) {
-            return -1.0;
-        } else {
-            return sum;
-        }
-    }
     public boolean isSameMonth(String monthHeader, Date date) {
         Calendar cal = Calendar.getInstance();
         cal.setTime(date);
@@ -690,7 +745,33 @@ public class DF implements Serializable {
         // Check if the year and month of the passed date match the provided month header.
         return cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) == month;
     }
-    public boolean isLowerMonthSvD(String monthHeader, Date date) { //header lower than date
+    public boolean isHigherMonthSvD(String dateStr, Date dateX) {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        try {
+            Date dateFromString = format.parse(dateStr); // Parse the string to a Date object
+            Date startOfMonthX = format.parse(format.format(dateX)); // Get start of month for dateX
+
+            return dateFromString.after(startOfMonthX);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;  // or handle the error differently
+        }
+    }
+    public boolean isLowerMonthSvD(String dateStr, Date dateX) {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        try {
+            Date dateFromString = format.parse(dateStr); // Parse the string to a Date object
+            Date startOfMonthX = format.parse(format.format(dateX)); // Get start of month for dateX
+
+            return dateFromString.before(startOfMonthX);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;  // or handle the error differently
+        }
+    }
+    public boolean isLowerMonthSvD(String monthHeader, Date date, boolean old) { //header lower than date
         Calendar cal = Calendar.getInstance();
         cal.setTime(date);
 
@@ -713,7 +794,7 @@ public class DF implements Serializable {
 
         return false;
     }
-    public boolean isHigherMonthSvD(String monthHeader, Date date) {
+    public boolean isHigherMonthSvD(String monthHeader, Date date, boolean old) {
         Calendar cal = Calendar.getInstance();
         cal.setTime(date);
 
@@ -736,7 +817,11 @@ public class DF implements Serializable {
 
         return false;
     }
-
+    public static String[] copyArray(String[] source) {
+        String[] target = new String[source.length];
+        System.arraycopy(source, 0, target, 0, source.length);
+        return target;
+    }
     String normalize(String input) {
         return input.replace("é", "e").toLowerCase();
     }

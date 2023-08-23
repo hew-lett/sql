@@ -8,7 +8,6 @@ import org.apache.poi.ss.usermodel.*;
 import java.io.*;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -19,12 +18,10 @@ import java.util.concurrent.TimeUnit;
 import static java.lang.Math.min;
 import static main.app.App.*;
 import static main.app.App.ref_prog;
-import static main.app.DF.Col_types.DAT;
 import static main.app.DF.Col_types.SKP;
 
 public class BaseSin extends BaseAccum {
     Object[] refProgrammesRow;
-    String numPolice = "";
     private static Connection connection;
     private int lastID = 0;
     private static final int BATCH_SIZE = 10000;
@@ -36,24 +33,26 @@ public class BaseSin extends BaseAccum {
     File path;
     public static void main(String[] args) throws IOException, SQLException {
 
-        initializeConnection();
-        ref_prog = new DF(wd+"Référentiel programmes.csv", ';');
-
         long startTime = System.nanoTime();long endTime;long duration;long minutes;long seconds;
-        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(wd + "source SIN/SPB France/").listFiles()));
-        List<BaseSin> sinFrance = new ArrayList<>();
-        for (File file : fileList) {
-            sinFrance.add(new BaseSin(file,"France", "SPB France / Wakam"));
-        }
-//        DF fic_FRA = new BaseFic(wd + "source FIC/SPB France/","FIC France");
-//        DF fic_ITA = new BaseFic(wd + "source FIC/SPB Italie/","DB Claims Italie");
-//        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB France/","France","SPB France / Wakam",0);
-//        base_aux.printMapped(10);
+//        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(wd + "source SIN/SPB France/").listFiles()));
+//        List<BaseSin> sinFrance = new ArrayList<>();
+//        for (File file : fileList) {
+//            sinFrance.add(new BaseSin(file,"France", "SPB France / Wakam"));
+//        }
+        ref_prog = new DF(wd+"Référentiel programmes.csv", ';',true);
 
-//        DF sin_POL = new BaseSin(wd + "source SIN/SPB Pologne/","Pologne","SPB Pologne");
-//        sin_POL.print(10);
-//        System.out.println(sin_POL.nrow);
-//        System.out.println(Arrays.toString(sin_POL.r(130000)));
+        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(wd + "source SIN/SPB Italie/").listFiles()));
+        List<BaseSin> sinItalie = new ArrayList<>();
+//        File base = fileList.get(0);
+//        BaseSin ita = new BaseSin(base,"Italie", "SPB Italie", true);
+//        ita.print();
+//        ita.printPivotTable();
+        int index = 0;
+        for (File file : fileList) {
+            sinItalie.add(new BaseSin(file,"Italie", "SPB Italie"));
+            sinItalie.get(index).printPivotTable();
+            index++;
+        }
         endTime = System.nanoTime();
         long elapsedTime = endTime - startTime;
 
@@ -62,8 +61,6 @@ public class BaseSin extends BaseAccum {
         seconds = TimeUnit.NANOSECONDS.toSeconds(elapsedTime) - TimeUnit.MINUTES.toSeconds(minutes);
 
         System.out.println("Elapsed Time: " + minutes + " minutes " + seconds + " seconds");
-        closeConnection();
-
     }
     public BaseSin(String path) throws IOException {
         this.fullPath = path;
@@ -162,7 +159,7 @@ public class BaseSin extends BaseAccum {
         date_autofill_agg();
         populateUniqueStatuts();
         populateUniqueNumPoliceValues();
-        computeMinMaxDatesForPolicies();    }
+    }
     public BaseSin(String path, String pays, String mappingColDefault, boolean old) throws IOException {
         this.source = true;
         this.pays = pays;
@@ -245,241 +242,8 @@ public class BaseSin extends BaseAccum {
         remove_leading_zeros();
         populateUniqueStatuts();
         populateUniqueNumPoliceValues();
-        computeMinMaxDatesForPolicies();
     }
-    public BaseSin(String path, String pays, String mappingColDefault) throws IOException {
-        this.source = true;
-        this.pays = pays;
-//        this.path = path;
-        this.referentialRow = getReferentialRow(new String[]{"source"});
-
-        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(path).listFiles()));
-        if (fileList.isEmpty()) return;
-
-        if (pays.equals("Pologne")) {
-            delim = '\t';
-        }
-        if (pays.equals("France")) {
-            delim = '|';
-        }
-
-//        int dim = computeDimSIN();
-//        System.out.println(dim);
-
-        CsvParserSettings settings = new CsvParserSettings();
-        settings.setDelimiterDetectionEnabled(true, delim);
-        settings.trimValues(true);
-
-        int i;
-        boolean initialized = false;
-        int[] headerIndexes = {0};
-        String[] header_aux = {""};
-        boolean[] cols_kept_aux;
-
-        for (File file : fileList) {
-            System.out.println(file.getName());
-            String police = extractKeyFromFileName(file.getName());
-            uniqueNumPoliceValues.add(police);
-            String mapping_col = "";
-            if (file.toString().contains("FRMP")) {
-                mapping_col = "SPB France / ONEY";
-            } else {
-                mapping_col = mappingColDefault;
-            }
-            try (Reader inputReader = Files.newBufferedReader(file.toPath(), Charset.forName(encoding))) {
-                CsvParser parser = new CsvParser(settings);
-                List<String[]> parsedRows = parser.parseAll(inputReader);
-                Iterator<String[]> rows = parsedRows.iterator();
-                Integer nr = csv_get_nrows(file.getPath(), delim);
-                nrowMapped.put(police,nr);
-
-
-                if (!initialized) {
-                    header = rows.next();
-                    header = Arrays.stream(header)
-                            .filter(h -> h != null && !h.trim().isEmpty())
-                            .toArray(String[]::new);
-                    cols_kept_aux = this.mapColnamesAndGetColsKept(mapping_col);
-                    header_unify();
-                    coltypes_populate(cols_kept_aux);
-                    ncol = get_len(coltypes);
-                    dfMapped.put(police,new ArrayList<>(ncol));
-                    df_populateMapped(police,coltypes);
-                    headerDropSKP();
-
-                    i = 0;
-                    while (rows.hasNext()) {
-                        int j = 0; // real cols iter
-                        int k = 0; // coltypes iter
-                        String[] parsedRow = rows.next();
-                        //parsedRow = Arrays.copyOf(parsedRow, header.length);
-                        for (String s : parsedRow) {
-                            if (coltypes[k] != SKP) {
-                                dfMapped.get(police).get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
-                                j++;
-                            }
-                            System.out.println(k);
-                            k++;
-                        }
-                        System.out.println(i);
-                        i++;
-                    }
-                    initialized = true;
-                } else {
-                    header_aux = rows.next();
-                    header_aux = Arrays.stream(header_aux)
-                            .filter(h -> h != null && !h.trim().isEmpty())
-                            .toArray(String[]::new);
-                    cols_kept_aux = this.mapColnamesAndGetColsKept(mapping_col,header_aux);
-                    header_aux = header_unify_aux(header_aux);
-                    Col_types[] coltypes_aux = coltypes_populate_aux(cols_kept_aux,header_aux);
-                    header_aux = headerDropSKP(header_aux,coltypes_aux);
-
-                    dfMapped.put(police,new ArrayList<>(ncol));
-                    df_populateMapped(police,coltypes);
-
-                    if (!validateHeader(header,header_aux,file.getName())) {
-                        headerIndexes = matchHeaders(header,header_aux);
-                        for (int index : headerIndexes) {
-                            if (index == -1) {
-                                System.out.println("Error in matching headers" + police);
-                                //throw new IOException();
-                            }
-                        }
-                        i = 0;
-                        while (rows.hasNext()) {
-                            int j = 0; // real cols INDEX iter
-                            int k = 0; // coltypes iter
-                            String[] parsedRow = rows.next();
-                            for (String s : parsedRow) {
-                                if (coltypes_aux[k] != SKP && headerIndexes[j] != -1) {
-                                    dfMapped.get(police).get(headerIndexes[j])[i] = get_lowercase_cell_of_type(s, coltypes_aux[k], dateDefault);
-                                    j++;
-                                }
-                                k++;
-                            }
-                            i++;
-                        }
-                        continue;
-                    } else {
-                        i = 0;
-                        while (rows.hasNext()) {
-                            int j = 0; // real cols iter
-                            int k = 0; // coltypes iter
-                            String[] parsedRow = rows.next();
-                            //parsedRow = Arrays.copyOf(parsedRow, header.length);
-                            for (String s : parsedRow) {
-                                if (coltypes_aux[k] != SKP) {
-                                    dfMapped.get(police).get(j)[i] = get_lowercase_cell_of_type(s, coltypes_aux[k], dateDefault);
-//                                    System.out.println("real col " + j);
-                                    j++;
-                                }
-//                                System.out.println("col " + k);
-                                k++;
-                            }
-//                            System.out.println(i);
-                            i++;
-                        }
-                    }
-                }
-            }
-            date_autofill_agg_par_police(dfMapped.get(police));
-        }
-        populateUniqueStatutsDFMapped();
-        computeMinMaxDatesForPoliciesMapped();
-    }
-    public BaseSin(String path, String pays, String mappingColDefault, int sql) throws IOException, SQLException {
-        this.source = true;
-        this.pays = pays;
-//        this.path = path;
-        this.referentialRow = getReferentialRow(new String[]{"source"});
-        initializeConnection();
-
-        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(path).listFiles()));
-        if (fileList.isEmpty()) return;
-
-        if (pays.equals("Pologne")) {
-            delim = '\t';
-        }
-        if (pays.equals("France")) {
-            delim = '|';
-        }
-
-        CsvParserSettings settings = new CsvParserSettings();
-        settings.setDelimiterDetectionEnabled(true, delim);
-        settings.trimValues(true);
-
-        int i;
-        boolean initialized = false;
-        int[] headerIndexes = {0};
-        String[] header_aux = {""};
-        boolean[] cols_kept_aux;
-        String mapping_col = "";
-
-        for (File file : fileList) {
-            System.out.println(file.getName());
-            String police = extractKeyFromFileName(file.getName());
-            uniqueNumPoliceValues.add(police);
-
-            if (file.toString().contains("FRMP")) {
-                mapping_col = "SPB France / ONEY";
-            } else {
-                mapping_col = mappingColDefault;
-            }
-//            if (!(file.toString().contains("FRMP") || file.toString().contains("DDP16"))) {
-//                continue;
-//            }
-            try (Reader inputReader = Files.newBufferedReader(file.toPath(), Charset.forName(encoding))) {
-                CsvParser parser = new CsvParser(settings);
-                List<String[]> parsedRows = parser.parseAll(inputReader);
-                Iterator<String[]> rows = parsedRows.iterator();
-                Integer nr = csv_get_nrows(file.getPath(), delim);
-                nrowMapped.put(police,nr);
-
-                if (!initialized) {
-                    header = rows.next();
-                    header = Arrays.stream(header)
-                            .filter(h -> h != null && !h.trim().isEmpty())
-                            .toArray(String[]::new);
-                    boolean[] cols_kept = this.mapColnamesAndGetColsKept(mapping_col);
-                    header_unify();
-                    coltypes_populate(cols_kept);
-                    ncol = get_len(coltypes);
-                    headerDropSKP();
-                    createTable(police,header,coltypes);
-                    insertData(police,parsedRows,header,coltypes,dateDefault);
-                    initialized = true;
-                }
-                else {
-                    header_aux = rows.next();
-                    header_aux = Arrays.stream(header_aux)
-                            .filter(h -> h != null && !h.trim().isEmpty())
-                            .toArray(String[]::new);
-                    cols_kept_aux = this.mapColnamesAndGetColsKept(mapping_col,header_aux);
-                    header_aux = header_unify_aux(header_aux);
-                    Col_types[] coltypes_aux = coltypes_populate_aux(cols_kept_aux,header_aux);
-                    header_aux = headerDropSKP(header_aux,coltypes_aux);
-
-                    if (!validateHeader(header,header_aux,file.getName())) {
-                        headerIndexes = matchHeaders(header,header_aux);
-                        createTable(police,header,coltypes);
-                        insertDataWithIndices(police,parsedRows,header,coltypes,dateDefault,headerIndexes);
-                    } else {
-                        createTable(police,header,coltypes);
-                        insertData(police,parsedRows,header,coltypes,dateDefault);
-                    }
-                }
-            } catch (ParseException e) {
-                throw new RuntimeException(e);
-            }
-            date_autofill_agg_par_police(dfMapped.get(police));
-        }
-
-//        populateUniqueStatutsDFMapped();
-//        computeMinMaxDatesForPoliciesMapped();
-        closeConnection();
-    }
-    public BaseSin(File path, String pays, String mappingColDefault) throws IOException, SQLException {
+    public BaseSin(File path, String pays, String mappingColDefault, boolean old) throws IOException, SQLException {
         this.source = true;
         this.pays = pays;
 //        this.path = path;
@@ -499,8 +263,8 @@ public class BaseSin extends BaseAccum {
         String mapping_col = "";
 
         System.out.println(path.getName());
-        numPolice = extractKeyFromFileName(path.getName());
-        tableName = "sin_" + numPolice;
+        numPolice = extractKeyFromFileName(path.getName(),pays);
+        tableName = "sin_" + pays + "_" + numPolice;
 
         if (path.toString().contains("FRMP")) {
             mapping_col = "SPB France / ONEY";
@@ -543,6 +307,209 @@ public class BaseSin extends BaseAccum {
             throw new RuntimeException(e);
         }
     }
+    public BaseSin(File path, String pays, String mappingColDefault) throws IOException, SQLException {
+        this.source = true;
+        this.pays = pays;
+        this.referentialRow = getReferentialRow(new String[]{"source"});
+
+        if (pays.equals("Pologne")) {
+            delim = '\t';
+        }
+        if (pays.equals("France")) {
+            delim = '|';
+        }
+
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+
+        String mapping_col = "";
+
+        System.out.println(path.getName());
+        numPolice = extractKeyFromFileName(path.getName(),pays);
+
+        if (path.toString().contains("FRMP")) {
+            mapping_col = "SPB France / ONEY";
+        } else {
+            mapping_col = mappingColDefault;
+        }
+
+        try (Reader inputReader = Files.newBufferedReader(path.toPath(), Charset.forName(encoding))) {
+            CsvParser parser = new CsvParser(settings);
+            List<String[]> parsedRows = parser.parseAll(inputReader);
+            Iterator<String[]> rows = parsedRows.iterator();
+
+            nrow = csv_get_nrows(path.getPath(), delim);
+
+            header = rows.next();
+            header = Arrays.stream(header)
+                    .filter(h -> h != null && !h.trim().isEmpty())
+                    .toArray(String[]::new);
+            boolean[] cols_kept = this.mapColnamesAndGetColsKept(mapping_col);
+            header_unify();
+            coltypes_populate(cols_kept);
+            ncol = get_len(coltypes);
+            headerDropSKP();
+            if (currentHeaderRef == null) {
+                currentHeaderRef = this.header;
+            }
+
+            df = new ArrayList<>(get_len(coltypes));
+            this.df_populate(coltypes);
+
+            if (validateHeader(currentHeaderRef,header,numPolice)) {
+                int i = 0;
+                while (rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != SKP) {
+                            df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            } else {
+                int[] headerIndexes = matchHeaders(currentHeaderRef,header);
+                this.header = copyArray(currentHeaderRef);
+                int i = 0;
+                while (rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != SKP) {
+                            df.get(headerIndexes[j])[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            }
+            this.date_autofill();
+            this.createPivotTable();
+            this.populateUniqueStatuts();
+            this.populateStatutDateRangeMap();
+        }
+    }
+    public void printPivotTable() {
+        for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : pivotTable.entrySet()) {
+            String statut = outerEntry.getKey();
+            System.out.println("Statut: " + statut);
+
+            Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
+            for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
+                String date_sous = middleEntry.getKey();
+                System.out.println("\tDate Sous: " + date_sous);
+
+                Map<String, Double> innerMap = middleEntry.getValue();
+                for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                    String date_surv = innerEntry.getKey();
+                    Double montant_IP = innerEntry.getValue();
+                    System.out.println("\t\tDate Surv: " + date_surv + " -> Montant IP: " + montant_IP);
+                }
+            }
+        }
+    }
+    public void createPivotTable() {
+        // define the format to capture only the month and year of a date
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        // get column data
+        Object[] montant_IPs = c("montant_IP");
+        Object[] statuts = c("statut");
+        Object[] date_sousArray = c("date_sous");
+        Object[] date_survArray = c("date_surv");
+
+        // iterate over the rows to populate the pivot map
+        for (int i = 0; i < nrow; i++) {
+            String statut = (String) statuts[i];
+            String date_sous = format.format((Date) date_sousArray[i]);
+            String date_surv = format.format((Date) date_survArray[i]);
+            Double montant_IP = (Double) montant_IPs[i];
+
+            pivotTable
+                    .computeIfAbsent(statut, k -> new HashMap<>())
+                    .computeIfAbsent(date_sous, k -> new HashMap<>())
+                    .merge(date_surv, montant_IP, Double::sum);
+        }
+
+        for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : pivotTable.entrySet()) {
+            Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
+                Map<String, Double> innerMap = middleEntry.getValue();
+
+                for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                    double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
+                    innerEntry.setValue(roundedValue);
+                }
+            }
+        }
+    }
+    void date_autofill() {
+        // Indices for required columns in the current DF
+        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
+        int indexDateSous = find_in_arr_first_index(header, "date_sous");
+        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
+
+        // Indices for required columns in the ref_prog DF
+        int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
+        int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
+        int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
+
+        Date dateDebut = null; Date dateFin = null;
+        for (int i = 0; i < ref_prog.nrow; i++) {
+            if (this.numPolice.equalsIgnoreCase(ref_prog.c(indexContrat)[i].toString())) {
+                dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
+                dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
+                break;
+            }
+        }
+        if (dateDebut == null || dateFin == null) {
+            throw new RuntimeException("ref_prog didn't find dates for " + numPolice);
+        }
+
+        for (int i = 0; i < nrow; i++) {
+            Date dateSurv = (Date) c(indexDateSurv)[i];
+            Date dateSous = (Date) c(indexDateSous)[i];
+
+            if (dateSurv.equals(NA_DAT)) {
+                if (!c(indexDateDecla)[i].equals(NA_DAT)) {
+                    dateSurv = (Date) c(indexDateDecla)[i];
+                } else if (!dateSous.equals(NA_DAT)) {
+                    dateSurv = dateSous;
+                } else {
+                    dateSurv = dateDebut;
+                }
+            }
+            if (dateSous.equals(NA_DAT)) {
+                if(!dateSurv.equals(NA_DAT)){
+                    dateSous = dateSurv;
+                } else {
+                    dateSous = dateDebut;
+                }
+            }
+
+            date_transform(dateSurv, dateDebut, dateFin, indexDateSurv, i);
+            date_transform(dateSous, dateDebut, dateFin, indexDateSous, i);
+        }
+    }
+    void print(String statut) {
+        Object[] statuts = this.c("statut");
+        System.out.println(Arrays.toString(this.header));
+
+        for (int i = 0; i<this.nrow; i++) {
+            if (statuts[i].equals(statut)) {
+                System.out.println(Arrays.toString(this.r(i)));
+            }
+        }
+    }
+
     public void printMapped() {
         this.print(min(10,this.nrow));
     }
@@ -609,61 +576,6 @@ public class BaseSin extends BaseAccum {
             }
         }
     }
-    public void populateUniqueStatutsDFMapped() {
-        for (String key : dfMapped.keySet()) {
-            Object[] statuts = c("statut", dfMapped.get(key));
-            for (Object obj : statuts) {
-                uniqueStatuts.add((String) obj);
-            }
-        }
-    }
-    public void computeMinMaxDatesForPoliciesMapped() {
-        // Initialize dictionaries with extreme Date values for each policy number and each statut
-        for (String numPolice : uniqueNumPoliceValues) {
-            minDateMap.put(numPolice, new HashMap<>());
-            maxDateMap.put(numPolice, new HashMap<>());
-            for (String statut : uniqueStatuts) {
-                minDateMap.get(numPolice).put(statut, new Date(Long.MAX_VALUE));
-                maxDateMap.get(numPolice).put(statut, new Date(Long.MIN_VALUE));
-            }
-        }
-
-        // Initially set the overall min and max dates for each statut to extreme values
-        for (String statut : uniqueStatuts) {
-            overallMinDateByStatut.put(statut, new Date(Long.MAX_VALUE));
-            overallMaxDateByStatut.put(statut, new Date(Long.MIN_VALUE));
-        }
-
-        for (String key : dfMapped.keySet()) {
-            Date[] dates = (Date[]) this.c("date_surv", dfMapped.get(key));
-            String[] statuts = (String[]) this.c("statut", dfMapped.get(key));
-
-            for (int i = 0; i < dates.length; i++) {
-                Date currentDate = dates[i];
-                String currentStatut = statuts[i];
-
-                // If current date is before the stored min date for the current policy and statut, update it
-                if (currentDate.before(minDateMap.get(key).get(currentStatut))) {
-                    minDateMap.get(key).put(currentStatut, currentDate);
-                }
-
-                // If current date is after the stored max date for the current policy and statut, update it
-                if (currentDate.after(maxDateMap.get(key).get(currentStatut))) {
-                    maxDateMap.get(key).put(currentStatut, currentDate);
-                }
-
-                // Update overall minimum date for current statut if necessary
-                if (currentDate.before(overallMinDateByStatut.get(currentStatut))) {
-                    overallMinDateByStatut.put(currentStatut, currentDate);
-                }
-
-                // Update overall maximum date for current statut if necessary
-                if (currentDate.after(overallMaxDateByStatut.get(currentStatut))) {
-                    overallMaxDateByStatut.put(currentStatut, currentDate);
-                }
-            }
-        }
-    }
     public String[] headerKeep(String[] header, boolean[] toKeep) {
         int count = 0;
         for (boolean keep : toKeep) {
@@ -683,5 +595,37 @@ public class BaseSin extends BaseAccum {
 
         return newHeader;
     }
+    public void writeToCSV(String path) {
+        // Ensure that there's data to write
+        if (df == null || header == null) {
+            System.err.println("Data or header is null. Cannot write to CSV.");
+            return;
+        }
 
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(path))) {
+            // Write the header
+            bw.write(String.join(",", header));
+            bw.newLine();
+
+            // Determine the number of rows by checking the length of the first column (assuming all columns have the same length)
+            int numRows = df.get(0).length;
+
+            // Write the rows
+            for (int i = 0; i < numRows; i++) {
+                for (int j = 0; j < df.size(); j++) {
+                    Object cellValue = df.get(j)[i];
+                    if (cellValue != null) {
+                        // Write the cell value, followed by a comma unless it's the last cell in the row
+                        bw.write(cellValue.toString());
+                        if (j < df.size() - 1) {
+                            bw.write(",");
+                        }
+                    }
+                }
+                bw.newLine();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }

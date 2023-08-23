@@ -6,24 +6,30 @@ import org.apache.poi.ss.usermodel.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.util.concurrent.TimeUnit;
+import java.util.Date;
 
 import static main.app.App.*;
+
+import java.sql.*;
 
 public class Estimate extends DF {
     String key;
     public String[] subheader;
+    public List<Date> headerCalcul;
     int baseNcol = 0;
     int lastAppendSize = 0;
-    protected Set<String> uniqueNumPoliceValues = new HashSet<>();
+    protected static Set<String> uniqueNumPoliceValues = new HashSet<>();
+    public static Map<String, Map<String, List<Date>>> policeStatutDateRangeMap = new HashMap<>();
+    private static Map<String, List<Date>> globalStatutDateRangeMap = new HashMap<>();
     boolean[] mask_col;
     protected Stopwatch stopwatch = new Stopwatch();
-
+    public String[] uniqueStatuts;
     public static final HashMap<String, Integer> monthMap = new HashMap<String, Integer>() {{
         put("jan.", Calendar.JANUARY);
         put("feb.", Calendar.FEBRUARY);
@@ -38,11 +44,12 @@ public class Estimate extends DF {
         put("nov.", Calendar.NOVEMBER);
         put("dec.", Calendar.DECEMBER);
     }};
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, SQLException {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
 
         ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
+        ref_prog.refProgGetPolice("ICIMWFH18");
         ref_triangle = new DF(wd + "ref_triangle.xlsx");
         mapping = new DF(wd + "mapping.xlsx");
 //        DF map_filtered = mapping.mappingFiltre("DB Claims Italie");
@@ -55,12 +62,11 @@ public class Estimate extends DF {
 //
 //        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB France/","France","SPB France / Wakam");
 //        stopwatch.printElapsedTime("basesin");
-
         Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/SPB Italie.xlsx");
         stopwatch.printElapsedTime("estimate");
 
-        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB Italie/","Italie","SPB Italie", true);
-        stopwatch.printElapsedTime("basesin");
+//        BaseSin base_aux = new BaseSin(wd+"source SIN/SPB Italie/","Italie","SPB Italie", true);
+//        stopwatch.printElapsedTime("basesin");
 
 //        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/Garantie Privée.xlsx");
 //        stopwatch.printElapsedTime("estimate");
@@ -68,17 +74,40 @@ public class Estimate extends DF {
 //        BaseSin base_aux = new BaseSin(wd+"aux SIN/Garantie Privée.xlsm");
 //        stopwatch.printElapsedTime("basesin");
 
-        estimate.addColumnByType('M',true, base_aux);
+        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(wd + "source SIN/SPB Italie/").listFiles()));
+        List<BaseSin> sinItalie = new ArrayList<>();
+//        sinItalie.add(new BaseSin(fileList.get(0),"Italie", "SPB Italie"));
+        for (File file : fileList) {
+            BaseSin base = new BaseSin(file,"Italie", "SPB Italie");
+            sinItalie.add(base);
+            if (base.numPolice.equalsIgnoreCase("ICIMWFH18")) {
+                base.print("en cours");
+            }
+        }
+        stopwatch.printElapsedTime("bases");
+
+
+        for (BaseSin base : sinItalie) {
+            policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap);
+            updateStatutDates(base); //global
+        }
+        stopwatch.printElapsedTime("maps");
+
+        estimate.getUniqueStatutsFromMap();
+        estimate.addColumnByType('M',true);
         stopwatch.printElapsedTime("addcols");
-//        estimate.printFilteredHeadersAndSubheaders();
-//        estimate.stopwatch = new Stopwatch();
-//        estimate.stopwatch.start();
-        estimate.populateColumns(base_aux);
-        stopwatch.printElapsedTime("calcul");
 
+        estimate.populateColumns(sinItalie);
+
+        stopwatch.printElapsedTime("populate");
+
+
+
+
+//        stopwatch.printElapsedTime("calcul");
+//
         estimate.saveToCSVFile();
-        stopwatch.printElapsedTime("saved");
-
+//        stopwatch.printElapsedTime("saved");
 
 //        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/SPB France.xlsx");
 //        BaseSin base_aux = new BaseSin(wd+"aux SIN/SPB France_cdiscount.xlsm");
@@ -153,7 +182,7 @@ public class Estimate extends DF {
             row_number++;
         }
         headerAndColtypesDropSKP();
-        populateUniqueNumPoliceValues("Contrat");
+        formatDP();
         baseNcol = ncol;
         mask_col = new boolean[ncol];
         Arrays.fill(mask_col, true);
@@ -217,6 +246,35 @@ public class Estimate extends DF {
 //            }
 //        }
 //    }
+    public static void updateStatutDates(BaseSin base) {
+        for (Map.Entry<String, List<Date>> entry : base.statutDateRangeMap.entrySet()) {
+            String statut = entry.getKey();
+            List<Date> baseDates = entry.getValue();
+
+            if (!globalStatutDateRangeMap.containsKey(statut)) {
+                // If this statut doesn't exist in the global map, simply put the current base's dates
+                globalStatutDateRangeMap.put(statut, new ArrayList<>(baseDates));
+            } else {
+                // Otherwise, compare and update min and max dates if needed
+                List<Date> globalDates = globalStatutDateRangeMap.get(statut);
+                Date globalMinDate = globalDates.get(0);
+                Date globalMaxDate = globalDates.get(1);
+                Date baseMinDate = baseDates.get(0);
+                Date baseMaxDate = baseDates.get(1);
+
+                if (baseMinDate.before(globalMinDate)) {
+                    globalDates.set(0, baseMinDate);
+                }
+                if (baseMaxDate.after(globalMaxDate)) {
+                    globalDates.set(1, baseMaxDate);
+                }
+            }
+        }
+    }
+    public void getUniqueStatutsFromMap() {
+        Set<String> statuts = globalStatutDateRangeMap.keySet();
+        this.uniqueStatuts = statuts.toArray(new String[0]);
+    }
     public Map<String, ArrayList<String>> getFilteredHeadersAndSubheaders() {
     Map<String, ArrayList<String>> result = new LinkedHashMap<>();
     result.put("base", new ArrayList<>());
@@ -249,74 +307,76 @@ public class Estimate extends DF {
             System.out.println(subheader + ": " + headersString);
         }
     }
-    public void populateColumns(BaseAccum base_aux) {
-        int ind = find_in_arr_first_index(this.header, "Date Periode");
+    public void populateColumns(List<BaseSin> bases) {
+        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
         int begin = ncol - lastAppendSize;
-        for (String police : this.uniqueNumPoliceValues) {
-//            if (police.equals("ICICEDV16")) {
-//                System.out.println("here");
-//            } else {
-//                continue;
-//            }
+        Stopwatch stopwatch = new Stopwatch();
+        stopwatch.start();
+        String currentStatus = null;
+        Date minDateForStatus = null;
+        Date maxDateForStatus = null;
+        for (int col = begin; col < ncol; col++) {
+            if (!this.subheader[col].isEmpty()) {
+                currentStatus = this.subheader[col];
+                minDateForStatus = globalStatutDateRangeMap.get(currentStatus).get(0);
+                maxDateForStatus = globalStatutDateRangeMap.get(currentStatus).get(1);
+            }
+            if (minDateForStatus == null || maxDateForStatus == null) continue;
+
+            if (!(isHigherMonthSvD(this.header[col], maxDateForStatus) || isLowerMonthSvD(this.header[col], minDateForStatus)) ||
+                    !this.subheader[col].isEmpty()) {
+                this.mask_col[col] = true;
+            }
+        } // showing mask
+//        stopwatch.printElapsedTime("firstmask");
+
+        for (BaseAccum base : bases) {
+            String police = base.numPolice;
             System.out.println(police);
-//            this.stopwatch.start();
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
-                if (this.c("Contrat")[row].equals(police)) {
+                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
                     mask_row[row] = true;
                 }
             }
-//            this.stopwatch.printElapsedTime("made mask row");
-            String currentStatus = null;
-            Date minDateForStatus = null;
-            Date maxDateForStatus = null;
+//            stopwatch.printElapsedTime("maskrow " + police);
 
-            boolean[] temp_mask_col = new boolean[lastAppendSize];
-            int maskIndex = -1;
-            //begin = 100 //ncol = 300
-            //col = 100,101,102...300
-            //maskIndex = 0,1,2...200
+            List<Date> minmax = null;
+            boolean[] calc_mask = new boolean[lastAppendSize];
             for (int col = begin; col < ncol; col++) {
                 if (!this.subheader[col].isEmpty()) {
                     currentStatus = this.subheader[col];
-                    minDateForStatus = base_aux.overallMinDateByStatut.get(currentStatus);
-                    maxDateForStatus = base_aux.overallMaxDateByStatut.get(currentStatus);
-                    if (minDateForStatus == null || maxDateForStatus == null) continue;
-
-                    if (isHigherMonthSvD(this.header[col], minDateForStatus) && isLowerMonthSvD(this.header[col], maxDateForStatus)) {
-                        temp_mask_col[0] = true;
-                    } //1 subheader
-                    for (int c = col+1; c < ncol; c++) {
-                        if (!this.subheader[c].isEmpty()) break;
-                        if (isHigherMonthSvD(this.header[c], minDateForStatus) && isLowerMonthSvD(this.header[c], maxDateForStatus)) {
-                            temp_mask_col[c-begin] = true;
-                            this.mask_col[c] = true;
-                        }
-                    }
-//                    this.stopwatch.printElapsedTime("made mask col");
-
-                } // update status, create mask_col
-                maskIndex++;
-                if (!temp_mask_col[maskIndex]) continue;
-
-                for (int row = 0; row < this.nrow; row++) {
-                    if (!mask_row[row]) continue;
-
-                    Date datePeriode = (Date) this.df.get(ind)[row];
-                    double sum = base_aux.calculateSum(datePeriode, police, this.header[col], currentStatus);
-                    if (sum != -1.0) {
-                        if (sum == 0.0) {
-                            this.df.get(col)[row] = "0";
-                        } else {
-                            this.df.get(col)[row] = String.format("%.2f", sum);
-                        }
-                    }
-
+                    minmax = policeStatutDateRangeMap.get(police).get(currentStatus);
+                    if (minmax == null) continue;
+                    minDateForStatus = minmax.get(0);
+                    maxDateForStatus = minmax.get(1);
                 }
-//                this.stopwatch.printElapsedTime("made col " + col);
-
+                if (minmax == null) continue;
+                if (minDateForStatus == null || maxDateForStatus == null) continue;
+                if (!(isHigherMonthSvD(this.header[col], maxDateForStatus) || isLowerMonthSvD(this.header[col], minDateForStatus))) {
+                    calc_mask[col-begin] = true;
+                }
             }
-//            System.out.println("hello");
+
+//            stopwatch.printElapsedTime("calc mask " + police);
+
+            for (int row = 0; row < this.nrow; row++) {
+                if (!mask_row[row]) continue;
+
+                for (int col = begin; col < ncol; col++) {
+                    if (!this.subheader[col].isEmpty()) {
+                        currentStatus = this.subheader[col];
+                    }
+
+                    if (!calc_mask[col-begin]) continue;
+                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
+//                    if (police.equals("ICIMWFH18") && currentStatus.equals("terminé - accepté") && datePeriode.equals("06-2020") && this.header[col].equals("12-2020")) {
+                    if (police.equals("ICIMWFH18") && currentStatus.equals("terminé - accepté") && datePeriode.equals("06-2020")) {
+                        System.out.println("there");
+                    }
+                    this.df.get(col)[row] = getSum(base, currentStatus, datePeriode, this.header[col]);
+                }
+            }
         }
     }
 
@@ -325,6 +385,21 @@ public class Estimate extends DF {
         for (Object obj : polices) {
             uniqueNumPoliceValues.add((String) obj);
         }
+    }
+    public void formatDP() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        Object[] datePeriodeColumn = c("Date Periode");
+        Object[] datePeriodeColumnOutput = new Object[this.nrow];
+        for (int i = 0; i < datePeriodeColumn.length; i++) {
+            Date date = (Date) datePeriodeColumn[i]; // Cast the object to Date
+            String formattedDate = format.format(date); // Convert Date to String using the format
+            datePeriodeColumnOutput[i] = formattedDate; // Replace the Date with its formatted string
+        }
+
+        // Update the column in the dataframe
+        int index = find_in_arr_first_index(header, "Date Periode");
+        df.set(index, datePeriodeColumnOutput);
     }
 
 
@@ -337,7 +412,77 @@ public class Estimate extends DF {
         int month = Arrays.asList("jan.", "feb.", "mar.", "apr.", "may.", "jun.", "jul.", "aug.", "sep.", "oct.", "nov.", "dec.").indexOf(monthHeader.substring(0, 4));
         return cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) == month;
     }
+    public String getSum(BaseAccum base, String status, String date_sous, String date_surv) {
+        Map<String, Map<String, Map<String, Double>>> pivotTable = base.pivotTable;
 
+        // Check for status existence
+        Map<String, Map<String, Double>> middleMap = pivotTable.get(status);
+        if (middleMap == null) {
+            return "";  // or some default value if status doesn't exist
+        }
+
+        // Check for date_sous existence
+        Map<String, Double> innerMap = middleMap.get(date_sous);
+        if (innerMap == null) {
+            return "";  // or some default value if date_sous doesn't exist
+        }
+
+        // Check for date_surv existence and get the value
+        Double result = innerMap.get(date_surv);
+        if (result == null) {
+            return "";  // or some default value if date_surv doesn't exist
+        }
+
+        return String.format("%.2f", result);
+    }
+
+    public double calculateSum(Date datePeriode, Date monthHeader, String prefix, String police, String status) {
+        double result = 0.0;
+        boolean rowsFound = false;
+
+        String tableName = prefix + police;
+
+        // Prepare a SQL query
+        String query = "SELECT SUM(montant_IP) as total FROM `" + tableName + "` WHERE "
+                + "MONTH(date_sous) = ? AND YEAR(date_sous) = ? AND "
+                + "MONTH(date_surv) = ? AND YEAR(date_surv) = ? AND "
+                + "statut = ?";
+
+        try (PreparedStatement ps = connection.prepareStatement(query)) {
+            // Extract month and year from datePeriode
+            Calendar calPeriode = Calendar.getInstance();
+            calPeriode.setTime(datePeriode);
+            int monthPeriode = calPeriode.get(Calendar.MONTH) + 1;  // +1 because Calendar months start from 0
+            int yearPeriode = calPeriode.get(Calendar.YEAR);
+
+            // Extract month and year from monthHeader
+            Calendar calHeader = Calendar.getInstance();
+            calHeader.setTime(monthHeader);
+            int monthHeaderVal = calHeader.get(Calendar.MONTH) + 1;
+            int yearHeaderVal = calHeader.get(Calendar.YEAR);
+
+            // Set values for prepared statement
+            ps.setInt(1, monthPeriode);
+            ps.setInt(2, yearPeriode);
+            ps.setInt(3, monthHeaderVal);
+            ps.setInt(4, yearHeaderVal);
+            ps.setString(5, status);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    rowsFound = true;
+                    result = rs.getDouble("total");
+                }
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+
+        if (!rowsFound) {
+            return -1.0;
+        }
+        return result;
+    }
     public void appendTable(ArrayList<String> columnNames, String tableName) {
         appendMultipleTables(columnNames, new ArrayList<>(Collections.singletonList(tableName)));
     }
@@ -390,7 +535,7 @@ public class Estimate extends DF {
         }
         appendMultipleTables(columnNames, subHeaderNames);
     }
-    public void byMonth() {
+    public void byMonth(boolean old) {
         ArrayList<String> columnNames = new ArrayList<>();
         String[] months = {"jan.", "feb.", "mar.", "apr.", "may.", "jun.", "jul.", "aug.", "sep.", "oct.", "nov.", "dec."};
 
@@ -406,10 +551,30 @@ public class Estimate extends DF {
         }
         appendMultipleTables(columnNames, new ArrayList<>(Collections.singletonList("Monthly")));
     }
-    public void addColumnByType(char type, boolean dispatchByStatus, BaseAccum base_aux) {
+    public void byMonth() {
+        ArrayList<String> columnNames = new ArrayList<>();
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        // Define the months and years
+        String[] months = {"01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"};
+
+        // Manually adding November and December for 2013
+        columnNames.add("11-2013");
+        columnNames.add("12-2013");
+
+        // Now loop through all months for the subsequent years
+        for (int year = 2014; year <= 2026; year++) {
+            for (String month : months) {
+                columnNames.add(month + "-" + year);
+            }
+        }
+        appendMultipleTables(columnNames, new ArrayList<>(Collections.singletonList("Monthly")));
+    }
+
+    public void addColumnByType(char type, boolean dispatchByStatus) {
         int begin = ncol;
         if (dispatchByStatus) {
-            for (String status : base_aux.uniqueStatuts) {
+            for (String status : uniqueStatuts) {
                 // Assuming the status is to be added to the header, just once
                 int status_ind = header.length;
                 switch (type) {

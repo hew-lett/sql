@@ -292,7 +292,6 @@ public class BaseFic extends BaseAccum {
         }
         populateUniqueStatuts();
         populateUniqueNumPoliceValues();
-        computeMinMaxDatesForPolicies();
     }
     private int[] remapIndices(int[] auxToMainMapping) {
         int[] newMapping = new int[auxToMainMapping.length];
