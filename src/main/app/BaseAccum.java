@@ -36,25 +36,22 @@ public class BaseAccum extends DF {
     protected boolean source = false;
     protected String key_sin = "";
     void coltypes_populate(boolean[] cols_kept) {
-        int ncol = cols_kept.length;
-        coltypes = new Col_types[ncol];
-        for (int colIndex = 0; colIndex < ncol; colIndex++) {
+        coltypes = new Col_types[header.length];
+        for (int colIndex = 0; colIndex < header.length; colIndex++) {
             if (cols_kept[colIndex]) {
-                coltypes[colIndex] = Col_types.STR;
+                coltypes[colIndex] = STR;
             } else {
                 coltypes[colIndex] = SKP;
             }
         }
-        List<String> refTriangleHeaders = Arrays.asList(ref_cols.header);
-        for (int colIndex = 0; colIndex < ncol; colIndex++) {
-            if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex])) {
-                if (header[colIndex].startsWith("date")) {
-                    coltypes[colIndex] = DAT;
-                } else if (header[colIndex].startsWith("montant")) {
-                    coltypes[colIndex] = DBL;
-                }
+        for (int colIndex = 0; colIndex < header.length; colIndex++) {
+            if (header[colIndex].startsWith("date")) {
+                coltypes[colIndex] = DAT;
+            } else if (header[colIndex].startsWith("montant")) {
+                coltypes[colIndex] = DBL;
             }
         }
+        headerDropSKP();
     }
     Col_types[] coltypes_populate_aux(boolean[] cols_kept, String[] header) {
         Col_types[] coltypes = new Col_types[header.length];
@@ -65,11 +62,11 @@ public class BaseAccum extends DF {
                 coltypes[colIndex] = SKP;
             }
         }
-        List<String> refTriangleHeaders = Arrays.asList(ref_cols.header);
-        for (int colIndex = 0; colIndex < header.length; colIndex++) {
-            if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex]) &&
-                    header[colIndex].startsWith("date")) {
+        for (int colIndex = 0; colIndex < coltypes.length; colIndex++) {
+            if (header[colIndex].startsWith("date")) {
                 coltypes[colIndex] = DAT;
+            } else if (header[colIndex].startsWith("montant")) {
+                coltypes[colIndex] = DBL;
             }
         }
         return coltypes;
@@ -125,12 +122,16 @@ public class BaseAccum extends DF {
             refprogLookup.put(contrat, new Date[]{dateDebut, dateFin});
         }
 
+        Set<String> missing_refprog = new HashSet<>();
         for (int i = 0; i < nrow; i++) {
 //            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
             String currentNumPolice = c(indexNumPolice)[i].toString();
             Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
             if (refDates == null) {
-                System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
+                if (!missing_refprog.contains(currentNumPolice)) {
+                    System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
+                    missing_refprog.add(currentNumPolice);
+                }
                 continue;
             }
 
@@ -305,6 +306,28 @@ public class BaseAccum extends DF {
             }
         }
     }
+    boolean[] header_unify_cols_kept() {
+        boolean[] output = new boolean[header.length];
+        for (int i = 0; i < header.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
+            if (ind != -1) {
+                header[i] = ref_cols.header[ind];
+                output[i] = true;
+            }
+        }
+        return output;
+    }
+    boolean[] header_unify_cols_kept(String[] header) {
+        boolean[] output = new boolean[header.length];
+        for (int i = 0; i < header.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
+            if (ind != -1) {
+                header[i] = ref_cols.header[ind];
+                output[i] = true;
+            }
+        }
+        return output;
+    }
     String[] header_unify_aux(String[] header) {
         String[] outputHeader = Arrays.copyOf(header, header.length);
         for (int i = 0; i < header.length; i++) {
@@ -357,36 +380,6 @@ public class BaseAccum extends DF {
                         header[i] = formatICI;
                         columnsKept[i] = true;
                         break;
-                    }
-                }
-            }
-        }
-        return columnsKept;
-    }
-    boolean[] mapColnamesAndGetColsKept(String mapping_col, String[] header) {
-
-        DF map_filtered = mapping.mappingFiltre(mapping_col);
-
-        boolean[] columnsKept = new boolean[header.length];
-
-        for (int i = 0; i < header.length; i++) {
-            columnsKept[i] = false;
-
-            for (int j = 0; j < map_filtered.nrow; j++) {
-                // Getting the Format ICI value (from the first column) and the desired format (from the second column)
-                String formatICI = (String) map_filtered.df.get(0)[j];
-                String desiredFormat = (String) map_filtered.df.get(1)[j];
-
-                // If either value is null, continue to next iteration
-                if (Objects.equals(formatICI, "") || desiredFormat.equals("")) continue;
-
-                // Check if the header matches the desired format (ignoring case and special characters)
-                if (normalize(header[i]).equalsIgnoreCase(normalize(desiredFormat))) {
-                    // Check if the Format ICI value is present in referentialRow
-                    if (Arrays.asList(referentialRow).contains(formatICI)) {
-                        header[i] = formatICI;
-                        columnsKept[i] = true; // We keep this column
-                        break; // No need to continue searching for this header
                     }
                 }
             }

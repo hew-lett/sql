@@ -10,13 +10,9 @@ import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-
 import java.util.Date;
 
 import static main.app.App.*;
-
-import java.sql.*;
 
 public class Estimate extends DF {
     String key;
@@ -135,7 +131,7 @@ public class Estimate extends DF {
 
         this.uniqueStatuts = sortedStatuts.toArray(new String[0]);
     }
-    public void populateMonthStatut(List<BaseSin> bases) {
+    public void populateMonthStatut(List<Base> bases) {
         int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
         int begin = ncol - lastAppendSize;
         Stopwatch stopwatch = new Stopwatch();

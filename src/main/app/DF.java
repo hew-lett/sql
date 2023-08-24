@@ -1292,7 +1292,7 @@ public class DF implements Serializable {
             }
         }
 
-        this.coltypes = coltypes;
+        this.coltypes = coltypesNew;
     }
     public String[] headerDropSKP(String[] header, Col_types[] coltypes) {
         int newSize = 0;

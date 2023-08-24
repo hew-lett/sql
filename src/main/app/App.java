@@ -1,24 +1,15 @@
 package main.app;
 
 import com.univocity.parsers.csv.CsvParserSettings;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 import static java.lang.Math.round;
 import static java.util.Arrays.fill;
@@ -72,42 +63,43 @@ public class App {
         ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
         mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
 
-
-        for (int i = 0; i < ref_source.nrow; i++) {
-            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
-            if (!a_faire) continue;
-
-            String folder = (String) ref_source.c("path")[i];
-            String pays = (String) ref_source.c("pays")[i];
-            String mapcol = (String) ref_source.c("mapping")[i];
-            String estim = (String) ref_source.c("estimate")[i];
-
-            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
-
-            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-            List<BaseSin> listBases = new ArrayList<>();
-
-            for (File file : fileList) {
-                BaseSin base = new BaseSin(file,pays,mapcol);
-                listBases.add(base);
-            }
-            for (BaseSin base : listBases) {
-                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-                updateStatutDates(base); //global
-            }
-            stopwatch.printElapsedTime("integration success");
-
-            estimate.getUniqueStatutsFromMap();
-            estimate.addColumnByType('M',true);
-            estimate.populateMonthStatut(listBases);
-
-            stopwatch.printElapsedTime("calculated");
-            estimate.saveToCSVFile();
-
-        }
+        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
+        base.print(20);
+//        for (int i = 0; i < ref_source.nrow; i++) {
+//            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
+//            if (!a_faire) continue;
+//
+//            String folder = (String) ref_source.c("path")[i];
+//            String pays = (String) ref_source.c("pays")[i];
+//            String mapcol = (String) ref_source.c("mapping")[i];
+//            String estim = (String) ref_source.c("estimate")[i];
+//
+//            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+//
+//            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+//            List<Base> listBases = new ArrayList<>();
+//
+//            for (File file : fileList) {
+//                Base base = new Base(file,pays,mapcol);
+//                listBases.add(base);
+//            }
+//            for (Base base : listBases) {
+//                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+//                updateStatutDates(base); //global
+//            }
+//            stopwatch.printElapsedTime("integration success");
+//
+//            estimate.getUniqueStatutsFromMap();
+//            estimate.addColumnByType('M',true);
+//            estimate.populateMonthStatut(listBases);
+//
+//            stopwatch.printElapsedTime("calculated");
+//            estimate.saveToCSVFile();
+//
+//        }
 
     }
-    public static void updateStatutDates(BaseSin base) {
+    public static void updateStatutDates(Base base) {
         for (Map.Entry<String, List<Date>> entry : base.statutDateRangeMap.entrySet()) {
             String statut = entry.getKey();
             List<Date> baseDates = entry.getValue();
@@ -142,7 +134,7 @@ public class App {
         }
         return loadedDataframes;
     }
-  public static boolean  check_in(String what, String[] arr) {
+    public static boolean  check_in(String what, String[] arr) {
         for (String where : arr) {
             if (what.equals(where)) {
                 return true;
