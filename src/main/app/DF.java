@@ -288,7 +288,7 @@ public class DF implements Serializable {
             }
         }
     }
-    public DF (String path) throws IOException {
+    public DF (String path, String sheet_name) throws IOException {
 
         InputStream is = Files.newInputStream(new File(path).toPath());
         Workbook workbook = StreamingReader.builder()
@@ -296,7 +296,7 @@ public class DF implements Serializable {
                 .bufferSize(4096)     // buffer size to use when reading InputStream to file (defaults to 1024)
                 .open(is);
 
-        String sheet_name = workbook.getSheetName(0);
+//        String sheet_name = workbook.getSheetName(0);
         Sheet sheet = workbook.getSheet(sheet_name);
         Iterator<Row> rowIter = sheet.rowIterator();
         Row row = rowIter.next();
@@ -337,6 +337,55 @@ public class DF implements Serializable {
             row_number++;
         }
     } //ref_triangle //mapping
+    public DF (String path, String sheet_name, boolean uppercase) throws IOException {
+
+        InputStream is = Files.newInputStream(new File(path).toPath());
+        Workbook workbook = StreamingReader.builder()
+                .rowCacheSize(1)      // number of rows to keep in memory (defaults to 10)
+                .bufferSize(4096)     // buffer size to use when reading InputStream to file (defaults to 1024)
+                .open(is);
+
+//        String sheet_name = workbook.getSheetName(0);
+        Sheet sheet = workbook.getSheet(sheet_name);
+        Iterator<Row> rowIter = sheet.rowIterator();
+        Row row = rowIter.next();
+        nrow = sheet.getLastRowNum();
+        ncol = row.getLastCellNum();
+        header = new String[ncol];
+        int i = 0;
+        for (Cell c : row) {
+            header[i] = c.getStringCellValue();
+            i++;
+        }
+
+        coltypes = new Col_types[ncol];
+        Arrays.fill(coltypes, STR);
+
+        df = new ArrayList<>(ncol);
+        this.df_populate(coltypes);
+
+        int col_iterator;
+        int row_number = 0;
+        while(rowIter.hasNext()) {
+            row = rowIter.next();
+            col_iterator = 0;
+            for (int c = 0; c < this.ncol; c++) {
+                Cell cell_i = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                if (cell_i == null) {
+                    switch(coltypes[c]) {
+                        case STR -> df.get(col_iterator)[row_number] = "";
+                        case DBL -> df.get(col_iterator)[row_number] = NA_DBL;
+                        case DAT -> df.get(col_iterator)[row_number] = NA_DAT;
+                    }
+                    col_iterator++;
+                    continue;
+                }
+                df.get(col_iterator)[row_number] = parseCell(cell_i, coltypes[c], dateDefault);
+                col_iterator++;
+            }
+            row_number++;
+        }
+    } //source
     public DF (ArrayList<Object[]> base) {
         this.df = base;
     }

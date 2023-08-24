@@ -68,7 +68,7 @@ public class BaseFic extends BaseAccum {
                             coltypes[i] = Col_types.SKP;
                         }
                     }
-                    List<String> refTriangleHeaders = Arrays.asList(ref_triangle.header);
+                    List<String> refTriangleHeaders = Arrays.asList(ref_cols.header);
                     for (int i = 0; i < header.length; i++) {
                         if (refTriangleHeaders.contains(header[i]) && header[i].startsWith("date")) {
                             coltypes[i] = DAT;

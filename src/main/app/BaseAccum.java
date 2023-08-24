@@ -18,22 +18,6 @@ public class BaseAccum extends DF {
     public static final char DEFAULT_DELIMITER = ';';
     public static final char TAB_DELIMITER = '\t';
 //    static DF ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
-    static DF ref_triangle;
-    static {
-        try {
-            ref_triangle = new DF(wd + "ref_triangle.xlsx");
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-    static DF mapping;
-    static {
-        try {
-            mapping = new DF(wd + "mapping.xlsx");
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
     static final String CURRENT_MONTH;
     static final String PREVIOUS_MONTH;
     static {
@@ -61,7 +45,7 @@ public class BaseAccum extends DF {
                 coltypes[colIndex] = SKP;
             }
         }
-        List<String> refTriangleHeaders = Arrays.asList(ref_triangle.header);
+        List<String> refTriangleHeaders = Arrays.asList(ref_cols.header);
         for (int colIndex = 0; colIndex < ncol; colIndex++) {
             if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex])) {
                 if (header[colIndex].startsWith("date")) {
@@ -76,12 +60,12 @@ public class BaseAccum extends DF {
         Col_types[] coltypes = new Col_types[header.length];
         for (int colIndex = 0; colIndex < header.length; colIndex++) {
             if (cols_kept[colIndex]) {
-                coltypes[colIndex] = Col_types.STR;
+                coltypes[colIndex] = STR;
             } else {
                 coltypes[colIndex] = SKP;
             }
         }
-        List<String> refTriangleHeaders = Arrays.asList(ref_triangle.header);
+        List<String> refTriangleHeaders = Arrays.asList(ref_cols.header);
         for (int colIndex = 0; colIndex < header.length; colIndex++) {
             if (coltypes[colIndex] != SKP && refTriangleHeaders.contains(header[colIndex]) &&
                     header[colIndex].startsWith("date")) {
@@ -301,8 +285,8 @@ public class BaseAccum extends DF {
         String gestionnaire = keys[0];
         String precision = keys.length > 1 ? keys[1] : null;
 
-        for (int rowIndex = 0; rowIndex < ref_triangle.nrow; rowIndex++) {
-            Object[] row = ref_triangle.r(rowIndex);
+        for (int rowIndex = 0; rowIndex < ref_cols.nrow; rowIndex++) {
+            Object[] row = ref_cols.r(rowIndex);
             if (row[0].equals(gestionnaire)) {
                 // If precision is not provided or matches the referential, return the row
                 if (precision == null || row[1].equals(precision)) {
@@ -317,7 +301,7 @@ public class BaseAccum extends DF {
         for (int i = 0; i < header.length; i++) {
             int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
             if (ind != -1) {
-                header[i] = ref_triangle.header[ind];
+                header[i] = ref_cols.header[ind];
             }
         }
     }
@@ -326,7 +310,7 @@ public class BaseAccum extends DF {
         for (int i = 0; i < header.length; i++) {
             int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
             if (ind != -1) {
-                outputHeader[i] = ref_triangle.header[ind];
+                outputHeader[i] = ref_cols.header[ind];
             }
         }
         return outputHeader;
@@ -336,7 +320,7 @@ public class BaseAccum extends DF {
         for (int i = 0; i < inputHeader.length; i++) {
             int ind = find_in_arr_first_index(this.referentialRow, inputHeader[i].toLowerCase());
             if (ind != -1) {
-                unifiedHeader[i] = ref_triangle.header[ind];
+                unifiedHeader[i] = ref_cols.header[ind];
             } else {
                 unifiedHeader[i] = inputHeader[i];
             }
@@ -491,26 +475,7 @@ public class BaseAccum extends DF {
             uniqueStatuts.add((String) obj);
         }
     }
-    public String extractKeyFromFileName(String fileName, String pays) {
-        int start = -1;
-        int end = -1;
-        if (pays.equals("France")) {
-            start = fileName.indexOf("ICI");
-            if (start == -1) {
-                start = fileName.indexOf("FRMP");
-            }
-            end = fileName.indexOf("_", start);
-        } else if (pays.equals("Italie")) {
-            start = fileName.indexOf("ICI");
-            end = fileName.indexOf(".csv", start);
-        }
 
-        if (start != -1 && end != -1) {
-            return fileName.substring(start, end);
-        }
-
-        return fileName; // Default to full file name if pattern not found
-    }
     public boolean validateHeader(String[] referenceHeader, String[] currentHeader, String fileName)  {
         if (referenceHeader.length != currentHeader.length) {
             System.out.println("Wrong header length " + fileName);
