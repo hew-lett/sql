@@ -41,9 +41,13 @@ public class App {
     public static DF ref_source;
     public static DF ref_prog;
     public static DF mapping;
+    public static DF grille_tarif;
+    public static DF tdb2;
     public static SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
     public static Map<String, Map<String, List<Date>>> policeStatutDateRangeMap = new HashMap<>();
     public static Map<String, List<Date>> globalStatutDateRangeMap = new HashMap<>();
+    public static Date globalMinDate = new Date(Long.MAX_VALUE); // Initializing to the max possible date
+    public static Date globalMaxDate = new Date(Long.MIN_VALUE);
     private static final String CURRENT_MONTH;
     private static final String PREVIOUS_MONTH;
     static {
@@ -62,41 +66,51 @@ public class App {
         ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
         ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
         mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
+        grille_tarif = new DF(wd + "TDB Hors France.xlsx","TDB PART 2");
 
-        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
-        base.print(20);
-//        for (int i = 0; i < ref_source.nrow; i++) {
-//            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
-//            if (!a_faire) continue;
-//
-//            String folder = (String) ref_source.c("path")[i];
-//            String pays = (String) ref_source.c("pays")[i];
-//            String mapcol = (String) ref_source.c("mapping")[i];
-//            String estim = (String) ref_source.c("estimate")[i];
-//
-//            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
-//
-//            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-//            List<Base> listBases = new ArrayList<>();
-//
-//            for (File file : fileList) {
-//                Base base = new Base(file,pays,mapcol);
-//                listBases.add(base);
-//            }
-//            for (Base base : listBases) {
-//                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-//                updateStatutDates(base); //global
-//            }
-//            stopwatch.printElapsedTime("integration success");
-//
-//            estimate.getUniqueStatutsFromMap();
-//            estimate.addColumnByType('M',true);
-//            estimate.populateMonthStatut(listBases);
-//
-//            stopwatch.printElapsedTime("calculated");
-//            estimate.saveToCSVFile();
-//
-//        }
+//        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
+//        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
+//        Base base = new Base(wd + "Source FIC/SPB Pologne/","FIC Pologne");
+//        Base base = new Base(wd + "Source FIC/SPB Espagne/","FIC Espagne");
+
+        for (int i = 0; i < ref_source.nrow; i++) {
+            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
+            if (!a_faire) continue;
+
+            Base.currentHeaderRef = null;
+            String folder = (String) ref_source.c("path")[i];
+            String pays = (String) ref_source.c("pays")[i];
+            String mapcol = (String) ref_source.c("mapping")[i];
+            String estim = (String) ref_source.c("estimate")[i];
+            String path_fic = (String) ref_source.c("path_fic")[i];
+            String map_fic = (String) ref_source.c("map_fic")[i];
+
+            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+
+            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+            List<Base> basesSin = new ArrayList<>();
+
+            for (File file : fileList) {
+                Base base = new Base(file,pays,mapcol);
+                basesSin.add(base);
+            }
+            for (Base base : basesSin) {
+                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+                updateStatutDates(base); //global
+            }
+            estimate.getUniqueStatutsFromMap();
+            updateGlobalDatesFromStatutMap();
+
+            Base baseFic = new Base(wd + path_fic,map_fic);
+            stopwatch.printElapsedTime("integration success");
+
+            estimate.addFicMAT(baseFic);
+            estimate.addSinMAT(basesSin);
+
+            stopwatch.printElapsedTime("calculated");
+            estimate.saveToCSVFile(true);
+
+        }
 
     }
     public static void updateStatutDates(Base base) {
@@ -121,6 +135,20 @@ public class App {
                 if (baseMaxDate.after(globalMaxDate)) {
                     globalDates.set(1, baseMaxDate);
                 }
+            }
+        }
+    }
+    public static void updateGlobalDatesFromStatutMap() {
+        for (List<Date> dates : globalStatutDateRangeMap.values()) {
+            Date currentMinDate = dates.get(0);
+            Date currentMaxDate = dates.get(1);
+
+            if (currentMinDate.before(globalMinDate)) {
+                globalMinDate = currentMinDate;
+            }
+
+            if (currentMaxDate.after(globalMaxDate)) {
+                globalMaxDate = currentMaxDate;
             }
         }
     }

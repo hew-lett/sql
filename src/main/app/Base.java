@@ -7,23 +7,66 @@ import java.io.*;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.sql.*;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Date;
 
 import static java.lang.Math.min;
 import static main.app.App.*;
 import static main.app.App.ref_prog;
-import static main.app.DF.Col_types.DAT;
-import static main.app.DF.Col_types.SKP;
+import static main.app.DF.Col_types.*;
+import static main.app.DF.Col_types.DBL;
 
-public class Base extends BaseAccum {
+public class Base extends DF {
     Object[] refProgrammesRow;
-    private static String[] currentHeaderRef = null;
+    protected boolean source = false;
+    public static String[] currentHeaderRef = null;
     char delim = ';';
     String pays;
     public static final String LAPARISIENNE = "LaParisienne";
     public static final String MEDIA = "DBCLAIMS";
+    public static final String STATUT_FICTIF_FIC = "Comptable";
+    public static final char DEFAULT_DELIMITER = ';';
+    public static final char TAB_DELIMITER = '\t';
+    static final String CURRENT_MONTH;
+    static final String PREVIOUS_MONTH;
+    static {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMM");
+        LocalDate now = LocalDate.now();
+
+        CURRENT_MONTH = now.format(formatter);
+        PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
+    }
+    String numPolice = "";
+    protected Set<String> uniqueStatuts = new HashSet<>();
+    protected Set<String> uniqueNumPoliceValues = new HashSet<>();
+    protected Map<String, List<Date>> statutDateRangeMap = new HashMap<>();
+    protected Map<String, List<Date>> numPoliceDateRangeMap = new HashMap<>();
+    protected Date globalMinDateFic = null;
+    protected Date globalMaxDateFic = null;
+    protected Object[] referentialRow;
+    public Map<String, Map<String, Map<String, Double>>> pivotTable = new HashMap<>();
+    public Map<String, Map<String, Map<String, Double>>> pivotTableYearly = new HashMap<>();
+    public Map<String, Map<String, Double>> pivotTableTotal = new HashMap<>();
+
+    public Map<String, Map<String, Double>> pivotTableAllStatuts = new HashMap<>();
+    public Map<String, Map<String, Double>> pivotTableAllStatutsYearly = new HashMap<>();
+    public Map<String, Double> pivotTableAllStatutsTotal = new HashMap<>();
+
+    public Map<String, Map<String, Map<String, Map<String, Double>>>> pivotTableFic = new HashMap<>();
+    public Map<String, Map<String, Map<String, Map<String, Double>>>> pivotTableYearlyFic = new HashMap<>();
+    public Map<String, Map<String, Map<String, Double>>> pivotTableTotalFic = new HashMap<>();
+
+    public Map<String, Map<String, Map<String, Integer>>> pivotTableN = new HashMap<>();
+    public Map<String, Map<String, Map<String, Integer>>> pivotTableYearlyN = new HashMap<>();
+    public Map<String, Map<String, Integer>> pivotTableTotalN = new HashMap<>();
+    public Map<String, Map<String, Integer>> pivotTableAllStatutsN = new HashMap<>();
+    public Map<String, Map<String, Integer>> pivotTableAllStatutsYearlyN = new HashMap<>();
+    public Map<String, Integer> pivotTableAllStatutsTotalN = new HashMap<>();
+
     public static void main(String[] args) throws IOException, SQLException {
     }
     public Base(File path, String pays, String mappingColDefault) throws IOException {
@@ -111,6 +154,17 @@ public class Base extends BaseAccum {
             this.cleanStatut();
             this.date_autofill();
             this.createPivotTable();
+            this.createYearlyPivotTable();
+            this.createTotalPivotTable();
+            this.createPivotAllStatuts();
+            this.createYearlyPivotAllStatuts();
+            this.createTotalPivotAllStatuts();
+            this.createPivotTableN();
+            this.createYearlyPivotTableN();
+            this.createTotalPivotTableN();
+            this.createPivotAllStatutsN();
+            this.createYearlyPivotAllStatutsN();
+            this.createTotalPivotAllStatutsN();
             this.populateUniqueStatuts();
             this.populateStatutDateRangeMap();
         }
@@ -169,8 +223,6 @@ public class Base extends BaseAccum {
                         i++;
                     }
 
-                    this.coltypesDropSKP();
-
                     for (File file : fileList) {
                         if (file.getName().contains(LAPARISIENNE)) continue;
 
@@ -202,11 +254,10 @@ public class Base extends BaseAccum {
                         }
                     }
                 }
-                date_autofill_agg();
             }
             case "DB Claims Italie" -> {
                 this.source = true;
-                referentialRow = getReferentialRow(new String[]{"source"});
+                referentialRow = getReferentialRow(new String[]{"fic italie"});
 
                 List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(folder).listFiles()));
                 if (fileList.isEmpty()) return;
@@ -233,14 +284,13 @@ public class Base extends BaseAccum {
                                     .filter(h -> h != null && !h.trim().isEmpty())
                                     .toArray(String[]::new);
                             ncol = header.length;
-                            boolean[] cols_kept = this.mapColnamesAndGetColsKept(map_col);
-                            header_unify();
+                            boolean[] cols_kept = header_unify_cols_kept();
+
                             coltypes_populate(cols_kept);
 
                             nrow = dim;
-                            assert (coltypes.length == parsedRows.get(0).length);
                             ncol = get_len(coltypes);
-                            df = new ArrayList<>(get_len(coltypes));
+                            df = new ArrayList<>(ncol);
                             this.df_populate(coltypes);
 
                             initialized = true;
@@ -252,7 +302,7 @@ public class Base extends BaseAccum {
                             int j = 0;
                             int k = 0;
                             String[] parsedRow = rows.next();
-                            parsedRow = Arrays.copyOf(parsedRow, header.length);
+                            parsedRow = Arrays.copyOf(parsedRow, coltypes.length);
                             for (String s : parsedRow) {
                                 if (coltypes[k] != Col_types.SKP) {
                                     df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
@@ -265,14 +315,10 @@ public class Base extends BaseAccum {
 
                     }
                 }
-
-                this.headerAndColtypesDropSKP();
-                date_autofill_agg();
-                this.remove_leading_zeros();
             }
             case "FIC Pologne" -> {
                 this.source = true;
-                referentialRow = getReferentialRow(new String[]{"source"});
+                referentialRow = getReferentialRow(new String[]{"fic pologne"});
 
                 List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(folder).listFiles()));
                 if (fileList.isEmpty()) return;
@@ -299,14 +345,13 @@ public class Base extends BaseAccum {
                                     .filter(h -> h != null && !h.trim().isEmpty())
                                     .toArray(String[]::new);
                             ncol = header.length;
-                            boolean[] cols_kept = this.mapColnamesAndGetColsKept(map_col);
-                            header_unify();
+                            boolean[] cols_kept = header_unify_cols_kept();
+
                             coltypes_populate(cols_kept);
 
                             nrow = dim;
-                            assert (coltypes.length == parsedRows.get(0).length);
                             ncol = get_len(coltypes);
-                            df = new ArrayList<>(get_len(coltypes));
+                            df = new ArrayList<>(ncol);
                             this.df_populate(coltypes);
 
                             initialized = true;
@@ -318,7 +363,7 @@ public class Base extends BaseAccum {
                             int j = 0;
                             int k = 0;
                             String[] parsedRow = rows.next();
-                            parsedRow = Arrays.copyOf(parsedRow, header.length);
+                            parsedRow = Arrays.copyOf(parsedRow, coltypes.length);
                             for (String s : parsedRow) {
                                 if (coltypes[k] != Col_types.SKP) {
                                     df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
@@ -331,14 +376,78 @@ public class Base extends BaseAccum {
 
                     }
                 }
+            }
+            case "FIC Espagne" -> {
+                this.source = true;
+                referentialRow = getReferentialRow(new String[]{"fic espagne"});
 
-                this.headerAndColtypesDropSKP();
-                date_autofill_agg();
-                this.remove_leading_zeros();
+                File file = Objects.requireNonNull(new File(folder).listFiles())[0];
+
+                CsvParserSettings settings = new CsvParserSettings();
+                settings.setDelimiterDetectionEnabled(true,delim);
+                settings.trimValues(true);
+
+                int i = 0;
+
+                try (Reader inputReader = Files.newBufferedReader(file.toPath(), Charset.forName(encoding))) {
+                    CsvParser parser = new CsvParser(settings);
+                    List<String[]> parsedRows = parser.parseAll(inputReader);
+                    Iterator<String[]> rows = parsedRows.iterator();
+
+                    header = rows.next();
+                    header = Arrays.stream(header)
+                            .filter(h -> h != null && !h.trim().isEmpty())
+                            .toArray(String[]::new);
+                    ncol = header.length;
+                    nrow = csv_get_nrows(String.valueOf(file.toPath()),delim);
+                    boolean[] cols_kept = header_unify_cols_kept();
+
+                    coltypes_populate(cols_kept);
+
+                    ncol = get_len(coltypes);
+                    df = new ArrayList<>(ncol);
+                    this.df_populate(coltypes);
+
+                    while (rows.hasNext()) {
+                        int j = 0;
+                        int k = 0;
+                        String[] parsedRow = rows.next();
+                        parsedRow = Arrays.copyOf(parsedRow, coltypes.length);
+                        for (String s : parsedRow) {
+                            if (coltypes[k] != Col_types.SKP) {
+                                df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                                j++;
+                            }
+                            k++;
+                        }
+                        i++;
+                    }
+
+                }
             }
         }
+        coltypesDropSKP();
+        date_autofill_agg();
+        addStatutFictif();
         populateUniqueNumPoliceValues();
+        createPivotTableFic();
+        createYearlyPivotTableFic();
+        createTotalPivotTableFic();
+        populateNumPoliceDateRangeMap();
     } //Fic
+    public void addStatutFictif() {
+        // Create and fill the new column
+        Object[] statut_fictif = new Object[this.nrow];
+        Arrays.fill(statut_fictif, STATUT_FICTIF_FIC);
+        this.df.add(statut_fictif);
+
+        // Enlarge and update the header
+        String[] enlargedHeader = new String[this.header.length + 1];
+        System.arraycopy(this.header, 0, enlargedHeader, 0, this.header.length);
+        enlargedHeader[this.header.length] = "statut";
+        this.header = enlargedHeader;
+        this.uniqueStatuts.add(STATUT_FICTIF_FIC);
+    }
     public String extractKeyFromFileName(String fileName, String pays) {
         int start = -1;
         int end = -1;
@@ -362,6 +471,7 @@ public class Base extends BaseAccum {
 
         return fileName; // Default to full file name if pattern not found
     }
+
     public void createPivotTable() {
         // define the format to capture only the month and year of a date
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
@@ -398,6 +508,401 @@ public class Base extends BaseAccum {
             }
         }
     }
+    public void createYearlyPivotTable() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy");  // To extract the year from date_surv
+
+        for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : pivotTable.entrySet()) {
+            String statut = outerEntry.getKey();
+            Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
+                String date_sous = middleEntry.getKey();
+                Map<String, Double> innerMap = middleEntry.getValue();
+
+                for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                    String date_surv = innerEntry.getKey();
+                    Double montant_IP = innerEntry.getValue();
+
+                    try {
+                        Date date = format.parse(date_surv);
+                        String year = yearFormat.format(date); // Extract the year from the date
+
+                        pivotTableYearly
+                                .computeIfAbsent(statut, k -> new HashMap<>())
+                                .computeIfAbsent(date_sous, k -> new HashMap<>())
+                                .merge(year, montant_IP, Double::sum);
+
+                    } catch (ParseException e) {
+                        e.printStackTrace(); // handle parsing exceptions
+                    }
+                }
+            }
+        }
+    }
+    public void createTotalPivotTable() {
+        for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : pivotTableYearly.entrySet()) {
+            String statut = outerEntry.getKey();
+            Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
+                String date_sous = middleEntry.getKey();
+                Map<String, Double> innerMap = middleEntry.getValue();
+
+                double yearlyTotal = 0.0;
+                for (Double montant : innerMap.values()) {
+                    yearlyTotal += montant;
+                }
+
+                double roundedTotal = Math.round(yearlyTotal * 100.0) / 100.0;
+
+                pivotTableTotal
+                        .computeIfAbsent(statut, k -> new HashMap<>())
+                        .put(date_sous, roundedTotal);
+            }
+        }
+    }
+
+    public void createPivotAllStatuts() {
+        // Iterate over the pivotTable
+        for (Map.Entry<String, Map<String, Map<String, Double>>> statutEntry : pivotTable.entrySet()) {
+            Map<String, Map<String, Double>> dateSousMap = statutEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Double>> dateSousEntry : dateSousMap.entrySet()) {
+                String date_sous = dateSousEntry.getKey();
+                Map<String, Double> dateSurvMap = dateSousEntry.getValue();
+
+                for (Map.Entry<String, Double> dateSurvEntry : dateSurvMap.entrySet()) {
+                    String date_surv = dateSurvEntry.getKey();
+                    Double montant_IP = dateSurvEntry.getValue();
+
+                    pivotTableAllStatuts
+                            .computeIfAbsent(date_sous, k -> new HashMap<>())
+                            .merge(date_surv, montant_IP, Double::sum);
+                }
+            }
+        }
+
+        // Round off values in the pivotTableTotal
+        for (Map.Entry<String, Map<String, Double>> middleEntry : pivotTableAllStatuts.entrySet()) {
+            Map<String, Double> innerMap = middleEntry.getValue();
+
+            for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
+                innerEntry.setValue(roundedValue);
+            }
+        }
+    }
+    public void createYearlyPivotAllStatuts() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy");
+
+        for (Map.Entry<String, Map<String, Double>> dateSousEntry : pivotTableAllStatuts.entrySet()) {
+            String date_sous = dateSousEntry.getKey();
+            Map<String, Double> dateSurvMap = dateSousEntry.getValue();
+
+            for (Map.Entry<String, Double> dateSurvEntry : dateSurvMap.entrySet()) {
+                String date_surv = dateSurvEntry.getKey();
+                Double montant_IP = dateSurvEntry.getValue();
+
+                try {
+                    Date date = format.parse(date_surv);
+                    String year = yearFormat.format(date);
+
+                    pivotTableAllStatutsYearly
+                            .computeIfAbsent(date_sous, k -> new HashMap<>())
+                            .merge(year, montant_IP, Double::sum);
+
+                } catch (ParseException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+    public void createTotalPivotAllStatuts() {
+        for (Map.Entry<String, Map<String, Double>> dateSousEntry : pivotTableAllStatutsYearly.entrySet()) {
+            String date_sous = dateSousEntry.getKey();
+            Map<String, Double> innerMap = dateSousEntry.getValue();
+
+            double yearlyTotal = 0.0;
+            for (Double montant : innerMap.values()) {
+                yearlyTotal += montant;
+            }
+
+            double roundedTotal = Math.round(yearlyTotal * 100.0) / 100.0;
+            pivotTableAllStatutsTotal.put(date_sous, roundedTotal);
+        }
+    }
+
+    public void createPivotTableFic() {
+        // define the format to capture only the month and year of a date
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        // get column data
+        Object[] montant_IPs = c("montant_IP");
+        Object[] statuts = c("statut");
+        Object[] date_sousArray = c("date_sous");
+        Object[] date_survArray = c("date_surv");
+        Object[] polices = c("num_police"); // Get the police column
+
+        // iterate over the rows to populate the pivot map
+        for (int i = 0; i < nrow; i++) {
+            String police = (String) polices[i];
+            String statut = (String) statuts[i];
+            String date_sous = format.format((Date) date_sousArray[i]);
+            String date_surv = format.format((Date) date_survArray[i]);
+            Double montant_IP = (Double) montant_IPs[i];
+
+            pivotTableFic
+                    .computeIfAbsent(police, p -> new HashMap<>()) // External layer for police
+                    .computeIfAbsent(statut, k -> new HashMap<>())
+                    .computeIfAbsent(date_sous, k -> new HashMap<>())
+                    .merge(date_surv, montant_IP, Double::sum);
+        }
+
+        // Iterate over the pivot map to round the values
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableFic.entrySet()) {
+            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : outerMap.entrySet()) {
+                Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
+                    Map<String, Double> innerMap = middleEntry.getValue();
+
+                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                        double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
+                        innerEntry.setValue(roundedValue);
+                    }
+                }
+            }
+        }
+    }
+    public void createYearlyPivotTableFic() {
+        // Format to extract only the year from a date
+        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy");
+
+        // Iterate over the existing pivotTableFic
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableFic.entrySet()) {
+            String police = outermostEntry.getKey();
+            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
+                String statut = secondEntry.getKey();
+                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
+                    String date_sous = thirdEntry.getKey();
+                    Map<String, Double> innerMap = thirdEntry.getValue();
+
+                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                        String date_surv = innerEntry.getKey();
+                        try {
+                            String year = yearFormat.format(new SimpleDateFormat("MM-yyyy").parse(date_surv));
+                            Double montant_IP = innerEntry.getValue();
+
+                            pivotTableYearlyFic
+                                    .computeIfAbsent(police, p -> new HashMap<>())
+                                    .computeIfAbsent(statut, s -> new HashMap<>())
+                                    .computeIfAbsent(date_sous, ds -> new HashMap<>())
+                                    .merge(year, montant_IP, Double::sum);
+                        } catch (ParseException e) {
+                            e.printStackTrace(); // handle parsing exceptions
+                        }
+                    }
+                }
+            }
+        }
+
+        // Round the values in pivotTableYearlyFic
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableYearlyFic.entrySet()) {
+            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
+                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
+                    Map<String, Double> innerMap = thirdEntry.getValue();
+
+                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                        double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
+                        innerEntry.setValue(roundedValue);
+                    }
+                }
+            }
+        }
+
+        // You can now replace pivotTableFic with pivotTableYearlyFic or keep both as needed.
+    }
+    public void createTotalPivotTableFic() {
+        // Iterate over the existing pivotTableYearlyFic
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableYearlyFic.entrySet()) {
+            String police = outermostEntry.getKey();
+            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
+                String statut = secondEntry.getKey();
+                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
+                    String date_sous = thirdEntry.getKey();
+                    Map<String, Double> innerMap = thirdEntry.getValue();
+
+                    double total = 0.0; // Variable to keep the total for a given date_sous
+                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                        total += innerEntry.getValue();
+                    }
+
+                    // Round the total to 2 decimal places
+                    double roundedTotal = Math.round(total * 100.0) / 100.0;
+
+                    // Add the total to pivotTableTotalFic
+                    pivotTableTotalFic
+                            .computeIfAbsent(police, p -> new HashMap<>())
+                            .computeIfAbsent(statut, s -> new HashMap<>())
+                            .put(date_sous, roundedTotal);
+                }
+            }
+        }
+    }
+
+    public void createPivotTableN() {
+        // Define the format to capture only the month and year of a date
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        // Get column data
+        Object[] statuts = c("statut");
+        Object[] date_sousArray = c("date_sous");
+        Object[] date_survArray = c("date_surv");
+
+        // Iterate over the rows to populate the pivot map
+        for (int i = 0; i < nrow; i++) {
+            String statut = (String) statuts[i];
+            String date_sous = format.format((Date) date_sousArray[i]);
+            String date_surv = format.format((Date) date_survArray[i]);
+
+            pivotTableN
+                    .computeIfAbsent(statut, k -> new HashMap<>())
+                    .computeIfAbsent(date_sous, k -> new HashMap<>())
+                    .merge(date_surv, 1, Integer::sum); // Increase the counter by 1 for each appearance
+        }
+
+        // The rounding part is no longer necessary since you are just counting appearances.
+    }
+    public void createYearlyPivotTableN() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy");  // To extract the year from date_surv
+
+        for (Map.Entry<String, Map<String, Map<String, Integer>>> outerEntry : pivotTableN.entrySet()) {
+            String statut = outerEntry.getKey();
+            Map<String, Map<String, Integer>> middleMap = outerEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Integer>> middleEntry : middleMap.entrySet()) {
+                String date_sous = middleEntry.getKey();
+                Map<String, Integer> innerMap = middleEntry.getValue();
+
+                for (Map.Entry<String, Integer> innerEntry : innerMap.entrySet()) {
+                    String date_surv = innerEntry.getKey();
+
+                    try {
+                        Date date = format.parse(date_surv);
+                        String year = yearFormat.format(date); // Extract the year from the date
+
+                        pivotTableYearlyN
+                                .computeIfAbsent(statut, k -> new HashMap<>())
+                                .computeIfAbsent(date_sous, k -> new HashMap<>())
+                                .merge(year, 1, Integer::sum); // Increase the counter by 1 for each appearance
+
+                    } catch (ParseException e) {
+                        e.printStackTrace(); // handle parsing exceptions
+                    }
+                }
+            }
+        }
+    }
+    public void createTotalPivotTableN() {
+        for (Map.Entry<String, Map<String, Map<String, Integer>>> outerEntry : pivotTableYearlyN.entrySet()) {
+            String statut = outerEntry.getKey();
+            Map<String, Map<String, Integer>> middleMap = outerEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Integer>> middleEntry : middleMap.entrySet()) {
+                String date_sous = middleEntry.getKey();
+                Map<String, Integer> innerMap = middleEntry.getValue();
+
+                int yearlyTotal = 0;
+                for (Integer count : innerMap.values()) {
+                    yearlyTotal += count;
+                }
+
+                pivotTableTotalN
+                        .computeIfAbsent(statut, k -> new HashMap<>())
+                        .put(date_sous, yearlyTotal);
+            }
+        }
+    }
+
+    public void createPivotAllStatutsN() {
+        // Iterate over pivotTableN
+        for (Map.Entry<String, Map<String, Map<String, Integer>>> statutEntry : pivotTableN.entrySet()) {
+            Map<String, Map<String, Integer>> dateSousMap = statutEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Integer>> dateSousEntry : dateSousMap.entrySet()) {
+                String date_sous = dateSousEntry.getKey();
+                Map<String, Integer> dateSurvMap = dateSousEntry.getValue();
+
+                for (Map.Entry<String, Integer> dateSurvEntry : dateSurvMap.entrySet()) {
+                    String date_surv = dateSurvEntry.getKey();
+                    Integer count = dateSurvEntry.getValue();
+
+                    pivotTableAllStatutsN
+                            .computeIfAbsent(date_sous, k -> new HashMap<>())
+                            .merge(date_surv, 1, Integer::sum); // Count appearances
+                }
+            }
+        }
+        // No need for rounding since we are just counting appearances.
+    }
+    public void createYearlyPivotAllStatutsN() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy");
+
+        for (Map.Entry<String, Map<String, Integer>> dateSousEntry : pivotTableAllStatutsN.entrySet()) {
+            String date_sous = dateSousEntry.getKey();
+            Map<String, Integer> dateSurvMap = dateSousEntry.getValue();
+
+            for (Map.Entry<String, Integer> dateSurvEntry : dateSurvMap.entrySet()) {
+                String date_surv = dateSurvEntry.getKey();
+                Integer count = dateSurvEntry.getValue();
+
+                try {
+                    Date date = format.parse(date_surv);
+                    String year = yearFormat.format(date);
+
+                    pivotTableAllStatutsYearlyN
+                            .computeIfAbsent(date_sous, k -> new HashMap<>())
+                            .merge(year, 1, Integer::sum); // Count appearances
+
+                } catch (ParseException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+    public void createTotalPivotAllStatutsN() {
+        for (Map.Entry<String, Map<String, Integer>> dateSousEntry : pivotTableAllStatutsYearlyN.entrySet()) {
+            String date_sous = dateSousEntry.getKey();
+            Map<String, Integer> yearMap = dateSousEntry.getValue();
+
+            int yearlyTotal = 0;
+            for (Integer count : yearMap.values()) {
+                yearlyTotal += count;
+            }
+
+            pivotTableAllStatutsTotalN.put(date_sous, yearlyTotal);
+        }
+    }
+
+
     void date_autofill() {
         // Indices for required columns in the current DF
         int indexDateSurv = find_in_arr_first_index(header, "date_surv");
@@ -600,5 +1105,495 @@ public class Base extends BaseAccum {
             }
         }
         return dim;
+    }
+    void coltypes_populate(boolean[] cols_kept) {
+        coltypes = new Col_types[header.length];
+        for (int colIndex = 0; colIndex < header.length; colIndex++) {
+            if (cols_kept[colIndex]) {
+                coltypes[colIndex] = STR;
+            } else {
+                coltypes[colIndex] = SKP;
+            }
+        }
+        for (int colIndex = 0; colIndex < header.length; colIndex++) {
+            if (header[colIndex].startsWith("date")) {
+                coltypes[colIndex] = DAT;
+            } else if (header[colIndex].startsWith("montant")) {
+                coltypes[colIndex] = DBL;
+            }
+        }
+        headerDropSKP();
+    }
+    Col_types[] coltypes_populate_aux(boolean[] cols_kept, String[] header) {
+        Col_types[] coltypes = new Col_types[header.length];
+        for (int colIndex = 0; colIndex < header.length; colIndex++) {
+            if (cols_kept[colIndex]) {
+                coltypes[colIndex] = STR;
+            } else {
+                coltypes[colIndex] = SKP;
+            }
+        }
+        for (int colIndex = 0; colIndex < coltypes.length; colIndex++) {
+            if (header[colIndex].startsWith("date")) {
+                coltypes[colIndex] = DAT;
+            } else if (header[colIndex].startsWith("montant")) {
+                coltypes[colIndex] = DBL;
+            }
+        }
+        return coltypes;
+    }
+    SimpleDateFormat getDateFormatter(String dateFormatString) {
+        String pattern = switch (dateFormatString) {
+            case "#yyyy-mm-dd#" -> "yyyy-MM-dd";
+            case "dd/mm/yyyy" -> "dd/MM/yyyy";
+            default -> throw new IllegalArgumentException("Unknown date format: " + dateFormatString);
+        };
+
+        return new SimpleDateFormat(pattern);
+    }
+    void date_autofill_agg() {
+        // Indices for required columns in the current DF
+        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
+        int indexDateSous = find_in_arr_first_index(header, "date_sous");
+        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
+        int indexNumPolice = find_in_arr_first_index(header, "num_police");
+
+        // Indices for required columns in the ref_prog DF
+        int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
+        int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
+        int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
+
+        // Return early if the num_police column doesn't exist
+        if (indexNumPolice == -1) return;
+
+        // If date_surv column doesn't exist, create it
+        if (indexDateSurv == -1) {
+            indexDateSurv = ncol;
+            Object[] newColumn = new Object[nrow];
+            Arrays.fill(newColumn, NA_DAT);
+            df.add(newColumn);
+            ncol++;
+        }
+
+        // If date_sous column doesn't exist, create it
+        if (indexDateSous == -1) {
+            indexDateSous = ncol;
+            Object[] newColumn = new Object[nrow];
+            Arrays.fill(newColumn, NA_DAT);
+            df.add(newColumn);
+            ncol++;
+        }
+
+        // Cache for quick lookup of ref_prog data based on num_police/n°contrat
+        Map<String, Date[]> refprogLookup = new HashMap<>();
+        for (int i = 0; i < ref_prog.nrow; i++) {
+            String contrat = ref_prog.c(indexContrat)[i].toString();
+            Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
+            Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
+            refprogLookup.put(contrat, new Date[]{dateDebut, dateFin});
+        }
+
+        Set<String> missing_refprog = new HashSet<>();
+        for (int i = 0; i < nrow; i++) {
+//            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
+            String currentNumPolice = c(indexNumPolice)[i].toString();
+            Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
+            if (refDates == null) {
+                if (!missing_refprog.contains(currentNumPolice)) {
+                    System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
+                    missing_refprog.add(currentNumPolice);
+                }
+                continue;
+            }
+
+            Date dateDebutRef = refDates[0];
+            Date dateFinRef = refDates[1];
+
+            Date dateSurv = (Date) c(indexDateSurv)[i];
+            Date dateSous = (Date) c(indexDateSous)[i];
+
+            // Date filling logic...
+            if (dateSurv.equals(NA_DAT)) {
+                if (indexDateDecla != -1 && !c(indexDateDecla)[i].equals(NA_DAT)) {
+                    dateSurv = (Date) c(indexDateDecla)[i];
+                } else if (!dateSous.equals(NA_DAT)) {
+                    dateSurv = dateSous;
+                } else {
+                    dateSurv = dateDebutRef;
+                }
+            }
+            if (dateSous.equals(NA_DAT)) {
+                if(!dateSurv.equals(NA_DAT)){
+                    dateSous = dateSurv;
+                } else {
+                    dateSous = dateDebutRef;
+                }
+            }
+
+            // Apply transformations...
+            date_transform(dateSurv, dateDebutRef, dateFinRef, indexDateSurv, i);
+            date_transform(dateSous, dateDebutRef, dateFinRef, indexDateSous, i);
+        }
+    }
+    void date_autofill_agg_par_police(ArrayList<Object[]> df) {
+        // Indices for required columns in the current DF
+        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
+        int indexDateSous = find_in_arr_first_index(header, "date_sous");
+        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
+        int indexNumPolice = find_in_arr_first_index(header, "num_police");
+
+        // Indices for required columns in the ref_prog DF
+        int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
+        int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
+        int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
+
+        // Return early if the num_police column doesn't exist
+        if (indexNumPolice == -1) return;
+
+        // If date_surv column doesn't exist, create it
+        if (indexDateSurv == -1) {
+            indexDateSurv = ncol;
+            Object[] newColumn = new Object[nrow];
+            Arrays.fill(newColumn, NA_DAT);
+            df.add(newColumn);
+            ncol++;
+        }
+
+        // If date_sous column doesn't exist, create it
+        if (indexDateSous == -1) {
+            indexDateSous = ncol;
+            Object[] newColumn = new Object[nrow];
+            Arrays.fill(newColumn, NA_DAT);
+            df.add(newColumn);
+            ncol++;
+        }
+
+        // Cache for quick lookup of ref_prog data based on num_police/n°contrat
+        Map<String, Date[]> refprogLookup = new HashMap<>();
+        for (int i = 0; i < ref_prog.nrow; i++) {
+            String contrat = ref_prog.c(indexContrat)[i].toString();
+            Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
+            Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
+            refprogLookup.put(contrat, new Date[]{dateDebut, dateFin});
+        }
+
+        for (int i = 0; i < nrow; i++) {
+//            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
+            String currentNumPolice = c(indexNumPolice)[i].toString();
+            Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
+            if (refDates == null) {
+                System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
+                continue;
+            }
+
+            Date dateDebutRef = refDates[0];
+            Date dateFinRef = refDates[1];
+
+            Date dateSurv = (Date) c(indexDateSurv)[i];
+            Date dateSous = (Date) c(indexDateSous)[i];
+
+            // Date filling logic...
+            if (dateSurv.equals(NA_DAT)) {
+                if (indexDateDecla != -1 && !c(indexDateDecla)[i].equals(NA_DAT)) {
+                    dateSurv = (Date) c(indexDateDecla)[i];
+                } else if (!dateSous.equals(NA_DAT)) {
+                    dateSurv = dateSous;
+                } else {
+                    dateSurv = dateDebutRef;
+                }
+            }
+            if (dateSous.equals(NA_DAT)) {
+                if(!dateSurv.equals(NA_DAT)){
+                    dateSous = dateSurv;
+                } else {
+                    dateSous = dateDebutRef;
+                }
+            }
+
+            // Apply transformations...
+            date_transform(dateSurv, dateDebutRef, dateFinRef, indexDateSurv, i);
+            date_transform(dateSous, dateDebutRef, dateFinRef, indexDateSous, i);
+        }
+    }
+    void date_transform (Date date, Date dateDebutRef, Date dateFinRef, int columnIndex, int rowIndex) {
+        // Control that dates are in the desired interval
+        if (date.before(dateDebutRef)) {
+            date = dateDebutRef;
+        }
+        if (date.after(dateFinRef)) {
+            date = dateFinRef;
+        }
+
+        // Change the date to the 1st day of the month
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.set(Calendar.DAY_OF_MONTH, 1);
+        date = cal.getTime();
+
+        // Update the dates in the DF
+        df.get(columnIndex)[rowIndex] = date;
+    }
+    Object[] getRefProgrammesRow (String numPolice, SimpleDateFormat refProgDateFormat) {
+        int indexNumContract = find_in_arr_first_index(ref_prog.header, "n°contrat");
+        int indexDateDebut = find_in_arr_first_index(ref_prog.header, "date_debut");
+        int indexDateFin = find_in_arr_first_index(ref_prog.header, "date_fin");
+
+        for (int i = 0; i < ref_prog.nrow; i++) {
+            String contractNumber = (String) ref_prog.c(indexNumContract)[i];
+            if (contractNumber != null && contractNumber.equals(numPolice)) {
+                Object[] refRow = ref_prog.r(i);
+                try {
+                    refRow[indexDateDebut] = refProgDateFormat.parse((String) refRow[indexDateDebut]);
+                    refRow[indexDateFin] = refProgDateFormat.parse((String) refRow[indexDateFin]);
+                } catch (ParseException e) {
+                    e.printStackTrace();
+                }
+                return refRow;
+            }
+        }
+        return null;
+    }
+    Object[] getReferentialRow(String[] keys) {
+        String gestionnaire = keys[0];
+        String precision = keys.length > 1 ? keys[1] : null;
+
+        for (int rowIndex = 0; rowIndex < ref_cols.nrow; rowIndex++) {
+            Object[] row = ref_cols.r(rowIndex);
+            if (row[0].equals(gestionnaire)) {
+                // If precision is not provided or matches the referential, return the row
+                if (precision == null || row[1].equals(precision)) {
+                    return row;
+                }
+            }
+        }
+
+        throw new RuntimeException("Referential row not found for keys: " + Arrays.toString(keys));
+    }
+    void header_unify() {
+        for (int i = 0; i < header.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
+            if (ind != -1) {
+                header[i] = ref_cols.header[ind];
+            } else {
+                header[i] = "filler";
+            }
+        }
+    }
+    boolean[] header_unify_cols_kept() {
+        boolean[] output = new boolean[header.length];
+        for (int i = 0; i < header.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
+            if (ind != -1) {
+                header[i] = ref_cols.header[ind];
+                output[i] = true;
+            }
+        }
+        return output;
+    }
+    boolean[] header_unify_cols_kept(String[] header) {
+        boolean[] output = new boolean[header.length];
+        for (int i = 0; i < header.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
+            if (ind != -1) {
+                header[i] = ref_cols.header[ind];
+                output[i] = true;
+            }
+        }
+        return output;
+    }
+    String[] header_unify_aux(String[] header) {
+        String[] outputHeader = Arrays.copyOf(header, header.length);
+        for (int i = 0; i < header.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
+            if (ind != -1) {
+                outputHeader[i] = ref_cols.header[ind];
+            }
+        }
+        return outputHeader;
+    }
+    String[] header_unify_return(String[] inputHeader) {
+        String[] unifiedHeader = new String[inputHeader.length];
+        for (int i = 0; i < inputHeader.length; i++) {
+            int ind = find_in_arr_first_index(this.referentialRow, inputHeader[i].toLowerCase());
+            if (ind != -1) {
+                unifiedHeader[i] = ref_cols.header[ind];
+            } else {
+                unifiedHeader[i] = inputHeader[i];
+            }
+        }
+        return unifiedHeader;
+    }
+    String[] getColsToTake() {
+        List<String> colsList = new ArrayList<>();
+        for (int i = 2; i < referentialRow.length - 1; i++) {
+            String colValue = referentialRow[i].toString().toLowerCase().trim();
+            if (!colValue.isEmpty()) {
+                colsList.add(colValue);
+            }
+        }
+        return colsList.toArray(new String[0]);
+    }
+    boolean[] mapColnamesAndGetColsKept(String mapping_col) {
+
+        DF map_filtered = mapping.mappingFiltre(mapping_col);
+
+        boolean[] columnsKept = new boolean[header.length];
+
+        for (int i = 0; i < header.length; i++) {
+            columnsKept[i] = false;
+
+            for (int j = 0; j < map_filtered.nrow; j++) {
+                String formatICI = (String) map_filtered.df.get(0)[j];
+                String desiredFormat = (String) map_filtered.df.get(1)[j];
+
+                if (Objects.equals(formatICI, "") || desiredFormat.equals("")) continue;
+
+                if (normalize(header[i]).equalsIgnoreCase(normalize(desiredFormat))) {
+                    if (Arrays.asList(referentialRow).contains(formatICI)) {
+                        header[i] = formatICI;
+                        columnsKept[i] = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return columnsKept;
+    }
+    public void populateUniqueNumPoliceValues() {
+        Object[] polices = c("num_police");
+        for (Object obj : polices) {
+            uniqueNumPoliceValues.add((String) obj);
+        }
+    }
+    public void populateStatutDateRangeMap() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        for (String statut : uniqueStatuts) {
+            Date minDate = null;
+            Date maxDate = null;
+
+            Map<String, Map<String, Double>> middleMap = pivotTable.get(statut);
+            if (middleMap != null) {
+                for (Map<String, Double> innerMap : middleMap.values()) {
+                    for (String date_surv : innerMap.keySet()) {
+                        try {
+                            Date currentDate = format.parse(date_surv);
+                            if (minDate == null || currentDate.before(minDate)) {
+                                minDate = currentDate;
+                            }
+                            if (maxDate == null || currentDate.after(maxDate)) {
+                                maxDate = currentDate;
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace(); // handle parsing exceptions
+                        }
+                    }
+                }
+
+                List<Date> dateRange = new ArrayList<>();
+                dateRange.add(minDate);
+                dateRange.add(maxDate);
+                statutDateRangeMap.put(statut, dateRange);
+            }
+        }
+    }
+    public void populateNumPoliceDateRangeMap() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        for (String num_police : uniqueNumPoliceValues) {
+            Date minDate = null;
+            Date maxDate = null;
+
+            Map<String, Map<String, Map<String, Double>>> outerMap = pivotTableFic.get(num_police);
+            if (outerMap != null) {
+                for (Map<String, Map<String, Double>> middleMap : outerMap.values()) {
+                    for (Map<String, Double> innerMap : middleMap.values()) {
+                        for (String date_surv : innerMap.keySet()) {
+                            try {
+                                Date currentDate = format.parse(date_surv);
+                                if (minDate == null || currentDate.before(minDate)) {
+                                    minDate = currentDate;
+                                }
+                                if (maxDate == null || currentDate.after(maxDate)) {
+                                    maxDate = currentDate;
+                                }
+                            } catch (Exception e) {
+                                e.printStackTrace(); // handle parsing exceptions
+                            }
+                        }
+                    }
+                }
+
+                List<Date> dateRange = new ArrayList<>();
+                dateRange.add(minDate);
+                dateRange.add(maxDate);
+                numPoliceDateRangeMap.put(num_police, dateRange);
+
+                if (globalMinDateFic == null || minDate.before(globalMinDateFic)) {
+                    globalMinDateFic = minDate;
+                }
+                if (globalMaxDateFic == null || maxDate.after(globalMaxDateFic)) {
+                    globalMaxDateFic = maxDate;
+                }
+            }
+        }
+    }
+
+    boolean[] mapColnamesAndKeepNeededAux (String[] localHeader, DF mapping) {
+        boolean[] columnsKept = new boolean[localHeader.length];
+
+        for (int i = 0; i < localHeader.length; i++) {
+            columnsKept[i] = false;
+
+            for (int j = 0; j < mapping.nrow; j++) {
+                String formatICI = (String) mapping.df.get(0)[j];
+                String desiredFormat = (String) mapping.df.get(1)[j];
+
+                // If either value is null, continue to next iteration
+                if (Objects.equals(formatICI, "") || desiredFormat.equals("")) continue;
+
+                if (normalize(localHeader[i]).equalsIgnoreCase(normalize(desiredFormat))) {
+                    if (Arrays.asList(referentialRow).contains(formatICI)) {
+                        localHeader[i] = formatICI;
+                        columnsKept[i] = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return columnsKept;
+    }
+    public void remove_leading_zeros() {
+        String[] cols = {"Numéro_Dossier"};
+        for(String col : cols) {
+            if(check_in(col,this.header)) {
+                for (int i = 0; i < this.nrow; i++) {
+                    String val = (String) this.c(col)[i];
+                    if (val != null) {
+                        this.c(col)[i] = val.replaceFirst("^0+", "");
+                    }
+                }
+            }
+        }
+    }
+    public void populateUniqueStatuts() {
+        Object[] statuts = c("statut");
+        for (Object obj : statuts) {
+            uniqueStatuts.add((String) obj);
+        }
+    }
+
+    public boolean validateHeader(String[] referenceHeader, String[] currentHeader, String fileName)  {
+        if (referenceHeader.length != currentHeader.length) {
+            System.out.println("Wrong header length " + fileName);
+            return false;
+        }
+        for (int i = 0; i < referenceHeader.length; i++) {
+            if (!referenceHeader[i].equals(currentHeader[i])) {
+                System.out.println("Wrong header at position " + i + " for the file " + fileName);
+                return false;
+            }
+        }
+        return true;
     }
 }
