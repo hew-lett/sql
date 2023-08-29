@@ -16,7 +16,7 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-    public static final String wd = "E:/202305/wd/";
+    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
     public static final String regex_digits = "[0-9]+";
@@ -39,7 +39,7 @@ public class App {
     public static String yyyymm = "default";
     public static DF ref_cols;
     public static DF ref_source;
-    public static DF ref_prog;
+    public static DF ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);;
     public static DF mapping;
     public static DF grille_tarif = new DF(wd + "Grille_Tarifaire_20230803.csv",';',(Integer)0);;
     public static DF tdb2;
@@ -64,20 +64,20 @@ public class App {
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
         printMemoryUsage();
 
-        //        Stopwatch stopwatch = new Stopwatch();
-//        stopwatch.start();
-//
-//        ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
-//        ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
-//        ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
-//        mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
-//        grille_tarif = new DF(wd + "TDB Hors France.xlsx","TDB PART 2");
-//
-////        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
-////        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
-////        Base base = new Base(wd + "Source FIC/SPB Pologne/","FIC Pologne");
-////        Base base = new Base(wd + "Source FIC/SPB Espagne/","FIC Espagne");
-//
+                Stopwatch stopwatch = new Stopwatch();
+        stopwatch.start();
+
+        ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
+        ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
+        ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
+        mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
+
+        ref_prog.print();
+//        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
+//        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
+//        Base base = new Base(wd + "Source FIC/SPB Pologne/","FIC Pologne");
+//        Base base = new Base(wd + "Source FIC/SPB Espagne/","FIC Espagne");
+
 //        for (int i = 0; i < ref_source.nrow; i++) {
 //            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
 //            if (!a_faire) continue;
