@@ -1049,43 +1049,6 @@ public class Estimate extends DF {
             }
         }
     }
-
-    //    public void addColumnByType(char type, boolean dispatchByStatus, Set<String> uniqueStatuts) {
-//        int begin = ncol;
-//        if (dispatchByStatus) {
-//            for (String status : uniqueStatuts) {
-//                // Assuming the status is to be added to the header, just once
-//                int tableName_ind = header.length;
-//                byMonth();
-//                subheader[tableName_ind] = status + " mensuel";
-//                tableName_ind = header.length;
-//                addAnnees();
-//                this.populateYearFic(baseFic);
-//                subheader[tableName_ind] = status + " annuel";
-//                tableName_ind = header.length;
-//                addTotal();
-//                subheader[tableName_ind] = status + " total";
-//            }
-//        } else {
-////            int status_ind = header.length;
-//            switch (type) {
-//                case 'T' -> addTotal();
-//                case 'Y' -> addAnnees();
-//                case 'M' -> byMonth();
-//            }
-////            subheader[status_ind] = STATUT_FICTIF_FIC;
-//        }
-//        int end = ncol;
-//        this.lastAppendSize = end - begin;
-//        boolean[] newMaskCol = new boolean[ncol];
-//        System.arraycopy(this.mask_col, 0, newMaskCol, 0, this.mask_col.length);
-//        this.mask_col = newMaskCol;
-//        for (int i = begin; i < end; i++) {
-//            if(!this.subheader[i].isEmpty()) {
-//                this.mask_col[i] = true;
-//            }
-//        }
-//    }
     public void saveToCSVFile(boolean applyMask) throws IOException {
         String filePath = fullPath.replace(".xlsx", "_extended.csv");
 
@@ -1158,6 +1121,42 @@ public class Estimate extends DF {
             }
         }
     }
+    //    public void addColumnByType(char type, boolean dispatchByStatus, Set<String> uniqueStatuts) {
+//        int begin = ncol;
+//        if (dispatchByStatus) {
+//            for (String status : uniqueStatuts) {
+//                // Assuming the status is to be added to the header, just once
+//                int tableName_ind = header.length;
+//                byMonth();
+//                subheader[tableName_ind] = status + " mensuel";
+//                tableName_ind = header.length;
+//                addAnnees();
+//                this.populateYearFic(baseFic);
+//                subheader[tableName_ind] = status + " annuel";
+//                tableName_ind = header.length;
+//                addTotal();
+//                subheader[tableName_ind] = status + " total";
+//            }
+//        } else {
+////            int status_ind = header.length;
+//            switch (type) {
+//                case 'T' -> addTotal();
+//                case 'Y' -> addAnnees();
+//                case 'M' -> byMonth();
+//            }
+////            subheader[status_ind] = STATUT_FICTIF_FIC;
+//        }
+//        int end = ncol;
+//        this.lastAppendSize = end - begin;
+//        boolean[] newMaskCol = new boolean[ncol];
+//        System.arraycopy(this.mask_col, 0, newMaskCol, 0, this.mask_col.length);
+//        this.mask_col = newMaskCol;
+//        for (int i = begin; i < end; i++) {
+//            if(!this.subheader[i].isEmpty()) {
+//                this.mask_col[i] = true;
+//            }
+//        }
+//    }
     private void writeRow(BufferedWriter writer, String[] row, boolean[] includeColumn) throws IOException {
         boolean firstCol = true;
         for (int colIndex = 0; colIndex < row.length; colIndex++) {
@@ -1183,52 +1182,5 @@ public class Estimate extends DF {
             firstCol = false;
         }
         writer.newLine();
-    }
-    public void saveToCSVFile_old() throws IOException {
-        String filePath = fullPath.replace(".xlsx", "_extended.csv");
-        // Create a FileWriter and a BufferedWriter to write text to the file in UTF-8 encoding
-        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-                new FileOutputStream(filePath), StandardCharsets.UTF_8))) {
-            // Write BOM for UTF-8
-            writer.write('\ufeff');
-            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-
-            // Write header row
-            for (int i = 0; i < ncol; i++) {
-                if (i > 0) {
-                    writer.write(";");
-                }
-                writer.write(header[i]);
-            }
-            writer.newLine(); // Move to the next line
-
-            // Write subheader row
-            for (int i = 0; i < ncol; i++) {
-                if (i > 0) {
-                    writer.write(";");
-                }
-                writer.write(subheader[i]);
-            }
-            writer.newLine(); // Move to the next line
-
-            // Write data rows
-            for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
-                for (int colIndex = 0; colIndex < ncol; colIndex++) {
-                    if (colIndex > 0) {
-                        writer.write(";");
-                    }
-
-                    Object value = df.get(colIndex)[rowIndex];
-                    if (value != null) {
-                        if (value instanceof Date) {
-                            writer.write(sdf.format((Date) value));
-                        } else {
-                            writer.write(value.toString());
-                        }
-                    }
-                }
-                writer.newLine(); // Move to the next line
-            }
-        }
     }
 }

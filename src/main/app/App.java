@@ -41,8 +41,11 @@ public class App {
     public static DF ref_source;
     public static DF ref_prog;
     public static DF mapping;
-    public static DF grille_tarif;
+    public static DF grille_tarif = new DF(wd + "Grille_Tarifaire_20230803.csv",';',(Integer)0);;
     public static DF tdb2;
+    public static DF tdb2coef;
+    public static DF tdb2fr;
+    public static DF tdb2_ref;
     public static SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
     public static Map<String, Map<String, List<Date>>> policeStatutDateRangeMap = new HashMap<>();
     public static Map<String, List<Date>> globalStatutDateRangeMap = new HashMap<>();
@@ -59,58 +62,60 @@ public class App {
     }
 
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
-        Stopwatch stopwatch = new Stopwatch();
-        stopwatch.start();
+        printMemoryUsage();
 
-        ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
-        ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
-        ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
-        mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
-        grille_tarif = new DF(wd + "TDB Hors France.xlsx","TDB PART 2");
-
-//        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
-//        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
-//        Base base = new Base(wd + "Source FIC/SPB Pologne/","FIC Pologne");
-//        Base base = new Base(wd + "Source FIC/SPB Espagne/","FIC Espagne");
-
-        for (int i = 0; i < ref_source.nrow; i++) {
-            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
-            if (!a_faire) continue;
-
-            Base.currentHeaderRef = null;
-            String folder = (String) ref_source.c("path")[i];
-            String pays = (String) ref_source.c("pays")[i];
-            String mapcol = (String) ref_source.c("mapping")[i];
-            String estim = (String) ref_source.c("estimate")[i];
-            String path_fic = (String) ref_source.c("path_fic")[i];
-            String map_fic = (String) ref_source.c("map_fic")[i];
-
-            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
-
-            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-            List<Base> basesSin = new ArrayList<>();
-
-            for (File file : fileList) {
-                Base base = new Base(file,pays,mapcol);
-                basesSin.add(base);
-            }
-            for (Base base : basesSin) {
-                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-                updateStatutDates(base); //global
-            }
-            estimate.getUniqueStatutsFromMap();
-            updateGlobalDatesFromStatutMap();
-
-            Base baseFic = new Base(wd + path_fic,map_fic);
-            stopwatch.printElapsedTime("integration success");
-
-            estimate.addFicMAT(baseFic);
-            estimate.addSinMAT(basesSin);
-
-            stopwatch.printElapsedTime("calculated");
-            estimate.saveToCSVFile(true);
-
-        }
+        //        Stopwatch stopwatch = new Stopwatch();
+//        stopwatch.start();
+//
+//        ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
+//        ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
+//        ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
+//        mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
+//        grille_tarif = new DF(wd + "TDB Hors France.xlsx","TDB PART 2");
+//
+////        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
+////        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
+////        Base base = new Base(wd + "Source FIC/SPB Pologne/","FIC Pologne");
+////        Base base = new Base(wd + "Source FIC/SPB Espagne/","FIC Espagne");
+//
+//        for (int i = 0; i < ref_source.nrow; i++) {
+//            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
+//            if (!a_faire) continue;
+//
+//            Base.currentHeaderRef = null;
+//            String folder = (String) ref_source.c("path")[i];
+//            String pays = (String) ref_source.c("pays")[i];
+//            String mapcol = (String) ref_source.c("mapping")[i];
+//            String estim = (String) ref_source.c("estimate")[i];
+//            String path_fic = (String) ref_source.c("path_fic")[i];
+//            String map_fic = (String) ref_source.c("map_fic")[i];
+//
+//            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+//
+//            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+//            List<Base> basesSin = new ArrayList<>();
+//
+//            for (File file : fileList) {
+//                Base base = new Base(file,pays,mapcol);
+//                basesSin.add(base);
+//            }
+//            for (Base base : basesSin) {
+//                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+//                updateStatutDates(base); //global
+//            }
+//            estimate.getUniqueStatutsFromMap();
+//            updateGlobalDatesFromStatutMap();
+//
+//            Base baseFic = new Base(wd + path_fic,map_fic);
+//            stopwatch.printElapsedTime("integration success");
+//
+//            estimate.addFicMAT(baseFic);
+//            estimate.addSinMAT(basesSin);
+//
+//            stopwatch.printElapsedTime("calculated");
+//            estimate.saveToCSVFile(true);
+//
+//        }
 
     }
     public static void updateStatutDates(Base base) {
@@ -270,5 +275,26 @@ public class App {
         boolean[] out = new boolean[dim];
         Arrays.fill(out, values);
         return out;
+    }
+    public static String formatMemory(long bytes) {
+        String[] units = {"B", "KB", "MB", "GB", "TB"};
+        int unit = 0;
+        double converted = bytes;
+
+        while (converted >= 1024 && unit < units.length - 1) {
+            converted /= 1024;
+            unit++;
+        }
+
+        return String.format("%.2f %s", converted, units[unit]);
+    }
+    public static void printMemoryUsage() {
+        long heapSize = Runtime.getRuntime().totalMemory();
+        long heapMaxSize = Runtime.getRuntime().maxMemory();
+        long heapFreeSize = Runtime.getRuntime().freeMemory();
+
+        System.out.println("Heap Size = " + formatMemory(heapSize));
+        System.out.println("Max Heap Size = " + formatMemory(heapMaxSize));
+        System.out.println("Free Heap Size = " + formatMemory(heapFreeSize));
     }
 }

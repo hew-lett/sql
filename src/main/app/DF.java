@@ -5,6 +5,7 @@ import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.sql.*;
 import java.text.ParseException;
@@ -16,6 +17,7 @@ import java.io.InputStream;
 import java.util.Date;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.apache.poi.ss.usermodel.*;
@@ -28,6 +30,7 @@ import static main.app.DF.Col_types.*;
 
 public class DF implements Serializable {
     public static final String wd = "E:/202305/wd/";
+    public static final SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
     public ArrayList<Object[]> df;
     public Col_types[] coltypes;
     public String[] header;
@@ -40,11 +43,27 @@ public class DF implements Serializable {
     static Connection connection;
     private static final int BATCH_SIZE = 10000;
 
-    public static void main(String[] args) throws IOException, SQLException {
-        tdb2 = new DF(wd + "TDB Hors France.csv",';',0);
-        grille_tarif = new DF(wd + "Grille_Tarifaire_20230803.csv",';',(Integer)0);
-        populateTDB2();
-        tdb2.print();
+    public static void main(String[] args) throws Exception {
+        //        tdb2_ref = new DF(tdb2);
+//        tdb2 = new DF(wd + "TDB Hors France.csv",';',0);
+//        tdb2.populateFromGrilleTarif();
+//        tdb2.saveToCSVFile_simple("populated");
+//
+//        tdb2fr = new DF(wd + "TDB France.csv",';',0);
+//        tdb2fr.populateFromGrilleTarif();
+//        tdb2fr.saveToCSVFile_simple("populated");
+
+//        tdb2 = new DF(wd + "TDB Hors France_populated.csv",';',0);
+//        tdb2.checkSumOfColumns();
+
+//        tdb2fr = new DF(wd + "TDB France_populated.csv",';',0);
+//        tdb2fr.checkSumOfColumns();
+
+        tdb2 = new DF(wd + "TDB Hors France_populated.csv",';',0);
+        tdb2coef = new DF(tdb2, 0);
+        tdb2coef.checkSumOfColumns();
+        tdb2coef.saveToCSVFile_sortedCoef("coef");
+
     }
     public DF(String path, char delim, Double sql) {
         fileName = path.substring(path.lastIndexOf("/") + 1);
@@ -149,7 +168,7 @@ public class DF implements Serializable {
         this.headerAndColtypesDropSKP();
     } //ref_prog
     public DF(String path, char delim, int tdb) {
-        String filename = path.substring(path.lastIndexOf("/") + 1);
+        this.fullPath = path;
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
         settings.trimValues(true);
@@ -163,13 +182,22 @@ public class DF implements Serializable {
                 header[i] = header[i].toLowerCase();
             }
 
+            // Predefined array for string columns
+            String[] stringColumns = {"identifiant_contrat", "reference"};
+            String[] doubleColumns = {"montant_prime_assureur", "nombre_adhesions"};
+
             coltypes = new Col_types[header.length];
-            Arrays.fill(coltypes,STR);
+            Arrays.fill(coltypes, SKP);
+
             for (int i = 0; i < header.length; i++) {
                 if (header[i].startsWith("m") && header[i].length() < 6) {
-                    coltypes[i] = Col_types.DBL;
+                    coltypes[i] = Col_types.FLT;
                 } else if (header[i].startsWith("date_debut")) {
                     coltypes[i] = Col_types.DAT;
+                } else if (Arrays.asList(stringColumns).contains(header[i])) {  // Check if the column name exists in the predefined array
+                    coltypes[i] = Col_types.STR;
+                } else if (Arrays.asList(doubleColumns).contains(header[i])) {  // Check if the column name exists in the predefined array
+                    coltypes[i] = Col_types.DBL;
                 }
             }
 
@@ -185,7 +213,7 @@ public class DF implements Serializable {
                 String[] parsedRow = rows.next();
                 for (String s : parsedRow) {
                     if (coltypes[k] != Col_types.SKP) {
-                        df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k],dateDefault);
+                        df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k],dateDefault,0);
                         j++;
                     }
                     k++;
@@ -196,6 +224,73 @@ public class DF implements Serializable {
         }
         this.headerAndColtypesDropSKP();
     }
+    public DF(DF originalDF, int tdbToCoef) {
+        // Group the originalDF by 'identifiant_contrat' and 'date_debut_periode_souscription'
+        Map<String, List<Integer>> groupedIndices = new HashMap<>();
+
+        for (int i = 0; i < originalDF.nrow; i++) {
+            String key = originalDF.df.get(originalDF.getHeaderIndex("identifiant_contrat"))[i] + "_" + originalDF.df.get(originalDF.getHeaderIndex("date_debut_periode_souscription"))[i];
+            groupedIndices.computeIfAbsent(key, k -> new ArrayList<>()).add(i);
+        }
+        this.fullPath = originalDF.fullPath;
+        this.nrow = groupedIndices.size();
+        this.ncol = originalDF.ncol - 1;  // Excluding 'reference'
+        this.df = new ArrayList<>(this.ncol);
+
+        this.header = Arrays.stream(originalDF.header)
+                .filter(h -> !h.equals("reference"))
+                .toArray(String[]::new);
+
+        // Initialize df based on coltypes but excluding the 'reference' column
+        int referenceIndex = originalDF.getHeaderIndex("reference");
+        for (int i = 0; i < originalDF.coltypes.length; i++) {
+            if (i == referenceIndex) continue;  // Skip 'reference'
+
+            switch (originalDF.coltypes[i]) {
+                case STR -> this.df.add(new String[nrow]);
+                case DBL -> this.df.add(new Double[nrow]);
+                case FLT -> this.df.add(new Float[nrow]);
+                case DAT -> this.df.add(new Date[nrow]);
+            }
+        }
+
+        // Populate df based on transformation rules
+        int newRowIdx = 0;
+        for (String key : groupedIndices.keySet()) {
+            List<Integer> rows = groupedIndices.get(key);
+            for (int i = 0; i < this.header.length; i++) {
+                int originalIdx = originalDF.getHeaderIndex(this.header[i]);
+                switch (originalDF.coltypes[originalIdx]) {
+                    case STR, DAT ->
+                            this.df.get(i)[newRowIdx] = originalDF.df.get(originalIdx)[rows.get(0)];
+                    case DBL -> {
+                        double sum = 0;
+                        for (int row : rows) {
+                            sum += (Double) originalDF.df.get(originalIdx)[row];
+                        }
+                        if (this.header[i].equals("nombre_adhesions")) {
+                            sum = Math.round(sum);  // round to 0 decimal places
+                        } else if (this.header[i].equals("montant_prime_assureur")) {
+                            sum = Math.round(sum * 100.0) / 100.0;  // round to 2 decimal places
+                        }
+                        this.df.get(i)[newRowIdx] = sum;
+                    }
+                    case FLT -> {
+                        float avg = 0;
+                        for (int row : rows) {
+                            avg += (Float) originalDF.df.get(originalIdx)[row];
+                        }
+                        avg /= rows.size();
+                        avg = Math.round(avg * 10000.0f) / 10000.0f;  // round to 4 significant digits
+                        this.df.get(i)[newRowIdx] = avg;
+                    }
+                }
+            }
+            newRowIdx++;
+        }
+
+    }
+
     public DF(String path, char delim, Integer gri_tar) {
         String filename = path.substring(path.lastIndexOf("/") + 1);
         CsvParserSettings settings = new CsvParserSettings();
@@ -215,7 +310,7 @@ public class DF implements Serializable {
             Arrays.fill(coltypes,STR);
             for (int i = 0; i < header.length; i++) {
                 if (header[i].startsWith("m") && header[i].length() < 6) {
-                    coltypes[i] = Col_types.DBL;
+                    coltypes[i] = Col_types.FLT;
                 } else if (header[i].startsWith("date debut") || header[i].startsWith("date fin")){
                     coltypes[i] = Col_types.DAT;
                 }
@@ -233,7 +328,7 @@ public class DF implements Serializable {
                 String[] parsedRow = rows.next();
                 for (String s : parsedRow) {
                     if (coltypes[k] != Col_types.SKP) {
-                        df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k],dateDefault);
+                        df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k],dateDefault,0);
                         j++;
                     }
                     k++;
@@ -396,7 +491,7 @@ public class DF implements Serializable {
         Row secondRow = rowIter.hasNext() ? rowIter.next() : null;
 
         if (secondRow != null) {
-            coltypes = detectColumnTypes(secondRow);
+            coltypes = detectColumnTypesXlsx(secondRow);
         } else {
             coltypes = new Col_types[ncol];
             Arrays.fill(coltypes, Col_types.STR);  // Default types to STR if there's no second row
@@ -512,6 +607,7 @@ public class DF implements Serializable {
         this.keep_rows(keep);
     }
     public DF (DF old_base) {
+        this.fullPath = old_base.fullPath;
         this.coltypes = old_base.coltypes;
         this.header = old_base.header;
         this.ncol = old_base.ncol;
@@ -559,7 +655,7 @@ public class DF implements Serializable {
             stmt.executeUpdate(updateSQL);
         }
     }
-    private Col_types[] detectColumnTypes(Row headerRow) {
+    private Col_types[] detectColumnTypesXlsx(Row headerRow) {
         int totalColumns = headerRow.getLastCellNum();
         Col_types[] detectedTypes = new Col_types[totalColumns];
 
@@ -580,64 +676,141 @@ public class DF implements Serializable {
 
         return detectedTypes;
     }
-    public static void populateTDB2() {
+    public void populateFromGrilleTarif() throws Exception {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
+
         // Step 1: Indexing using a Map
-        Map<String, List<Integer>> contractRowIndexMap = new HashMap<>();
-        for(int i = 0; i < grille_tarif.nrow; i++) {
+        Map<String, List<Integer>> contractRefRowIndexMap = new HashMap<>();
+        for (int i = 0; i < grille_tarif.nrow; i++) {
             String contract = (String) grille_tarif.c("identifiant_contrat")[i];
-            contractRowIndexMap
-                    .computeIfAbsent(contract, k -> new ArrayList<>())
-                    .add(i);
+            String reference = (String) grille_tarif.c("reference")[i];
+
+            String contractRefKey = contract + "_" + reference;
+            contractRefRowIndexMap.computeIfAbsent(contractRefKey, k -> new ArrayList<>()).add(i);
         }
         stopwatch.printElapsedTime("mapped");
-// The map for storing matching rows for each tdb2 row
-        Map<Integer, List<Integer>> tdb2MatchingRowsMap = new HashMap<>();
 
-// Populate the tdb2MatchingRowsMap
-        for(int i = 0; i < tdb2.nrow; i++) {
-            String contract = (String) tdb2.c("identifiant_contrat")[i];
-            Date tdb2StartDate = (Date) tdb2.c("date_debut_periode_souscription")[i];
+        // Map to store matching rows for each row of the current DF
+        Map<Integer, Integer> matchingRowMap = new HashMap<>();
 
-            List<Integer> rowsToConsider = contractRowIndexMap.get(contract);
-            if(rowsToConsider == null) continue;
+        // Populate the matchingRowMap
+        for (int i = 0; i < this.nrow; i++) {
+            String contract = (String) this.c("identifiant_contrat")[i];
+            String reference = (String) this.c("reference")[i];
+            Date thisStartDate = (Date) this.c("date_debut_periode_souscription")[i];
 
-            List<Integer> matchingRows = new ArrayList<>();
-            for(Integer rowIndex : rowsToConsider) {
+            String contractRefKey = contract + "_" + reference;
+            List<Integer> rowsToConsider = contractRefRowIndexMap.get(contractRefKey);
+            if (rowsToConsider == null) continue;
+
+            for (Integer rowIndex : rowsToConsider) {
                 Date startDate = (Date) grille_tarif.c("date debut tarif")[rowIndex];
                 Date endDate = (Date) grille_tarif.c("date fin tarif")[rowIndex];
 
-                if(!tdb2StartDate.before(startDate) && !tdb2StartDate.after(endDate)) {
-                    matchingRows.add(rowIndex);
+                if (!thisStartDate.before(startDate) && !thisStartDate.after(endDate)) {
+                    matchingRowMap.put(i, rowIndex);
+                    break;
                 }
             }
-
-            tdb2MatchingRowsMap.put(i, matchingRows);
         }
         stopwatch.printElapsedTime("matched");
 
-        // Now, proceed with the mean calculation using the precomputed row indices
-        for(int i = 0; i < tdb2.nrow; i++) {
+        // Find starting column of "m"
+        int startIndexTdb = find_in_arr_first_index(this.header,"m");
+        int startIndexGt = find_in_arr_first_index(grille_tarif.header,"m");
+        if (startIndexTdb == -1 || startIndexGt == -1) throw new Exception("column m not found");
+
+        // Directly assign values from grille_tarif to the current DF using the precomputed row indices
+        for (int i = 0; i < this.nrow; i++) {
             System.out.println(i);
-            for(int col = 0; col <= 200; col++) {
-                String colName = "m";
-                if(col != 0) colName += "+" + col;
 
-                List<Integer> matchingRows = tdb2MatchingRowsMap.get(i);
-                double sum = 0;
-                for(Integer rowIndex : matchingRows) {
-                    sum += (double) grille_tarif.c(colName)[rowIndex];
+            Integer matchingRow = matchingRowMap.get(i);
+            if (matchingRow != null) {
+                for (int col = 0; col <= 200; col++) {
+                    this.df.get(startIndexTdb + col)[i] = grille_tarif.df.get(startIndexGt + col)[matchingRow];
                 }
+            }
+//            else {
+//                for (int col = 0; col <= 200; col++) {
+//                    this.df.get(startIndexTdb + col)[i] = 0d;
+//                }
+//            }
+        }
+    }
+    public void checkSumOfColumns() throws Exception {
+        // Find starting column of "m"
+        int startIndex = find_in_arr_first_index(this.header,"m");
 
-                double mean = !matchingRows.isEmpty() ? sum / matchingRows.size() : 0;
+        if (startIndex == -1) {
+            throw new Exception("col m not found");
+        }
 
-                // Update tdb2
-                tdb2.c(colName)[i] = mean;
+        // Iterate over each row
+        for (int i = 0; i < this.nrow; i++) {
+            float sum = 0;
+
+            // Sum values from columns "m" to "m+200"
+            for (int col = 0; col <= 200 && (startIndex + col) < this.header.length; col++) {
+                sum += (float) this.df.get(startIndex + col)[i]; // Assuming they are all floats.
+            }
+            if(i==90717) {
+                System.out.println("here");
+            }
+            // Round the sum to 3 decimal places
+            sum = (float) (Math.round(sum * 100.0) / 100.0);
+
+            // Check if the sum is different from 1
+            if (sum != 1.0) {
+                System.out.println("Row " + (i + 1) + ": " + this.df.get(0)[i] + ", " + this.df.get(1)[i] + ", " + this.df.get(2)[i]);
+            }
+        }
+    }
+    public void filterUnmatchedRows() {
+        // Step 1: Populate the HashMap with keys from grille_tarif
+        Set<String> grilleKeys = new HashSet<>();
+        for (int i = 0; i < grille_tarif.nrow; i++) {
+            String contract = (String) grille_tarif.c("identifiant_contrat")[i];
+            String reference = (String) grille_tarif.c("reference")[i];
+            grilleKeys.add(contract + "_" + reference);
+        }
+
+        // Step 2: Check for existence of tdb2 keys in grilleKeys
+        boolean[] rowsToDelete = new boolean[nrow];
+        for (int j = 0; j < nrow; j++) {
+            String contract = (String) c("identifiant_contrat")[j];
+            String reference = (String) c("reference")[j];
+            if(reference.equalsIgnoreCase("ICIGSAC15_151.01-400")) {
+                System.out.println("here");
+            }
+            if (grilleKeys.contains(contract + "_" + reference)) {
+                rowsToDelete[j] = true;
             }
         }
 
+        // Step 3: Recreate the df without deleted rows
+        ArrayList<Object[]> newDF = new ArrayList<>();
+        for (int col = 0; col < ncol; col++) {
+            ArrayList<Object> columnData = new ArrayList<>();
+            for (int row = 0; row < nrow; row++) {
+                if (!rowsToDelete[row]) {
+                    columnData.add(df.get(col)[row]);
+                }
+            }
+            newDF.add(columnData.toArray());
+        }
 
+        // Update the dataframe and row count
+        df = newDF;
+        nrow = df.get(0).length;
+    }
+    public int getHeaderIndex(String colName) {
+        for (int i = 0; i < header.length; i++) {
+            if (header[i].equals(colName)) {
+                return i;
+            }
+        }
+        return -1;  // Not found
     }
     private void processRow(Row row, int row_number) {
         int col_iterator = 0;
@@ -1027,7 +1200,6 @@ public class DF implements Serializable {
             }
         }
     }
-
     public Object parseCell(Cell cell_i, Col_types colType, SimpleDateFormat dateFormatter) {
         Object cellValue = null;
         if (cell_i.getCellTypeEnum() == CellType.FORMULA) {
@@ -1134,7 +1306,103 @@ public class DF implements Serializable {
                 try {
                     return Double.parseDouble(cell.replace(",", ".").replace(" €", ""));
                 } catch (NumberFormatException ignored) {
-                    return NA_DBL;
+                    return 0d;
+                }
+            }
+            case DAT -> {
+                if (cell == null) return NA_DAT;
+                // Purify the cell if the date format is "#yyyy-MM-dd#"
+                String purifiedCell = dateFormatter.toPattern().equals("yyyy-MM-dd") ? cell.replaceAll("#", "") : cell;
+
+                if (purifiedCell.length() == 5) {
+                    try {
+                        // If the purified cell has exactly 5 characters, interpret it as a numeric Excel date
+                        double dateValue = Double.parseDouble(purifiedCell);
+                        return DateUtil.getJavaDate(dateValue);
+                    } catch (NumberFormatException ignored) {
+                        return NA_DAT;
+                    }
+                } else {
+                    try {
+                        // Otherwise, try to parse the date using the specified format
+                        return dateFormatter.parse(purifiedCell);
+                    } catch (ParseException ignored) {
+                        return NA_DAT;
+                    }
+                }
+            }
+        }
+        return out;
+    }
+    public Object get_lowercase_cell_of_type(String cell, Col_types type, SimpleDateFormat dateFormatter, boolean cleanDblFormat) {
+        Object out = "";
+        switch (type) {
+            case STR -> {
+                if (cell == null) return "";
+                return cell.toLowerCase().trim();
+            }
+            case FLT -> {
+                if (cell == null) return 0f;
+                try {
+                    return Float.parseFloat(cell);
+                } catch (NumberFormatException ignored) {
+                    return 0f;
+                }
+            }
+            case DBL -> {
+                if (cell == null) return 0d;
+                try {
+                    return Double.parseDouble(cell);
+                } catch (NumberFormatException ignored) {
+                    return 0d;
+                }
+            }
+            case DAT -> {
+                if (cell == null) return NA_DAT;
+                // Purify the cell if the date format is "#yyyy-MM-dd#"
+                String purifiedCell = dateFormatter.toPattern().equals("yyyy-MM-dd") ? cell.replaceAll("#", "") : cell;
+
+                if (purifiedCell.length() == 5) {
+                    try {
+                        // If the purified cell has exactly 5 characters, interpret it as a numeric Excel date
+                        double dateValue = Double.parseDouble(purifiedCell);
+                        return DateUtil.getJavaDate(dateValue);
+                    } catch (NumberFormatException ignored) {
+                        return NA_DAT;
+                    }
+                } else {
+                    try {
+                        // Otherwise, try to parse the date using the specified format
+                        return dateFormatter.parse(purifiedCell);
+                    } catch (ParseException ignored) {
+                        return NA_DAT;
+                    }
+                }
+            }
+        }
+        return out;
+    }
+    public Object get_lowercase_cell_of_type(String cell, Col_types type, SimpleDateFormat dateFormatter, int noSpecialChars) {
+        Object out = "";
+        switch (type) {
+            case STR -> {
+                if (cell == null) return "";
+                return cell.toLowerCase().trim();
+            }
+            case FLT -> {
+                if (cell == null) return 0f;
+                try {
+                    return Float.parseFloat(cell.replace(",", "."));
+                } catch (NumberFormatException ignored) {
+                    return 0f;
+                }
+            }
+            case DBL -> {
+                if (cell == null) return 0d;
+                try {
+                    return Double.parseDouble(cell.replace(",", "."));
+                } catch (NumberFormatException ignored) {
+                    return 0d;
                 }
             }
             case DAT -> {
@@ -1185,7 +1453,7 @@ public class DF implements Serializable {
             System.out.println();
         }
     }
-    public void writeToFile() throws IOException {
+    public void writeToFileEstimate() throws IOException {
         String outputPath = fullPath.replace(".xlsx", "_calculé.xlsx").replace(".xlsm", "_calculé.xlsm");
         XSSFWorkbook workbook = new XSSFWorkbook();
         XSSFSheet sheet = workbook.createSheet("Output");
@@ -1300,58 +1568,6 @@ public class DF implements Serializable {
     }
     public Object[] c(int index){
         return df.get(index);
-    }
-    public Object[] c_filtre(String colname, String col_filtre, String value){
-        int index = find_in_arr_first_index(header, colname);
-        int counter = 0;
-        for (int i = 0; i < this.nrow; i++) {
-            if(this.c(col_filtre)[i].equals(value)) counter++;
-        }
-        if (counter == 0) return null;
-
-        Object[] out = new Object[counter];
-        int j = 0;
-        for (int i = 0; i < this.nrow; i++) {
-            if(this.c(col_filtre)[i].equals(value)) {
-                out[j] = this.c(colname)[i];
-                j++;
-            }
-        }
-        return out;
-    }
-    public Object[] c_filtre_2(String colname, String col_filtre_1, String value_1, String col_filtre_2, String value_2){
-        int index = find_in_arr_first_index(header, colname);
-        int counter = 0;
-        for (int i = 0; i < this.nrow; i++) {
-            if(this.c(col_filtre_1)[i].equals(value_1) & this.c(col_filtre_2)[i].equals(value_2)) counter++;
-        }
-        if (counter == 0) return null;
-
-        Object[] out = new Object[counter];
-        int j = 0;
-        for (int i = 0; i < this.nrow; i++) {
-            if(this.c(col_filtre_1)[i].equals(value_1) & this.c(col_filtre_2)[i].equals(value_2)) {
-                out[j] = this.c(colname)[i];
-                j++;
-            }
-        }
-        return out;
-    }
-    public String c_filtre_2_crit_1_value(String colname, String col_filtre_1, String value_1, String col_filtre_2, String value_2){
-        for (int i = 0; i < this.nrow; i++) {
-            if(this.c(col_filtre_1)[i].equals(value_1) & this.c(col_filtre_2)[i].equals(value_2)) {
-                return (String) this.c(colname)[i];
-            }
-        }
-        return null;
-    }
-    public int ind_filtre_2_crit_1_value(String col_filtre_1, String value_1, String col_filtre_2, String value_2){
-        for (int i = 0; i < this.nrow; i++) {
-            if(this.c(col_filtre_1)[i].equals(value_1) & this.c(col_filtre_2)[i].equals(value_2)) {
-                return i;
-            }
-        }
-        return -1;
     }
     public int csv_get_nrows(String path, char delim) {
         int out = 0;
@@ -1488,27 +1704,11 @@ public class DF implements Serializable {
                 case STR -> this.df.add(new String[nrow]);
                 case DBL -> this.df.add(new Double[nrow]);
                 case DAT -> this.df.add(new Date[nrow]);
+                case FLT -> this.df.add(new Float[nrow]);
                 default -> {
                 }
             }
         }
-    }
-    public ArrayList<Object[]> df_populate_i (Col_types[] vectypes, ArrayList<Object[]> base) {
-        for (Col_types coltype : vectypes) {
-            switch (coltype) {
-                case STR:
-                    base.add(new String[nrow]);
-                    break;
-                case DBL:
-                    base.add(new Double[nrow]);
-                    break;
-                case DAT:
-                    base.add(new Date[nrow]);
-                    break;
-                default:
-            }
-        }
-        return base;
     }
     public ArrayList<Object[]> df_populate (ArrayList<Object[]> base, Col_types[] coltypes) {
         for (Col_types coltype : coltypes) {
@@ -1526,71 +1726,6 @@ public class DF implements Serializable {
             }
         }
         return base;
-    }
-    public ArrayList<Object[]> df_populate_with_crit (ArrayList<Object[]> base, Col_types[] coltypes, boolean[] vec) {
-        for (int h = 0; h < coltypes.length; h++) {
-            if (vec[h]) {
-                switch(coltypes[h]){
-                    case STR:
-                        base.add(new String[nrow]);
-                        break;
-                    case DBL:
-                        base.add(new Double[nrow]);
-                        break;
-                    case DAT:
-                        base.add(new Date[nrow]);
-                        break;
-                    default:
-                }
-            }
-        }
-        return base;
-    }
-    public Object get_cell_of_type (String cell, Col_types type) {
-//        if (cell.contains("Lieu_de")) {
-//            System.out.println(cell.trim() + "--------------");
-//        }
-        Object out = null;
-        switch (type) {
-            case STR -> {
-                if (cell == null) return "";
-                return cell.trim();
-            }
-            case DBL -> {
-                if (cell == null) return NA_DBL;
-                try {
-                    return Double.parseDouble(cell.replace(",", "."));
-                } catch (NumberFormatException ignored) {
-                    return NA_DBL;
-                }
-            }
-            case DAT -> {
-                if (cell == null) return NA_DAT;
-                try {
-                    return format.parse(cell);
-                } catch (NullPointerException | ParseException ignored) {
-                    return NA_DAT;
-                }
-            }
-        }
-        return out;
-    }
-
-    public Col_types[] get_col_types (String[] head,  HashMap<String, DF.Col_types> types) {
-        Col_types[] out = new Col_types[head.length];
-        int i = 0;
-        for (String s : head) {
-            if(s == null) {
-                out[i] = Col_types.SKP;
-            } else {
-                out[i] = types.get(s);
-                if(out[i] == null) {
-                    out[i] = STR;
-                }
-            }
-            i++;
-        }
-        return out;
     }
     public void remove_leading_zeros() {
         String[] cols = {"Numéro_Dossier","Numéro_Adhésion"};
@@ -1640,32 +1775,6 @@ public class DF implements Serializable {
         }
         this.ncol = sum_boolean(keep_vec);
     }
-    public DF filter_out(String colname, String crit) {
-        boolean[] vec = new boolean[nrow];
-        Object[] col = this.c(colname);
-        for (int i = 0; i < nrow; i++) {
-            vec[i] = col[i].equals(crit);
-        }
-        return(new DF(this, vec));
-    }
-    public void filter_in(Object colname, String crit) {
-        boolean[] vec = new boolean[nrow];
-        Object[] col = this.c(colname);
-        for (int i = 0; i < nrow; i++) {
-            vec[i] = col[i].equals(crit);
-        }
-        this.keep_rows(vec);
-
-    }
-    public void header_problems() {
-        for (int i = 0; i < this.header.length; i++) {
-            if (this.header[i].contains("Date_Souscription_Adhésion borne basse")) {
-                this.header[i] = "Date_Souscription_Adhésion borne basse <= Date_Survenance";
-            } else if (this.header[i].contains("Date_Souscription_Adhésion borne haute")) {
-                this.header[i] = "Date_Souscription_Adhésion borne haute >= Date_Survenance";
-            }
-        }
-    }
     public int get_len(DF.Col_types[] ct) {
         int j = 0;
         for (DF.Col_types c : ct) {
@@ -1674,149 +1783,6 @@ public class DF implements Serializable {
             }
         }
         return j;
-    }
-    public boolean[] doublons_by_col(String col) {
-        boolean[] vec = logvec(this.nrow,false);
-        HashMap<String, Integer> map = new HashMap<>();
-        for (int i = 0; i < this.nrow; i++) {
-            if (map.put((String) this.c(col)[i],i) != null) {
-                vec[i] = true;
-            }
-        }
-
-        map = new HashMap<>();
-        for (int i = this.nrow; i > 0; i--) {
-            if (map.put((String) this.c(col)[i-1],i) != null) {
-                vec[i-1] = true;
-            }
-        }
-        return vec;
-    }
-    public boolean[] doublons(String[] col) {
-        boolean[] vec = logvec(this.nrow,false);
-        HashMap<String, Integer> map = new HashMap<>();
-        for (int i = 0; i < this.nrow; i++) {
-            if (map.put(col[i],i) != null) {
-                vec[i] = true;
-            }
-        }
-
-        map = new HashMap<>();
-        for (int i = this.nrow; i > 0; i--) {
-            if (map.put(col[i-1],i) != null) {
-                vec[i-1] = true;
-            }
-        }
-        return vec;
-    }
-    public int[] match_first (Object[] a, Object[] b) {
-        int[] out = new int[a.length];
-        Arrays.fill(out,-1);
-        for (int i = 0; i < a.length; i++) {
-            if (a[i] != "") {
-                for (int j = 0; j < b.length; j++) {
-                    if (a[i].equals(b[j])) {
-                        out[i] = j;
-                        break;
-                    }
-                }
-            }
-        }
-
-        return out;
-    } // ploho napisan medlenii pizdec
-    public Integer[] match_sans_doublonss (Object[] a, Object[] b) {
-        Integer[] out = new Integer[a.length];
-        Arrays.fill(out,-1);
-
-        for (int i = 0; i < a.length; i++) {
-            boolean found = false;
-            if (a[i] != "") {
-                for (int j = 0; j < b.length; j++) {
-                    if (a[i].equals(b[j])) {
-                        if(!found) {
-                            out[i] = j;
-                        }
-                        found = true;
-                    }
-                }
-            }
-        }
-        return out;
-    } // kajetsa toje medlennii
-    public Integer[] match_sans_doublons (Object[] a, Object[] b) {
-        Integer[] out = new Integer[a.length];
-        Arrays.fill(out,-1);
-
-        HashMap<String, Integer> map = new HashMap<>();
-        for (int i = 0; i < b.length; i++) {
-            String v = (String) b[i];
-            if (map.put(v,i) != null) {
-                map.put(v,-1);
-            } else {
-                map.put(v,i);
-            }
-        }
-//        for (String name : map.keySet()) {
-//            System.out.println(name);
-//        }
-//        for (String key : map.keySet()) {
-//            if (map.get(key) == -1) {
-//                map.remove(key);
-//            }
-//        }
-        for (int i = 0; i < a.length; i++) {
-            String v = (String) a[i];
-            if(map.containsKey(v)) {
-                out[i] = map.get(v);
-            }
-        }
-
-        return out;
-    }
-    public Integer[] match_sans_doublons_dans_le_source (Object[] a, Object[] b) {
-        Integer[] out = new Integer[a.length];
-//        Arrays.fill(out,-1);
-
-        HashMap<String, Integer> map = new HashMap<>();
-        for (int i = 0; i < b.length; i++) {
-            String v = (String) b[i];
-            if (map.put(v,i) != null) {
-                map.put(v,-1);
-            }
-        }
-        for (String key : map.keySet()) {
-            if (map.get(key) == -1) {
-                map.remove(key);
-            }
-        }
-        for (int i = 0; i < a.length; i++) {
-            out[i] = map.get((String) a[i]);
-        }
-
-        return out;
-    } // delete?
-    public boolean gg_check_controle(String label) {
-        int ind = find_in_arr_first_index(this.c("Contrôle"), label);
-        return this.c("Etat")[ind].equals("oui");
-    }
-    public boolean gg_check_bloquant(String label) {
-        int ind = find_in_arr_first_index(this.c("Contrôle"), label);
-        return this.c("Bloquant")[ind].equals("oui");
-    }
-    public void delete_blanks_first_col() {
-        boolean[] vec = logvec(this.nrow, false);
-        for (int i = 0; i < this.nrow; i++) {
-            vec[i] = this.c(0)[i] != "";
-        }
-        this.keep_rows(vec);
-    }
-    public boolean[] bool_filtre(String colname, String value) {
-        boolean[] out = logvec(this.nrow,false);
-        for (int i = 0; i < this.nrow; i++) {
-            out[i] = this.c(colname)[i].equals(value);
-        }
-        return out;
     }
     public static int find_in_arr_first_index(Object[] arr, Object value) {
         final int len = arr.length;
@@ -1834,13 +1800,102 @@ public class DF implements Serializable {
         STR,
         DAT,
         DBL,
+        FLT,
         SKP
     }
-//    int[] temp = which(vec);
-//    Integer[] v = new Integer[temp.length];
-//        for (int c = 0; c < temp.length; c++) {
-//        v[c] = Integer.parseInt((String) this.c("Numéro_Dossier")[temp[c]]);
-//    }
-//    write_csv(v);
-//        System.out.println("result " + sum_boolean(vec));
+    public void saveToCSVFile_simple(String suffix) throws IOException {
+        String filePath = fullPath.replace(".csv", "_" + suffix + ".csv");
+        filePath = filePath.replace(".xlsx", "_" + suffix + ".csv");
+        // Create a FileWriter and a BufferedWriter to write text to the file in UTF-8 encoding
+        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                new FileOutputStream(filePath), StandardCharsets.UTF_8))) {
+            // Write BOM for UTF-8
+            writer.write('\ufeff');
+            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+
+            // Write header row
+            for (int i = 0; i < ncol; i++) {
+                if (i > 0) {
+                    writer.write(";");
+                }
+                writer.write(header[i]);
+            }
+            writer.newLine(); // Move to the next line
+
+            // Write data rows
+            for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+                for (int colIndex = 0; colIndex < ncol; colIndex++) {
+                    if (colIndex > 0) {
+                        writer.write(";");
+                    }
+
+                    Object value = df.get(colIndex)[rowIndex];
+                    if (value != null) {
+                        if (value instanceof Date) {
+                            writer.write(sdf.format((Date) value));
+                        } else {
+                            writer.write(value.toString());
+                        }
+                    }
+                }
+                writer.newLine(); // Move to the next line
+            }
+        }
+    }
+    public void saveToCSVFile_sortedCoef(String suffix) throws IOException {
+        String filePath = fullPath.replace(".csv", "_" + suffix + ".csv");
+        filePath = filePath.replace(".xlsx", "_" + suffix + ".csv");
+
+        // Sort the DF based on 'identifiant_contrat' and 'date_debut_periode_souscription'
+        int idContractIdx = getHeaderIndex("identifiant_contrat");
+        int dateIdx = getHeaderIndex("date_debut_periode_souscription");
+        SimpleDateFormat sdfSort = new SimpleDateFormat("dd/MM/yyyy");
+        List<Integer> sortedIndices = IntStream.range(0, nrow).boxed().collect(Collectors.toList());
+
+        sortedIndices.sort((i1, i2) -> {
+            int cmp = ((String) df.get(idContractIdx)[i1]).compareTo((String) df.get(idContractIdx)[i2]);
+            if (cmp != 0) return cmp;
+
+            Date date1 = (Date) df.get(dateIdx)[i1];
+            Date date2 = (Date) df.get(dateIdx)[i2];
+            return date1.compareTo(date2);
+        });
+
+        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                new FileOutputStream(filePath), StandardCharsets.UTF_8))) {
+            writer.write('\ufeff');
+            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+
+            // Write header row
+            for (int i = 0; i < ncol; i++) {
+                if (i > 0) {
+                    writer.write(";");
+                }
+                writer.write(header[i]);
+            }
+            writer.newLine();
+
+            // Write data rows
+            for (int index : sortedIndices) {
+                for (int colIndex = 0; colIndex < ncol; colIndex++) {
+                    if (colIndex > 0) {
+                        writer.write(";");
+                    }
+
+                    Object value = df.get(colIndex)[index];
+                    if (value != null) {
+                        if (value instanceof Date) {
+                            writer.write(sdf.format((Date) value));
+                        } else if (value instanceof Float) {
+                            writer.write(String.format("%.4f", value));  // Explicit formatting for floats
+                        } else {
+                            writer.write(value.toString());
+                        }
+                    }
+                }
+                writer.newLine();
+            }
+        }
+    }
+
 }
