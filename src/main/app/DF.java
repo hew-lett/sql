@@ -31,7 +31,8 @@ import static main.app.App.*;
 import static main.app.DF.Col_types.*;
 
 public class DF implements Serializable {
-    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
+//    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
+    public static final String wd = "E:/202305/wd/";
     public static final SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
     public ArrayList<Object[]> df;
     public Col_types[] coltypes;
@@ -48,24 +49,61 @@ public class DF implements Serializable {
     public static void main(String[] args) throws Exception {
 //        tdb2_ref = new DF(tdb2);
 //        printMemoryUsage();
-//        tdb2 = new DF(wd + "TDB Hors France.csv",';',0);
-//        tdb2.populateFromGrilleTarif();
-//        tdb2.saveToCSVFile_simple("populated");
-//
-//        tdb2fr = new DF(wd + "TDB France.csv",';',0);
-//        tdb2fr.populateFromGrilleTarif();
-//        tdb2fr.saveToCSVFile_simple("populated");
 
 //        tdb2 = new DF(wd + "TDB Hors France_populated.csv",';',0);
 //        tdb2coef = new DF(tdb2, 0);
 //        tdb2coef.checkSumOfColumns();
 //        tdb2coef.saveToCSVFile_sortedCoef("coef");
 
+        Stopwatch stopwatch = new Stopwatch();
+        stopwatch.start();
+        ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
 
-        tdb2fr = new DF(wd + "TDB France_populated.csv",';',0);
-        tdb2coef = new DF(tdb2fr, 0);
-        tdb2coef.checkSumOfColumns();
+//        Set<String> contratFR = getUniqueContratValues(true);
+//        Set<String> contratHF = getUniqueContratValues(false);
+//        stopwatch.printElapsedTime("populated contracts");
+//        tdb2 = new DF(wd + "TDB Part 2.csv",';',0);
+//        tdb2.addCoefficientColumns();
+//        stopwatch.printElapsedTime("read + added coef");
+//        boolean[] toCreateFR = tdb2.markRowsForDeletion(contratFR);
+//        boolean[] toCreateHF = tdb2.markRowsForDeletion(contratHF);
+//        stopwatch.printElapsedTime("classified");
+//        tdb2.saveToCSVFile_filter("France",toCreateFR);
+//        tdb2.saveToCSVFile_filter("Hors France",toCreateHF);
+//        stopwatch.printElapsedTime("saved both");
+
+//        DF tdb2src = new DF(wd + "TDB Hors France src.csv",';',0);
+//        boolean[] r2d = tdb2src.filterAgainstGrilleTarif();
+//        tdb2src.saveToCSVFile_filter("filtered",r2d);
+//
+//        tdb2src = new DF(wd + "TDB France src.csv",';',0);
+//        r2d = tdb2src.filterAgainstGrilleTarif();
+//        tdb2src.saveToCSVFile_filter("filtered",r2d);
+
+//        DF tdb2src = new DF(wd + "TDB Hors France src_filtered.csv", ';', 0);
+//        tdb2 = new DF(wd + "TDB Part 2_Hors France.csv",';',0);
+//        tdb2.populateFromGrilleTarif(tdb2src);
+//        tdb2.checkSumOfColumns();
+//        tdb2.saveToCSVFile_simple("populated");
+//
+//        tdb2src = new DF(wd + "TDB France src_filtered.csv", ';', 0);
+//        tdb2 = new DF(wd + "TDB Part 2_France.csv",';',0);
+//        tdb2.populateFromGrilleTarif(tdb2src);
+//        tdb2.checkSumOfColumns();
+//        tdb2.saveToCSVFile_simple("populated");
+
+//        tdb2.addCoefficientColumns();
+
+        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
+        tdb2coef = new DF(tdb2, 0);
+//        tdb2coef.checkSumOfColumns();
         tdb2coef.saveToCSVFile_sortedCoef("coef");
+//
+//        stopwatch.printElapsedTime();
+//        tdb2coef.checkSumOfColumns();
+//        stopwatch.printElapsedTime();
+//
+//        stopwatch.printElapsedTime();
 
 
 //        tdb2 = new DF(wd + "TDB Hors France_populated.csv",';',0);
@@ -185,14 +223,15 @@ public class DF implements Serializable {
             CsvParser parser = new CsvParser(settings);
             List<String[]> parsedRows = parser.parseAll(inputReader);
             Iterator<String[]> rows = parsedRows.iterator();
-            header = rows.next();
-            for (int i = 0; i < header.length; i++) {
-                header[i] = header[i].toLowerCase();
-            }
+
+            header = Arrays.stream(rows.next())
+                    .map(s -> s == null ? "" : s.toLowerCase().replace(" ", "_"))
+                    .toArray(String[]::new);
 
             // Predefined array for string columns
             String[] stringColumns = {"identifiant_contrat", "reference"};
             String[] doubleColumns = {"montant_prime_assureur", "nombre_adhesions"};
+            String[] dateColumns = {"date_debut_periode_souscription"};
 
             coltypes = new Col_types[header.length];
             Arrays.fill(coltypes, SKP);
@@ -200,11 +239,11 @@ public class DF implements Serializable {
             for (int i = 0; i < header.length; i++) {
                 if (header[i].startsWith("m") && header[i].length() < 6) {
                     coltypes[i] = Col_types.FLT;
-                } else if (header[i].startsWith("date_debut")) {
+                } else if (Arrays.asList(dateColumns).contains(header[i])) {
                     coltypes[i] = Col_types.DAT;
-                } else if (Arrays.asList(stringColumns).contains(header[i])) {  // Check if the column name exists in the predefined array
+                } else if (Arrays.asList(stringColumns).contains(header[i])) {
                     coltypes[i] = Col_types.STR;
-                } else if (Arrays.asList(doubleColumns).contains(header[i])) {  // Check if the column name exists in the predefined array
+                } else if (Arrays.asList(doubleColumns).contains(header[i])) {
                     coltypes[i] = Col_types.DBL;
                 }
             }
@@ -232,6 +271,45 @@ public class DF implements Serializable {
         }
         this.headerAndColtypesDropSKP();
     }
+    public DF(String path, char delim, float contrats) {
+        this.fullPath = path;
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+        try (Reader inputReader = new InputStreamReader(Files.newInputStream(
+                new File(path).toPath()), encoding)) {
+            CsvParser parser = new CsvParser(settings);
+            List<String[]> parsedRows = parser.parseAll(inputReader);
+            Iterator<String[]> rows = parsedRows.iterator();
+
+            header = Arrays.stream(rows.next())
+                    .map(s -> s == null ? "" : s.toLowerCase())
+                    .toArray(String[]::new);
+
+            // Predefined array for string columns
+            String[] stringColumns = {"identifiant_contrat"};
+
+            coltypes = new Col_types[header.length];
+            Arrays.fill(coltypes, STR);
+
+            nrow = parsedRows.size() - 1;
+            ncol = get_len(coltypes);
+            df = new ArrayList<>(get_len(coltypes));
+            this.df_populate(coltypes);
+
+            int i = 0;
+            while (rows.hasNext()) {
+                int k = 0;
+                String[] parsedRow = rows.next();
+                for (String s : parsedRow) {
+                    df.get(k)[i] = get_lowercase_cell_of_type(s, coltypes[k],dateDefault,0);
+                    k++;
+                }
+                i++;
+            }
+        } catch (IOException ignored) {
+        }
+    }
     public DF(DF originalDF, int tdbToCoef) throws ParseException {
         // Group the originalDF by 'identifiant_contrat' and 'date_debut_periode_souscription'
         Map<String, List<Integer>> groupedIndices = new HashMap<>();
@@ -249,15 +327,24 @@ public class DF implements Serializable {
                 .filter(h -> !h.equals("reference"))
                 .toArray(String[]::new);
 
-        // Initialize df based on coltypes but excluding the 'reference' column
-        int referenceIndex = originalDF.getHeaderIndex("reference");
-        for (int i = 0; i < originalDF.coltypes.length; i++) {
-            if (i == referenceIndex) continue;  // Skip 'reference'
+        this.coltypes = new Col_types[ncol];
+        int ind = 0;
+        for (int c = 0; c < originalDF.ncol; c++) {
+            if (!Objects.equals(originalDF.header[c], "reference")) {
+                this.coltypes[ind] = originalDF.coltypes[c];
+                ind++;
+            }
+        }
 
-            switch (originalDF.coltypes[i]) {
+        for (int i = 0; i < ncol; i++) {
+            switch (coltypes[i]) {
                 case STR -> this.df.add(new String[nrow]);
                 case DBL -> this.df.add(new Double[nrow]);
-                case FLT -> this.df.add(new Float[nrow]);
+                case FLT -> {
+                    Float[] array = new Float[nrow];
+                    Arrays.fill(array, 0f);
+                    this.df.add(array);
+                }
                 case DAT -> this.df.add(new Date[nrow]);
             }
         }
@@ -300,14 +387,21 @@ public class DF implements Serializable {
             newRowIdx++;
         }
 
+        //--------SORT!---------
+        this.sortByColumnName("date_debut_periode_souscription");
+
         // 1. Add two new columns at the beginning
-        this.ncol += 2; // Increase column count
+        this.ncol += 3; // Increase column count
         this.df.add(0, new String[nrow]); // "statut contrat comptable"
         this.df.add(1, new String[nrow]); // "acquisition des primes"
+        this.df.add(2, new String[nrow]); // "previ/reel"
 
         // Modify header accordingly
-        this.header = Stream.concat(Stream.of("statut contrat comptable", "acquisition des primes"),
+        this.header = Stream.concat(Stream.of("statut contrat comptable", "acquisition des primes","previ/reel"),
                 Arrays.stream(this.header)).toArray(String[]::new);
+        // Update coltypes to include the new columns
+        this.coltypes = Stream.concat(Stream.of(Col_types.STR, Col_types.STR, Col_types.STR),
+                Arrays.stream(this.coltypes)).toArray(Col_types[]::new);
 
         // 2. Populate the new columns using ref_prog
         Map<String, List<String>> refMap = new HashMap<>(); // Maps "n°contrat" to a list of values (statut and acquisition)
@@ -322,11 +416,20 @@ public class DF implements Serializable {
             refMap.put(contractNo, values);
         }
 
+        int mIndex = find_in_arr_first_index(header, "m");  // Find index of column "m"
+        int contractIndex = find_in_arr_first_index(header, "identifiant_contrat");
+        int montantPrimeIndex = find_in_arr_first_index(header, "montant_prime_assureur");
+        int dateIndex = find_in_arr_first_index(header, "date_debut_periode_souscription");
+        int nAdheIndex = find_in_arr_first_index(header, "nombre_adhesions");
+
         Set<String> uniqueContracts = new HashSet<>();
         Map<String, Date> maxDateByContract = new HashMap<>();
+        Map<String, Date> minDateByContract = new HashMap<>();
+        Map<String, Set<Date>> monthsByContract = new HashMap<>();
+        Map<String, Boolean> actifByContract = new HashMap<>();
 
         for (int i = 0; i < this.nrow; i++) {
-            String contractId = (String) this.c("identifiant_contrat")[i];
+            String contractId = (String) this.c(contractIndex)[i];
             uniqueContracts.add(contractId);
 
             List<String> refValues = refMap.get(contractId);
@@ -334,93 +437,422 @@ public class DF implements Serializable {
                 this.c(0)[i] = refValues.get(0);
                 this.c(1)[i] = refValues.get(1);
             }
+            this.c(2)[i] = "réel";
 
-            Date currentDate = (Date) this.c("date_debut_periode_souscription")[i];
-
-            Date existingMaxDate = maxDateByContract.get(contractId);
-
-            if (existingMaxDate == null || (currentDate != null && currentDate.after(existingMaxDate))) {
-                maxDateByContract.put(contractId, currentDate);
-            }
-
-            // Check run-off status and overwrite the date if necessary
-            String status = (String) this.c("statut contrat comptable")[i];
-            if ("run off".equals(status)) {
-                maxDateByContract.put(contractId, null);
-            }
-        }
-
-
-        Set<Date> printedDates = new HashSet<>();
-
-        for (Map.Entry<String, Date> entry : maxDateByContract.entrySet()) {
-            if (!printedDates.contains(entry.getValue())) {
-                System.out.println("Contract ID: " + entry.getKey() + ", Date: " + entry.getValue());
-                printedDates.add(entry.getValue());
+            Date currentDate = (Date) this.c(dateIndex)[i];
+            if(currentDate != null) {
+                if (!maxDateByContract.containsKey(contractId) || currentDate.after(maxDateByContract.get(contractId))) {
+                    maxDateByContract.put(contractId, currentDate);
+                }
+                if (!minDateByContract.containsKey(contractId) || currentDate.before(minDateByContract.get(contractId))) {
+                    minDateByContract.put(contractId, currentDate);
+                }
+                if (!"run off".equals(this.c("statut contrat comptable")[i])) {
+                    monthsByContract.computeIfAbsent(contractId, k -> new HashSet<>()).add(currentDate);
+                    actifByContract.put(contractId, true);
+                } else {
+                    actifByContract.put(contractId, false);
+                }
             }
         }
 
-        // Define the end date
-        Date endDate = dateDefault.parse("01/12/2025");
+        Map<String, List<Date>> missingMonthsByContract = new HashMap<>();
 
-        // 2. Calculate the total number of fake months/rows to add
-        int totalRowsToAdd = 0;
-        Map<String, Integer> monthsToAddByContract = new HashMap<>();
+        for (String contractId : uniqueContracts) {
+            if (!actifByContract.get(contractId)) continue;
 
-        for (Map.Entry<String, Date> entry : maxDateByContract.entrySet()) {
+            Date minDate = minDateByContract.get(contractId);
+
+            // Get all months from min date to Dec 2025
+            Calendar calDec2025 = Calendar.getInstance();
+            calDec2025.set(2025, Calendar.DECEMBER, 1);  // Setting to the first day of December 2025
+            List<Date> allMonthsTillDec2025 = getMonthsBetweenDates(minDate, calDec2025.getTime());
+
+            Set<Date> existingMonths = monthsByContract.get(contractId);
+            allMonthsTillDec2025.removeAll(existingMonths);  // Removes all the existing months
+
+            missingMonthsByContract.put(contractId, allMonthsTillDec2025);
+        }
+
+        int totalFakeMonthsNeeded = 0;
+
+        for (List<Date> missingMonths : missingMonthsByContract.values()) {
+            totalFakeMonthsNeeded += missingMonths.size();
+        }
+
+        // Augment nrow
+        this.nrow += totalFakeMonthsNeeded;
+        // Copy current dataframe structure and data
+        ArrayList<Object[]> newDf = new ArrayList<>();
+        for (Object[] colData : this.df) {
+            Object[] newColData = Arrays.copyOf(colData, this.nrow);  // Adjusted size
+            newDf.add(newColData);
+        }
+        // Replace the old df with the new one
+        this.df = newDf;
+
+        // 1. Initialization
+        int startingAppendIndex = this.nrow - totalFakeMonthsNeeded; // Store initial append index
+
+        // For each contract
+        for (Map.Entry<String, List<Date>> entry : missingMonthsByContract.entrySet()) {
             String contractId = entry.getKey();
-            Date maxDate = entry.getValue();
+            List<Date> missingMonths = entry.getValue();
 
-            if (maxDate != null) {
-                Calendar cal = Calendar.getInstance();
-                cal.setTime(maxDate);
+            // For each missing month
+            for (Date missingDate : missingMonths) {
+                // a. Set common columns
+                this.c(contractIndex)[startingAppendIndex] = contractId;
+                this.c(dateIndex)[startingAppendIndex] = missingDate;
+                this.c(nAdheIndex)[startingAppendIndex] = 0.0;
+                this.c(montantPrimeIndex)[startingAppendIndex] = 0.0;
 
-                int monthsToAdd = 0;
-                while (cal.getTime().before(endDate)) {
-                    cal.add(Calendar.MONTH, 1);
-                    monthsToAdd++;
+                // Fetch values from refMap
+                List<String> refValues = refMap.get(contractId);
+                if (refValues != null) {
+                    this.c(0)[startingAppendIndex] = refValues.get(0); // statutContrat
+                    this.c(1)[startingAppendIndex] = refValues.get(1); // aqPrimes
+                }
+                this.c(2)[startingAppendIndex] = "prévi";
+
+                for (int coef = mIndex; coef < mIndex + 201; coef++) {
+                    this.c(coef)[startingAppendIndex] = 0f;
+                }
+                startingAppendIndex++;
+            }
+        }
+
+        this.groupSort("identifiant_contrat","date_debut_periode_souscription");
+
+        String police;
+        Date maxDate;
+        Date currentDate;
+        Date ultimateDate = dateDefault.parse("01/12/2025");
+        LinkedList<Integer> last3 = new LinkedList<>();
+        int begin = 0;
+        String lastPolice = null;
+
+        for (int i = 0; i < this.nrow; ) {
+            police = (String) this.c(contractIndex)[i];
+            if (!actifByContract.get(police)) {
+                i++; continue;
+            }
+
+            if (!police.equals(lastPolice)) {
+                begin = i;  // Update the 'begin' index whenever we encounter a new police
+                lastPolice = police;
+            }
+
+            maxDate = maxDateByContract.get(police);
+
+            do {
+                currentDate = (Date) this.c(dateIndex)[i];
+//                System.out.println(currentDate);
+                if(currentDate.after(maxDate)) {
+                    break;
+                }
+                i++;
+            } while (i < this.nrow);
+
+            for (int j = i - 1; j >= begin; j--) {
+                if (last3.size() == 3) {
+                    break;
+                }
+                if ((Double) this.c(montantPrimeIndex)[j] >= 0) {
+                    last3.addLast(j);
+                }
+            }
+
+            while (last3.size() < 3 && !last3.isEmpty()) {
+                last3.addLast(last3.getFirst());
+            }
+
+
+            do {
+                currentDate = (Date) this.c(dateIndex)[i];
+                int colIndex;
+                for (int coliter = 0; coliter < 201; coliter++) {
+                    colIndex = mIndex + coliter;
+                    this.c(colIndex)[i] = ((Float) this.c(colIndex)[last3.get(0)] +
+                            (Float) this.c(colIndex)[last3.get(1)] +
+                            (Float) this.c(colIndex)[last3.get(2)]) / 3;
                 }
 
-                monthsToAddByContract.put(contractId, monthsToAdd);
-                totalRowsToAdd += monthsToAdd;
+                last3.removeFirst();
+                last3.addLast(i);
+                i++;
+            } while (!currentDate.equals(ultimateDate));
+        }
+        for (int i = 0; i < this.nrow; ) {
+            police = (String) this.c(contractIndex)[i];
+            if (!actifByContract.get(police)) {
+                i++; continue;
             }
-        }
+            if (!police.equals(lastPolice)) {
+                begin = i;  // Update the 'begin' index whenever we encounter a new police
+                lastPolice = police;
+            }
 
-        // Adjust df size based on totalRowsToAdd
-        for (int col = 0; col < this.ncol; col++) {
-            Object[] currentColumn = this.df.get(col);
-            currentColumn = Arrays.copyOf(currentColumn, this.nrow + totalRowsToAdd);
-            this.df.set(col, currentColumn);
-        }
+            maxDate = maxDateByContract.get(police);
 
-        // 3. Add the rows to the DataFrame
-        int currentRowIndex = this.nrow;
-        for (String contractId : monthsToAddByContract.keySet()) {
-            int monthsToAdd = monthsToAddByContract.get(contractId);
-            int baseRowIndex = find_in_arr_first_index(this.c("identifiant_contrat"), contractId);
-            Calendar cal = Calendar.getInstance();
-            cal.setTime(maxDateByContract.get(contractId));
+            do {
+                currentDate = (Date) this.c(dateIndex)[i];
 
-            for (int month = 0; month < monthsToAdd; month++) {
-                cal.add(Calendar.MONTH, 1);
+                if ("prévi".equals(this.c("previ/reel")[i])) {
+                    last3.clear();  // Reset the last 3 list
+                    if (police.equals("iciaqcs19") && currentDate.equals(dateDefault.parse( "01/07/2023"))) {
+                        System.out.println("here");
+                    }
+                    // Find the last 3 positive payment indices
+                    for (int j = i - 1; j >= begin && last3.size() < 3; j--) {
+                        if ((Double) this.c(montantPrimeIndex)[j] >= 0) {
+                            last3.add(j);
+                        }
+                    }
 
-                for (int col = 0; col < this.ncol; col++) {
-                    if (this.header[col].equals("date_debut_periode_souscription")) {
-                        this.df.get(col)[currentRowIndex] = cal.getTime();
-                    } else {
-                        this.df.get(col)[currentRowIndex] = this.df.get(col)[baseRowIndex];
+                    // If less than 3 found, duplicate the oldest value until there are 3
+                    while (last3.size() < 3 && !last3.isEmpty()) {
+                        last3.add(last3.get(0));
+                    }
+
+
+//                    System.out.println(police);
+//                    System.out.println(currentDate);
+                    // Calculate average for current row
+                    for (int coliter = 0; coliter < 201; coliter++) {
+                        int colIndex = mIndex + coliter;
+                        this.c(colIndex)[i] = ((Float) this.c(colIndex)[last3.get(0)] +
+                                (Float) this.c(colIndex)[last3.get(1)] +
+                                (Float) this.c(colIndex)[last3.get(2)]) / 3;
                     }
                 }
 
-                currentRowIndex++;
+                i++;
+            } while (currentDate.before(maxDate));
+        }
+//        Date startDate; // Placeholder for starting date
+//        Date endDate = dateDefault.parse("01/12/2025");
+//        // 3. Populating Data
+//        for (Map.Entry<String, Date> entry : maxDateByContract.entrySet()) {
+//            String contractId = entry.getKey();
+//            Date maxDate = entry.getValue();
+//
+//            // If maxDate is null, continue to the next iteration
+//            if (maxDate == null) continue;
+//
+//            // Initialize the coefficients storage for this contract
+//            LinkedList<Float[]> coefficientsQueue = new LinkedList<>();
+//            // Store the last 3 indexes of appearances of the current contract
+//            ArrayList<Integer> lastThreeIndices = new ArrayList<>();
+//            // Starting from the end of the DataFrame, find the last 3 occurrences of the contract
+//            for (int i = nrow - 1; i >= 0 && lastThreeIndices.size() < 3; i--) {
+//                if (contractId.equals(this.c(contractIndex)[i]) && (Double) this.c(montantPrimeIndex)[i] >= 0) {
+//                    lastThreeIndices.add(i);
+//                }
+//            }
+//            if (lastThreeIndices.size() != 3) continue;
+//            // Reverse the list so that the indices are in ascending order
+//            Collections.reverse(lastThreeIndices);
+//            // Iterate over the last 3 indices to populate the coefficientsQueue
+//            for (int idx : lastThreeIndices) {
+//                Float[] coefficients = new Float[201];
+//                for (int j = 0; j < 201; j++) {
+//                    coefficients[j] = (Float) this.c(mIndex + j)[idx];
+//                }
+//                coefficientsQueue.add(coefficients);
+//            }
+//
+//            // Calculate number of months between max date and December 2025
+//            int monthsDifference = monthsBetween(maxDate, endDate);
+//            List<String> refValues = refMap.get(contractId);
+//            String statutContrat = refValues.get(0);
+//            String aqPrimes = refValues.get(1);
+//            for (int i = 0; i < monthsDifference; i++) {
+//                startDate = addMonth(maxDate, i);  // Start date is incremented by a month on each loop iteration
+//
+//                // a. Set common columns
+//                this.c(contractIndex)[startingAppendIndex] = contractId;
+//                this.c(dateIndex)[startingAppendIndex] = startDate;
+//                this.c(nAdheIndex)[startingAppendIndex] = 0.0;
+//                this.c(montantPrimeIndex)[startingAppendIndex] = 0.0;
+//
+//                // Fetch values from refMap
+//                this.c(0)[startingAppendIndex] = statutContrat;
+//                this.c(1)[startingAppendIndex] = aqPrimes;
+//                this.c(2)[startingAppendIndex] = "prévi";
+//
+//                // b. Populate coefficients
+//                Float[] newCoefficients = new Float[201]; // Clone once outside the loop
+//                for (int j = 0; j < 201; j++) {
+//                    Float newCoefficient = calculateMean(coefficientsQueue, j);
+//                    this.c(mIndex + j)[startingAppendIndex] = newCoefficient;
+//
+//                    // Update the coefficients array for the next iteration
+//                    newCoefficients[j] = newCoefficient;
+//                }
+//                // Update the coefficientsQueue outside the loop
+//                coefficientsQueue.poll();  // Remove the oldest coefficient array
+//                coefficientsQueue.add(newCoefficients);
+//
+//                // Move to the next append position
+//                startingAppendIndex++;
+//            }
+//        }
+//        this.sortByColumnName("date_debut_periode_souscription");
+    }
+    public static List<Date> getMonthsBetweenDates(Date startDate, Date endDate) {
+        List<Date> monthsBetween = new ArrayList<>();
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(startDate);
+
+        while (cal.getTime().before(endDate) || cal.getTime().equals(endDate)) {
+            monthsBetween.add(cal.getTime());
+            cal.add(Calendar.MONTH, 1);
+        }
+
+        return monthsBetween;
+    }
+    public void addCoefficientColumns() {
+        // 1. Modify the ncol value
+        this.ncol += 201;
+
+        // 2. Append new column names to the header
+        String[] newHeaders = new String[201];
+        for (int i = 0; i < 201; i++) {
+            if (i == 0) {
+                newHeaders[i] = "m";
+            } else {
+                newHeaders[i] = "m+" + i;  // This will create headers m, m+1, m+2, ..., m+200
+            }
+        }
+        this.header = Stream.concat(Arrays.stream(this.header), Arrays.stream(newHeaders)).toArray(String[]::new);
+
+        // 3. Append FLT values to the coltypes
+        Col_types[] newColTypes = new Col_types[201];
+        Arrays.fill(newColTypes, Col_types.FLT);
+        this.coltypes = Stream.concat(Arrays.stream(this.coltypes), Arrays.stream(newColTypes)).toArray(Col_types[]::new);
+
+        // 4. Add new columns to df ArrayList
+        for (int i = 0; i < 201; i++) {
+            Float[] newColumn = new Float[nrow];  // This creates a Float array of size nrow with all null values
+            this.df.add(newColumn);
+        }
+    }
+    public static Set<String> getUniqueContratValues(boolean france) {
+        Object[] contratColumn = ref_prog.c("n°contrat");
+        Object[] paysColumn = ref_prog.c("pays");
+        Set<String> uniqueValues = new HashSet<>();
+
+        if (france) {
+            for (int i = 0; i < ref_prog.nrow; i++) {
+                if (paysColumn[i].equals("france")) {
+                    uniqueValues.add(contratColumn[i].toString());
+                }
+            }
+        } else {
+            for (int i = 0; i < ref_prog.nrow; i++) {
+                if (!paysColumn[i].equals("france")) {
+                    uniqueValues.add(contratColumn[i].toString());
+                }
+            }
+        }
+        return uniqueValues;
+    }
+    public boolean[] markRowsForDeletion(Set<String> validContratIds) {
+        Object[] contratColumn = this.c("identifiant_contrat");
+        boolean[] toDelete = new boolean[nrow];
+
+        for (int i = 0; i < nrow; i++) {
+            if (contratColumn[i] != null && !validContratIds.contains(contratColumn[i].toString())) {
+                toDelete[i] = true;
             }
         }
 
-        this.nrow += totalRowsToAdd;
+        return toDelete;
+    }
+    public void saveToCSVFile_filter(String suffix, boolean[] toDelete) throws IOException {
+        String filePath = fullPath.replace(".csv", "_" + suffix + ".csv");
+        filePath = filePath.replace(".xlsx", "_" + suffix + ".csv");
 
+        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                new FileOutputStream(filePath), StandardCharsets.UTF_8))) {
 
+            writer.write('\ufeff');
+            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+
+            // Write header row
+            for (int i = 0; i < ncol; i++) {
+                if (i > 0) {
+                    writer.write(";");
+                }
+                writer.write(header[i]);
+            }
+            writer.newLine();
+
+            // Write data rows
+            for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+                if (!toDelete[rowIndex]) {
+                    for (int colIndex = 0; colIndex < ncol; colIndex++) {
+                        if (colIndex > 0) {
+                            writer.write(";");
+                        }
+
+                        Object value = df.get(colIndex)[rowIndex];
+                        if (value != null) {
+                            if (value instanceof Date) {
+                                writer.write(sdf.format((Date) value));
+                            } else {
+                                writer.write(value.toString());
+                            }
+                        }
+                    }
+                    writer.newLine();
+                }
+            }
+        }
+    }
+    public void groupSort(String group, String sort) {
+        int groupIndex = find_in_arr_first_index(this.header, group);
+        int sortIndex = find_in_arr_first_index(this.header, sort);
+        List<Integer> indices = IntStream.range(0, this.nrow).boxed().sorted(Comparator.comparing(i -> (String) this.cExplicit(groupIndex)[(int) i])
+                .thenComparing(i -> (Date) this.cExplicit(sortIndex)[(int) i])).collect(Collectors.toList());
+
+        for (int col = 0; col < this.ncol; col++) {
+            Object[] currentCol = this.df.get(col);
+            Object[] sortedCol = new Object[this.nrow];
+            for (int i = 0; i < this.nrow; i++) {
+                sortedCol[i] = currentCol[indices.get(i)];
+            }
+            this.df.set(col, sortedCol);
+        }
     }
 
+    private Float calculateMean(LinkedList<Float[]> coefficients, int index) {
+        if (coefficients.isEmpty()) return 0.0f;
+
+        float sum = 0;
+        for (Float[] arr : coefficients) {
+            sum += arr[index];
+        }
+        return sum / 3;
+    }
+    private int monthsBetween(Date start, Date end) {
+        Calendar startCalendar = Calendar.getInstance();
+        startCalendar.setTime(start);
+        Calendar endCalendar = Calendar.getInstance();
+        endCalendar.setTime(end);
+
+        int yearDiff = endCalendar.get(Calendar.YEAR) - startCalendar.get(Calendar.YEAR);
+        int monthsDiff = yearDiff * 12 + endCalendar.get(Calendar.MONTH) - startCalendar.get(Calendar.MONTH);
+
+        return monthsDiff - 1;
+    }
+    private Date addMonth(Date date, int monthsToAdd) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.add(Calendar.MONTH, monthsToAdd);
+        return cal.getTime();
+    }
     public DF(String path, char delim, Integer gri_tar) {
         String filename = path.substring(path.lastIndexOf("/") + 1);
         CsvParserSettings settings = new CsvParserSettings();
@@ -807,7 +1239,7 @@ public class DF implements Serializable {
 
         return detectedTypes;
     }
-    public void populateFromGrilleTarif() throws Exception {
+    public void populateFromGrilleTarif(DF src) throws Exception {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
 
@@ -850,25 +1282,122 @@ public class DF implements Serializable {
         // Find starting column of "m"
         int startIndexTdb = find_in_arr_first_index(this.header,"m");
         int startIndexGt = find_in_arr_first_index(grille_tarif.header,"m");
-        if (startIndexTdb == -1 || startIndexGt == -1) throw new Exception("column m not found");
+        int startIndexSrc = find_in_arr_first_index(src.header, "m");
+
+        if (startIndexTdb == -1 || startIndexGt == -1 || startIndexSrc == -1) throw new Exception("column m not found");
+
+        // Build a lookup map for src dataframe for fast searching
+        Map<String, Integer> srcLookup = new HashMap<>();
+        for (int i = 0; i < src.nrow; i++) {
+            String contract = (String) src.c("identifiant_contrat")[i];
+            String reference = (String) src.c("reference")[i];
+            Date srcDate = (Date) src.c("date_debut_periode_souscription")[i];
+            String key = contract + "_" + reference + "_" + srcDate.getTime(); // Using getTime for unique key
+            srcLookup.put(key, i);
+        }
 
         // Directly assign values from grille_tarif to the current DF using the precomputed row indices
         for (int i = 0; i < this.nrow; i++) {
-            System.out.println(i);
-
             Integer matchingRow = matchingRowMap.get(i);
             if (matchingRow != null) {
                 for (int col = 0; col <= 200; col++) {
-                    this.df.get(startIndexTdb + col)[i] = grille_tarif.df.get(startIndexGt + col)[matchingRow];
+                    this.c(startIndexTdb + col)[i] = grille_tarif.c(startIndexGt + col)[matchingRow];
                 }
+            } else {
+                String contract = (String) this.c("identifiant_contrat")[i];
+                String reference = (String) this.c("reference")[i];
+                Date thisDate = (Date) this.c("date_debut_periode_souscription")[i];
+                String key = contract + "_" + reference + "_" + thisDate.getTime();
+
+                Integer srcRow = srcLookup.get(key);
+                if (srcRow != null) {
+                    for (int col = 0; col <= 200; col++) {
+                        this.c(startIndexTdb + col)[i] = src.c(startIndexSrc + col)[srcRow];
+                    }
+                }
+                // Uncomment the following if you want default values for unmatched rows
+                // else {
+                //    for (int col = 0; col <= 200; col++) {
+                //        this.df.get(startIndexTdb + col)[i] = 0d;
+                //    }
+                // }
             }
-//            else {
-//                for (int col = 0; col <= 200; col++) {
-//                    this.df.get(startIndexTdb + col)[i] = 0d;
-//                }
-//            }
         }
     }
+    public boolean[] filterAgainstGrilleTarif() {
+        // Map to store combinations and their associated date intervals from grille_tarif
+        // Each combination key will be mapped to a list of start and end date pairs
+        Map<String, List<Pair<Date, Date>>> grilleTarifCombinations = new HashMap<>();
+
+        // Populate this map with combinations and date intervals from grille_tarif
+        Object[] grilleIdentifiantContrat = grille_tarif.c("identifiant_contrat");
+        Object[] grilleReference = grille_tarif.c("reference");
+        Object[] grilleStartDate = grille_tarif.c("date debut tarif");
+        Object[] grilleEndDate = grille_tarif.c("date fin tarif");
+        for (int i = 0; i < grille_tarif.nrow; i++) {
+            String key = grilleIdentifiantContrat[i] + "_" + grilleReference[i];
+            Date startDate = (Date) grilleStartDate[i];
+            Date endDate = (Date) grilleEndDate[i];
+
+            grilleTarifCombinations
+                    .computeIfAbsent(key, k -> new ArrayList<>())
+                    .add(new Pair<>(startDate, endDate));
+        }
+
+        // Create an array to mark rows for deletion
+        boolean[] rowsToDelete = logvec(this.nrow,true);
+
+        // Check rows of the input dataframe against the grille_tarif combinations and date intervals
+        Object[] dfIdentifiantContrat = this.c("identifiant_contrat");
+        Object[] dfReference = this.c("reference");
+        Object[] dfDates = this.c("date_debut_periode_souscription");
+        for (int i = 0; i < this.nrow; i++) {
+//            if (dfReference[i].equals("158362")) {
+//                System.out.println("here");
+//            }
+            String key = dfIdentifiantContrat[i] + "_" + dfReference[i];
+            Date currentDate = (Date) dfDates[i];
+
+            List<Pair<Date, Date>> intervals = grilleTarifCombinations.get(key);
+            if (intervals != null) {
+                boolean inAnyInterval = false;
+                for (Pair<Date, Date> interval : intervals) {
+                    if (!currentDate.before(interval.getFirst()) && !currentDate.after(interval.getSecond())) {
+                        inAnyInterval = true;
+                        break;
+                    }
+                }
+                // If not in any interval for the given key, mark the row for deletion
+                if (!inAnyInterval) {
+                    rowsToDelete[i] = false;
+                }
+            } else {
+                rowsToDelete[i] = false;
+            }
+        }
+
+        return rowsToDelete;
+    }
+
+    // Helper class for pair of dates (start date and end date)
+    static class Pair<T, U> {
+        private final T first;
+        private final U second;
+
+        public Pair(T first, U second) {
+            this.first = first;
+            this.second = second;
+        }
+
+        public T getFirst() {
+            return first;
+        }
+
+        public U getSecond() {
+            return second;
+        }
+    }
+
     public void checkSumOfColumns() throws Exception {
         // Find starting column of "m"
         int startIndex = find_in_arr_first_index(this.header,"m");
@@ -885,15 +1414,17 @@ public class DF implements Serializable {
             for (int col = 0; col <= 200 && (startIndex + col) < this.header.length; col++) {
                 sum += (float) this.df.get(startIndex + col)[i]; // Assuming they are all floats.
             }
-            if(i==90717) {
-                System.out.println("here");
-            }
+//            if(i==90717) {
+//                System.out.println("here");
+//            }
             // Round the sum to 3 decimal places
             sum = (float) (Math.round(sum * 100.0) / 100.0);
 
             // Check if the sum is different from 1
             if (sum != 1.0) {
-                System.out.println("Row " + (i + 1) + ": " + this.df.get(0)[i] + ", " + this.df.get(1)[i] + ", " + this.df.get(2)[i]);
+//                this.c(startIndex)[i] = 1f;
+//                System.out.println(sum + "Row " + (i + 1) + ": " + this.df.get(0)[i] + ", " + this.df.get(1)[i] + ", " + this.df.get(2)[i]);
+                System.out.println(this.df.get(0)[i] + ", " + this.df.get(2)[i] + ", " + dateDefault.format((Date) this.df.get(1)[i]));
             }
         }
     }
@@ -1700,6 +2231,17 @@ public class DF implements Serializable {
     public Object[] c(int index){
         return df.get(index);
     }
+    public Object[] cExplicit(int index){
+        return df.get(index);
+    }
+    public Float[] cFloat(int index){
+        Object[] objArray = df.get(index);
+        Float[] floatArray = new Float[objArray.length];
+        for(int i = 0; i < objArray.length; i++) {
+            floatArray[i] = (Float) objArray[i];
+        }
+        return floatArray;
+    }
     public int csv_get_nrows(String path, char delim) {
         int out = 0;
         CsvParserSettings settings = new CsvParserSettings();
@@ -1835,7 +2377,11 @@ public class DF implements Serializable {
                 case STR -> this.df.add(new String[nrow]);
                 case DBL -> this.df.add(new Double[nrow]);
                 case DAT -> this.df.add(new Date[nrow]);
-                case FLT -> this.df.add(new Float[nrow]);
+                case FLT -> {
+                    Float[] array = new Float[nrow];
+                    Arrays.fill(array, 0f);
+                    this.df.add(array);
+                }
                 default -> {
                 }
             }
@@ -2027,6 +2573,55 @@ public class DF implements Serializable {
                 writer.newLine();
             }
         }
+    }
+    public void sortByColumnName(String colName, boolean ascending) {
+        // Find the column index by name
+        int colIndex = find_in_arr_first_index(header, colName);
+
+        // Handle if column name is not valid
+        if(colIndex == -1) {
+            System.out.println("Column name not found!");
+            return;
+        }
+
+        // Determine the column type
+        Col_types colType = coltypes[colIndex];
+
+        // Create a list of indices 0 through nrow-1
+        List<Integer> indices = IntStream.range(0, nrow).boxed().collect(Collectors.toList());
+
+        // Sort the indices based on the values in the specified column
+        switch (colType) {
+            case STR -> indices.sort(Comparator.comparing(i -> (String) c(colIndex)[i]));
+            case DAT -> indices.sort(Comparator.comparing(i -> (Date) c(colIndex)[i]));
+            case DBL -> indices.sort(Comparator.comparing(i -> (Double) c(colIndex)[i]));
+            case FLT -> indices.sort(Comparator.comparing(i -> (Float) c(colIndex)[i]));
+
+            // Don't do anything for SKP
+            default -> {
+                return;
+            }
+        }
+
+        // Reverse the indices list if descending order is desired
+        if (!ascending) {
+            Collections.reverse(indices);
+        }
+
+        // Use the sorted indices to rearrange the rows in df
+        for (int i = 0; i < ncol; i++) {
+            Object[] currentColumn = c(i);
+            Object[] sortedColumn = new Object[nrow];
+
+            for (int j = 0; j < nrow; j++) {
+                sortedColumn[j] = currentColumn[indices.get(j)];
+            }
+
+            df.set(i, sortedColumn);  // Replace original column with the sorted column
+        }
+    }
+    public void sortByColumnName(String colName) {
+        sortByColumnName(colName, true);
     }
 
 }

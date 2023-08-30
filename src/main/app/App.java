@@ -16,7 +16,8 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
+//    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
+    public static final String wd = "E:/202305/wd/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
     public static final String regex_digits = "[0-9]+";
