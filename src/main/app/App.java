@@ -16,8 +16,8 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-//    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
-    public static final String wd = "E:/202305/wd/";
+    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
+//    public static final String wd = "E:/202305/wd/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
     public static final String regex_digits = "[0-9]+";
@@ -97,8 +97,10 @@ public class App {
             List<Base> basesSin = new ArrayList<>();
 
             for (File file : fileList) {
-                Base base = new Base(file,pays,mapcol);
-                basesSin.add(base);
+                if(file.toString().contains("EXDI")) {
+                    Base base = new Base(file,pays,mapcol);
+                    basesSin.add(base);
+                }
             }
             basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGSSW18.csv")));
             basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
@@ -119,7 +121,7 @@ public class App {
             estimate.addProvisions(basesSin);
 
             stopwatch.printElapsedTime("calculated");
-            estimate.saveToCSVFile(true);
+            estimate.saveToCSVFile(false);
 
         }
 

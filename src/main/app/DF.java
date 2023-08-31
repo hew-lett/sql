@@ -32,7 +32,7 @@ import static main.app.DF.Col_types.*;
 
 public class DF implements Serializable {
 //    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
-    public static final String wd = "E:/202305/wd/";
+//    public static final String wd = "E:/202305/wd/";
     public static final SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
     public ArrayList<Object[]> df;
     public Col_types[] coltypes;

@@ -148,7 +148,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -201,7 +200,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -245,7 +243,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -267,6 +264,8 @@ public class Estimate extends DF {
     }
 
     public void populateMonthSinN(List<Base> bases, String statut) {
+        System.out.println("POPULATE " + statut);
+        System.out.println(this.header[1717] + " " + this.c(1717)[30]);
         int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
         int begin = ncol - lastAppendSize;
 
@@ -282,7 +281,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -315,7 +313,24 @@ public class Estimate extends DF {
 
                     String datePeriode = (String) this.df.get(ind_datePeriode)[row];
                     // Calling the new getSumN method for the Integer type
-                    this.df.get(col)[row] = getSumN(currentPivotTableN, datePeriode, this.header[col]);
+            if (statut.equals("terminé - accepté") && datePeriode.equals("12-2022") && this.header[col].equals("04-2023")) {
+                System.out.println("here");
+            }
+//            String prev = (String) this.c(1717)[30];
+//                    System.out.println("col: "+ col + " row: " + row + this.c(1717)[30]);
+//                    if(this.c(1717)[30] != null && this.c(1717)[30].equals("4")) {
+//                        System.out.println("here");
+//                    }
+                this.c(col)[row] = getSumN(currentPivotTableN, datePeriode, this.header[col]);
+//                if(this.c(1717)[30] != null) {
+//                    if (this.c(1717)[30].equals("4") && prev.equals(null)) {
+//                        System.out.println("here");
+//                    }
+//                }
+
+//                    if (this.c(1717)[30].equals("3")) {
+//                System.out.println("here");
+//            }
                 }
             }
         }
@@ -336,7 +351,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -380,7 +394,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -416,7 +429,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
@@ -457,7 +469,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
@@ -491,7 +502,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -522,7 +532,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
@@ -563,7 +572,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
@@ -597,7 +605,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -628,7 +635,6 @@ public class Estimate extends DF {
         } // showing mask
 
         for (String police : base.uniqueNumPoliceValues) {
-            System.out.print(police + " | ");
             Date minDateForPolice = base.numPoliceDateRangeMap.get(police).get(0);
             Date maxDateForPolice = base.numPoliceDateRangeMap.get(police).get(1);
             Map<String, Map<String, Double>> pivotForPolice = base.pivotTableFic.get(police).get(STATUT_FICTIF_FIC);
@@ -672,7 +678,6 @@ public class Estimate extends DF {
         } // showing mask
 
         for (String police : base.uniqueNumPoliceValues) {
-            System.out.print(police + " | ");
             Date minDateForPolice = base.numPoliceDateRangeMap.get(police).get(0);
             Date maxDateForPolice = base.numPoliceDateRangeMap.get(police).get(1);
             Map<String, Map<String, Double>> pivotForPolice = base.pivotTableYearlyFic.get(police).get(STATUT_FICTIF_FIC);
@@ -712,7 +717,6 @@ public class Estimate extends DF {
 
 
         for (String police : base.uniqueNumPoliceValues) {
-            System.out.print(police + " | ");
 
             Map<String, Double> pivotForPolice = base.pivotTableTotalFic.get(police).get(STATUT_FICTIF_FIC);
 
@@ -984,7 +988,7 @@ public class Estimate extends DF {
 
         for (int i = 0; i < nrow; i++) {
             String contratValue = (String) contratColumn[i];
-            System.out.println(contratValue);
+
             String datePeriodeValue = (String) datePeriodeColumn[i];
 
             // Fetch the data list for the current contract and date
@@ -1117,13 +1121,15 @@ public class Estimate extends DF {
             subheader[tableName_ind] = statutEs + " annuel";
             appendUpdate(begin);
             populateYearSinN(bases, statutEs);
-
+            System.out.println(this.header[1717] + " " + this.c(1717)[30]);
             begin = ncol;
             tableName_ind = header.length;
             addTotal();
             subheader[tableName_ind] = statutEs + " total";
             appendUpdate(begin);
             populateTotalSinN(bases, statutEs);
+            System.out.println(this.header[1717] + " " + this.c(1717)[30]);
+
         }
     }
     private void appendUpdate(int begin) {
