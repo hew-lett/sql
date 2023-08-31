@@ -66,11 +66,10 @@ public class Base extends DF {
     public Map<String, Map<String, Integer>> pivotTableAllStatutsN = new HashMap<>();
     public Map<String, Map<String, Integer>> pivotTableAllStatutsYearlyN = new HashMap<>();
     public Map<String, Integer> pivotTableAllStatutsTotalN = new HashMap<>();
-    public List<Map<Date, Map<Date, Double>>> provisions = new ArrayList<>();
     public double coutMoyenEnCours;
     public double coutMoyenEnCoursAccepte;
-    public Map<Date, List<Integer>> nEnCours;
-    public Map<Date, List<Integer>> nEnCoursAccepte;
+    public Map<String, List<Integer>> nEnCours;
+    public Map<String, List<Integer>> nEnCoursAccepte;
 
     public static void main(String[] args) throws IOException, SQLException {
     }
@@ -531,21 +530,24 @@ public class Base extends DF {
 
         return count > 0 ? sum / count : 0.0;
     }
-    public Map<Date, List<Integer>> countAppearancesByYear(String status) {
+    public Map<String, List<Integer>> countAppearancesByYear(String status) {
         // Initialize the final output map
-        Map<Date, List<Integer>> finalCount = new HashMap<>();
+        Map<String, List<Integer>> finalCount = new HashMap<>();
 
         // Extract the date_sous column
         Object[] dateSousColumn = this.c("date_sous");
 
+        // Create a date formatter
+        SimpleDateFormat dateFormatter = new SimpleDateFormat("MM-yyyy");
+
         // Get unique dates from date_sous column
-        Set<Date> uniqueDateSous = new HashSet<>();
+        Set<String> uniqueDateSous = new HashSet<>();
         for (Object date : dateSousColumn) {
-            uniqueDateSous.add((Date) date);
+            uniqueDateSous.add(dateFormatter.format((Date) date));
         }
 
         // Loop over each unique date_sous and count appearances by year
-        for (Date uniqueDate : uniqueDateSous) {
+        for (String uniqueDateString : uniqueDateSous) {
             Map<Integer, Integer> yearCounts = new TreeMap<>();
 
             // Initialize the map with all years from 2013 to 2026 with a count of 0
@@ -554,8 +556,8 @@ public class Base extends DF {
             }
 
             for (int i = 0; i < nrow; i++) {
-                Date currentDateSous = (Date) c("date_sous")[i];
-                if (uniqueDate.equals(currentDateSous)) {
+                String currentDateSousString = dateFormatter.format((Date) c("date_sous")[i]);
+                if (uniqueDateString.equals(currentDateSousString)) {
                     String currentStatus = (String) c("statut")[i];
                     if (currentStatus.equals(status)) {
                         Date dateSurv = (Date) c("date_surv")[i];
@@ -570,12 +572,11 @@ public class Base extends DF {
                     }
                 }
             }
-            finalCount.put(uniqueDate, new ArrayList<>(yearCounts.values()));
+            finalCount.put(uniqueDateString, new ArrayList<>(yearCounts.values()));
         }
 
         return finalCount;
     }
-
 
     public void createPivotTable() {
         // define the format to capture only the month and year of a date

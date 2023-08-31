@@ -941,12 +941,13 @@ public class Estimate extends DF {
 
     }
     public void addProvisions(List<Base> bases) {
+        int begin = ncol;
         double[] total = new double[nrow];
 
         Map<String, Double> coutMoyEnCoursMap = new HashMap<>();
         Map<String, Double> coutMoyEnCoursAccepteMap = new HashMap<>();
-        Map<String, Map<Date, List<Integer>>> nEnCoursMap = new HashMap<>();
-        Map<String, Map<Date, List<Integer>>> nEnCoursAccepteMap = new HashMap<>();
+        Map<String, Map<String, List<Integer>>> nEnCoursMap = new HashMap<>();
+        Map<String, Map<String, List<Integer>>> nEnCoursAccepteMap = new HashMap<>();
         for (Base base : bases) {
             nEnCoursMap.put(base.numPolice, base.nEnCours);
             nEnCoursAccepteMap.put(base.numPolice, base.nEnCoursAccepte);
@@ -957,23 +958,25 @@ public class Estimate extends DF {
         Object[] contratColumn = this.c("Contrat");
         Object[] datePeriodeColumn = this.c("Date Periode");
 
-        populateCoutMoyenColumn(contratColumn, coutMoyEnCoursMap, total);
+        populateCoutMoyenColumn(contratColumn, coutMoyEnCoursMap, total, "En cours");
+        populateProvisionsColumns(contratColumn, datePeriodeColumn, nEnCoursMap, coutMoyEnCoursMap, total,"En cours");
 
-        // Populate provisions columns for nEnCours
-        populateProvisionsColumns(contratColumn, datePeriodeColumn, nEnCoursMap, coutMoyEnCoursMap, total);
-
-        populateCoutMoyenColumn(contratColumn, coutMoyEnCoursAccepteMap, total);
-
-        // Populate provisions columns for nEnCoursAccepte
-        populateProvisionsColumns(contratColumn, datePeriodeColumn, nEnCoursAccepteMap, coutMoyEnCoursAccepteMap, total);
+        populateCoutMoyenColumn(contratColumn, coutMoyEnCoursAccepteMap, total,"En cours - accepté");
+        populateProvisionsColumns(contratColumn, datePeriodeColumn, nEnCoursAccepteMap, coutMoyEnCoursAccepteMap, total,"En cours - accepté");
 
         // Add total column
-        this.df.add(Arrays.stream(total).mapToObj(String::valueOf).toArray(String[]::new));
+        this.df.add(Arrays.stream(total).mapToObj(val -> String.format("%.2f", val)).toArray(String[]::new));
+        header = Arrays.copyOf(header, ncol + 1);
+        header[ncol] = "Total provisions";
+        ncol++;
+        subheader = Arrays.copyOf(subheader, ncol);
+        Arrays.fill(subheader, subheader.length - (ncol - begin), subheader.length, "");
+        appendUpdateProvisions(begin);
     }
     private void populateProvisionsColumns(Object[] contratColumn, Object[] datePeriodeColumn,
-                                           Map<String, Map<Date, List<Integer>>> dataMap,
+                                           Map<String, Map<String, List<Integer>>> dataMap,
                                            Map<String, Double> coutMoyenMap,
-                                           double[] total) {
+                                           double[] total, String label) {
         int yearDif = 2026 - 2013;
         for (int year = 0; year <= yearDif; year++) {
             this.df.add(new String[nrow]);
@@ -981,10 +984,11 @@ public class Estimate extends DF {
 
         for (int i = 0; i < nrow; i++) {
             String contratValue = (String) contratColumn[i];
-            Date datePeriodeValue = (Date) datePeriodeColumn[i];
+            System.out.println(contratValue);
+            String datePeriodeValue = (String) datePeriodeColumn[i];
 
             // Fetch the data list for the current contract and date
-            Map<Date, List<Integer>> dateMap = dataMap.get(contratValue);
+            Map<String, List<Integer>> dateMap = dataMap.get(contratValue);
             if (dateMap != null && dateMap.containsKey(datePeriodeValue)) {
                 List<Integer> yearlyCounts = dateMap.get(datePeriodeValue);
 
@@ -992,7 +996,7 @@ public class Estimate extends DF {
                 for (int yearNum = 0; yearNum <= yearDif; yearNum++) {
                     int countForYear = (yearNum < yearlyCounts.size()) ? yearlyCounts.get(yearNum) : 0;
                     double provisionValue = countForYear * coutMoyenMap.get(contratValue);
-                    this.c(this.ncol + yearNum)[i] = String.valueOf(provisionValue);
+                    this.c(this.ncol + yearNum)[i] = String.format("%.2f", provisionValue);
                     total[i] += provisionValue;
                 }
             } else {
@@ -1003,15 +1007,29 @@ public class Estimate extends DF {
             }
         }
         this.ncol += yearDif + 1; // add 1 for year difference
+        updateHeaderForProvisions(label);
     }
-    private void populateCoutMoyenColumn(Object[] contratColumn, Map<String, Double> coutMoyenMap, double[] total) {
+    private void populateCoutMoyenColumn(Object[] contratColumn, Map<String, Double> coutMoyenMap, double[] total, String label) {
         this.df.add(new String[nrow]);
         for (int i = 0; i < nrow; i++) {
-            double value = coutMoyenMap.get((String) contratColumn[i]);
-            this.c(ncol)[i] = String.valueOf(value);
-            total[i] += value;
+            Double value = coutMoyenMap.get((String) contratColumn[i]);
+            if(value == null) continue;
+            this.c(ncol)[i] = String.format("%.2f", value);
         }
         this.ncol++;
+        updateHeaderForCoutMoyen(label);
+    }
+    private void updateHeaderForCoutMoyen(String statut) {
+        List<String> newHeaders = new ArrayList<>(Arrays.asList(header));
+        newHeaders.add("Cout Moyen: " + statut);
+        header = newHeaders.toArray(new String[0]);
+    }
+    private void updateHeaderForProvisions(String statut) {
+        List<String> newHeaders = new ArrayList<>(Arrays.asList(header));
+        for (int year = 2013; year <= 2026; year++) {
+            newHeaders.add("Provisions: " + statut + " " + year);
+        }
+        header = newHeaders.toArray(new String[0]);
     }
     public void addSinMAT(List<Base> bases) {
         String statut = "Sinistre Reglement";
@@ -1121,6 +1139,19 @@ public class Estimate extends DF {
                 mask_col[i] = true;
             }
         }
+    }
+    private void appendUpdateProvisions(int begin) {
+        int end;
+        boolean[] newMaskCol;
+
+        end = ncol;
+        lastAppendSize = end - begin;
+
+        newMaskCol = new boolean[ncol];
+        System.arraycopy(mask_col, 0, newMaskCol, 0, mask_col.length);
+        mask_col = newMaskCol;
+
+        Arrays.fill(mask_col, begin, end, true);
     }
     public void saveToCSVFile(boolean applyMask) throws IOException {
         String filePath = fullPath.replace(".xlsx", "_extended.csv");

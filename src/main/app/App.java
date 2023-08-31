@@ -65,7 +65,7 @@ public class App {
     public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
         printMemoryUsage();
 
-                Stopwatch stopwatch = new Stopwatch();
+        Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
 
         ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
@@ -73,7 +73,7 @@ public class App {
         ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
         mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
 
-        ref_prog.print();
+        stopwatch.printElapsedTime("refs");
 //        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
 //        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
 //        Base base = new Base(wd + "Source FIC/SPB Pologne/","FIC Pologne");
