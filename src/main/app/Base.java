@@ -66,6 +66,11 @@ public class Base extends DF {
     public Map<String, Map<String, Integer>> pivotTableAllStatutsN = new HashMap<>();
     public Map<String, Map<String, Integer>> pivotTableAllStatutsYearlyN = new HashMap<>();
     public Map<String, Integer> pivotTableAllStatutsTotalN = new HashMap<>();
+    public List<Map<Date, Map<Date, Double>>> provisions = new ArrayList<>();
+    public double coutMoyenEnCours;
+    public double coutMoyenEnCoursAccepte;
+    public Map<Date, List<Integer>> nEnCours;
+    public Map<Date, List<Integer>> nEnCoursAccepte;
 
     public static void main(String[] args) throws IOException, SQLException {
     }
@@ -167,6 +172,12 @@ public class Base extends DF {
             this.createTotalPivotAllStatutsN();
             this.populateUniqueStatuts();
             this.populateStatutDateRangeMap();
+            ArrayList<String> statutsOrder = new ArrayList<>(Arrays.asList("en attente de prescription", "en cours", "en cours - accepté"));
+            ArrayList<String> firstAndSecondExclude = new ArrayList<>(statutsOrder.subList(0, 2));
+            this.coutMoyenEnCours = calculateMeanExcludingStatuses(firstAndSecondExclude);
+            this.coutMoyenEnCoursAccepte = calculateMeanExcludingStatuses(statutsOrder);
+            this.nEnCours = countAppearancesByYear("en cours");
+            this.nEnCoursAccepte = countAppearancesByYear("en cours - accepté");
         }
     } //Sin
     public Base(String folder, String map_col) throws IOException {
@@ -471,6 +482,100 @@ public class Base extends DF {
 
         return fileName; // Default to full file name if pattern not found
     }
+    public Map<Date, Map<Date, Double>> createPivotTableExcludingStatuses(ArrayList<String> excludedStatuses) {
+        Map<Date, Map<Date, List<Double>>> accumulator = new HashMap<>();
+
+        for (int i = 0; i < nrow; i++) {
+            String currentStatus = (String) c("statut")[i];
+
+            // Check if the status is not in the excluded list
+            if (!excludedStatuses.contains(currentStatus)) {
+                Date dateSous = (Date) c("date_sous")[i];
+                Date dateSurv = (Date) c("date_surv")[i];
+                Double montantIp = (Double) c("montant_IP")[i];
+
+                accumulator
+                        .computeIfAbsent(dateSous, k -> new HashMap<>())
+                        .computeIfAbsent(dateSurv, k -> new ArrayList<>())
+                        .add(montantIp);
+            }
+        }
+
+        Map<Date, Map<Date, Double>> pivotTable = new HashMap<>();
+        for (Date dateSous : accumulator.keySet()) {
+            Map<Date, Double> innerMap = new HashMap<>();
+            for (Date dateSurv : accumulator.get(dateSous).keySet()) {
+                List<Double> montants = accumulator.get(dateSous).get(dateSurv);
+                double average = montants.stream().mapToDouble(val -> val).average().orElse(0.0);
+                innerMap.put(dateSurv, average);
+            }
+            pivotTable.put(dateSous, innerMap);
+        }
+
+        return pivotTable;
+    }
+    public double calculateMeanExcludingStatuses(ArrayList<String> excludedStatuses) {
+        double sum = 0.0;
+        int count = 0;
+
+        for (int i = 0; i < nrow; i++) {
+            String currentStatus = (String) c("statut")[i];
+
+            // Check if the status is not in the excluded list
+            if (!excludedStatuses.contains(currentStatus)) {
+                Double montantIp = (Double) c("montant_IP")[i];
+                sum += montantIp;
+                count++;
+            }
+        }
+
+        return count > 0 ? sum / count : 0.0;
+    }
+    public Map<Date, List<Integer>> countAppearancesByYear(String status) {
+        // Initialize the final output map
+        Map<Date, List<Integer>> finalCount = new HashMap<>();
+
+        // Extract the date_sous column
+        Object[] dateSousColumn = this.c("date_sous");
+
+        // Get unique dates from date_sous column
+        Set<Date> uniqueDateSous = new HashSet<>();
+        for (Object date : dateSousColumn) {
+            uniqueDateSous.add((Date) date);
+        }
+
+        // Loop over each unique date_sous and count appearances by year
+        for (Date uniqueDate : uniqueDateSous) {
+            Map<Integer, Integer> yearCounts = new TreeMap<>();
+
+            // Initialize the map with all years from 2013 to 2026 with a count of 0
+            for (int year = 2013; year <= 2026; year++) {
+                yearCounts.put(year, 0);
+            }
+
+            for (int i = 0; i < nrow; i++) {
+                Date currentDateSous = (Date) c("date_sous")[i];
+                if (uniqueDate.equals(currentDateSous)) {
+                    String currentStatus = (String) c("statut")[i];
+                    if (currentStatus.equals(status)) {
+                        Date dateSurv = (Date) c("date_surv")[i];
+                        Calendar cal = Calendar.getInstance();
+                        cal.setTime(dateSurv);
+                        int year = cal.get(Calendar.YEAR);
+
+                        // If the year is between 2013 and 2026, increment the count
+                        if (yearCounts.containsKey(year)) {
+                            yearCounts.put(year, yearCounts.get(year) + 1);
+                        }
+                    }
+                }
+            }
+            finalCount.put(uniqueDate, new ArrayList<>(yearCounts.values()));
+        }
+
+        return finalCount;
+    }
+
 
     public void createPivotTable() {
         // define the format to capture only the month and year of a date

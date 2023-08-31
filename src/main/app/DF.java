@@ -47,14 +47,6 @@ public class DF implements Serializable {
     private static final int BATCH_SIZE = 10000;
 
     public static void main(String[] args) throws Exception {
-//        tdb2_ref = new DF(tdb2);
-//        printMemoryUsage();
-
-//        tdb2 = new DF(wd + "TDB Hors France_populated.csv",';',0);
-//        tdb2coef = new DF(tdb2, 0);
-//        tdb2coef.checkSumOfColumns();
-//        tdb2coef.saveToCSVFile_sortedCoef("coef");
-
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
         ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
@@ -96,19 +88,15 @@ public class DF implements Serializable {
 
         tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
         tdb2coef = new DF(tdb2, 0);
-//        tdb2coef.checkSumOfColumns();
+        tdb2coef.checkSumOfColumns();
         tdb2coef.saveToCSVFile_sortedCoef("coef");
-//
-//        stopwatch.printElapsedTime();
-//        tdb2coef.checkSumOfColumns();
-//        stopwatch.printElapsedTime();
-//
-//        stopwatch.printElapsedTime();
+        stopwatch.printElapsedTime("hf");
 
-
-//        tdb2 = new DF(wd + "TDB Hors France_populated.csv",';',0);
-//        tdb2coef.checkSumOfColumns();
-//        tdb2coef.saveToCSVFile_sortedCoef("coef");
+        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
+        tdb2coef = new DF(tdb2, 0);
+        tdb2coef.checkSumOfColumns();
+        tdb2coef.saveToCSVFile_sortedCoef("coef");
+        stopwatch.printElapsedTime("fr");
 
     }
     public DF(String path, char delim, Double sql) {

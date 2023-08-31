@@ -79,44 +79,45 @@ public class App {
 //        Base base = new Base(wd + "Source FIC/SPB Pologne/","FIC Pologne");
 //        Base base = new Base(wd + "Source FIC/SPB Espagne/","FIC Espagne");
 
-//        for (int i = 0; i < ref_source.nrow; i++) {
-//            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
-//            if (!a_faire) continue;
-//
-//            Base.currentHeaderRef = null;
-//            String folder = (String) ref_source.c("path")[i];
-//            String pays = (String) ref_source.c("pays")[i];
-//            String mapcol = (String) ref_source.c("mapping")[i];
-//            String estim = (String) ref_source.c("estimate")[i];
-//            String path_fic = (String) ref_source.c("path_fic")[i];
-//            String map_fic = (String) ref_source.c("map_fic")[i];
-//
-//            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
-//
-//            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-//            List<Base> basesSin = new ArrayList<>();
-//
-//            for (File file : fileList) {
-//                Base base = new Base(file,pays,mapcol);
-//                basesSin.add(base);
-//            }
-//            for (Base base : basesSin) {
-//                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-//                updateStatutDates(base); //global
-//            }
-//            estimate.getUniqueStatutsFromMap();
-//            updateGlobalDatesFromStatutMap();
-//
-//            Base baseFic = new Base(wd + path_fic,map_fic);
-//            stopwatch.printElapsedTime("integration success");
-//
-//            estimate.addFicMAT(baseFic);
-//            estimate.addSinMAT(basesSin);
-//
-//            stopwatch.printElapsedTime("calculated");
-//            estimate.saveToCSVFile(true);
-//
-//        }
+        for (int i = 0; i < ref_source.nrow; i++) {
+            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
+            if (!a_faire) continue;
+
+            Base.currentHeaderRef = null;
+            String folder = (String) ref_source.c("path")[i];
+            String pays = (String) ref_source.c("pays")[i];
+            String mapcol = (String) ref_source.c("mapping")[i];
+            String estim = (String) ref_source.c("estimate")[i];
+            String path_fic = (String) ref_source.c("path_fic")[i];
+            String map_fic = (String) ref_source.c("map_fic")[i];
+
+            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+
+            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+            List<Base> basesSin = new ArrayList<>();
+
+            for (File file : fileList) {
+                Base base = new Base(file,pays,mapcol);
+                basesSin.add(base);
+            }
+            for (Base base : basesSin) {
+                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+                updateStatutDates(base); //global
+            }
+            estimate.getUniqueStatutsFromMap();
+            updateGlobalDatesFromStatutMap();
+
+            Base baseFic = new Base(wd + path_fic,map_fic);
+            stopwatch.printElapsedTime("integration success");
+
+            estimate.addFicMAT(baseFic);
+            estimate.addSinMAT(basesSin);
+            estimate.addProvisions(basesSin);
+
+            stopwatch.printElapsedTime("calculated");
+            estimate.saveToCSVFile(true);
+
+        }
 
     }
     public static void updateStatutDates(Base base) {

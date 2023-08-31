@@ -940,6 +940,79 @@ public class Estimate extends DF {
         populateTotalFic(baseFic);
 
     }
+    public void addProvisions(List<Base> bases) {
+        double[] total = new double[nrow];
+
+        Map<String, Double> coutMoyEnCoursMap = new HashMap<>();
+        Map<String, Double> coutMoyEnCoursAccepteMap = new HashMap<>();
+        Map<String, Map<Date, List<Integer>>> nEnCoursMap = new HashMap<>();
+        Map<String, Map<Date, List<Integer>>> nEnCoursAccepteMap = new HashMap<>();
+        for (Base base : bases) {
+            nEnCoursMap.put(base.numPolice, base.nEnCours);
+            nEnCoursAccepteMap.put(base.numPolice, base.nEnCoursAccepte);
+            coutMoyEnCoursMap.put(base.numPolice, base.coutMoyenEnCours);
+            coutMoyEnCoursAccepteMap.put(base.numPolice, base.coutMoyenEnCoursAccepte);
+        }
+
+        Object[] contratColumn = this.c("Contrat");
+        Object[] datePeriodeColumn = this.c("Date Periode");
+
+        populateCoutMoyenColumn(contratColumn, coutMoyEnCoursMap, total);
+
+        // Populate provisions columns for nEnCours
+        populateProvisionsColumns(contratColumn, datePeriodeColumn, nEnCoursMap, coutMoyEnCoursMap, total);
+
+        populateCoutMoyenColumn(contratColumn, coutMoyEnCoursAccepteMap, total);
+
+        // Populate provisions columns for nEnCoursAccepte
+        populateProvisionsColumns(contratColumn, datePeriodeColumn, nEnCoursAccepteMap, coutMoyEnCoursAccepteMap, total);
+
+        // Add total column
+        this.df.add(Arrays.stream(total).mapToObj(String::valueOf).toArray(String[]::new));
+    }
+    private void populateProvisionsColumns(Object[] contratColumn, Object[] datePeriodeColumn,
+                                           Map<String, Map<Date, List<Integer>>> dataMap,
+                                           Map<String, Double> coutMoyenMap,
+                                           double[] total) {
+        int yearDif = 2026 - 2013;
+        for (int year = 0; year <= yearDif; year++) {
+            this.df.add(new String[nrow]);
+        }
+
+        for (int i = 0; i < nrow; i++) {
+            String contratValue = (String) contratColumn[i];
+            Date datePeriodeValue = (Date) datePeriodeColumn[i];
+
+            // Fetch the data list for the current contract and date
+            Map<Date, List<Integer>> dateMap = dataMap.get(contratValue);
+            if (dateMap != null && dateMap.containsKey(datePeriodeValue)) {
+                List<Integer> yearlyCounts = dateMap.get(datePeriodeValue);
+
+                // Fetch and compute the provision value for each year
+                for (int yearNum = 0; yearNum <= yearDif; yearNum++) {
+                    int countForYear = (yearNum < yearlyCounts.size()) ? yearlyCounts.get(yearNum) : 0;
+                    double provisionValue = countForYear * coutMoyenMap.get(contratValue);
+                    this.c(this.ncol + yearNum)[i] = String.valueOf(provisionValue);
+                    total[i] += provisionValue;
+                }
+            } else {
+                // If there's no data for this contract and date, fill the columns with 0s
+                for (int yearNum = 0; yearNum <= yearDif; yearNum++) {
+                    this.c(this.ncol + yearNum)[i] = "0";
+                }
+            }
+        }
+        this.ncol += yearDif + 1; // add 1 for year difference
+    }
+    private void populateCoutMoyenColumn(Object[] contratColumn, Map<String, Double> coutMoyenMap, double[] total) {
+        this.df.add(new String[nrow]);
+        for (int i = 0; i < nrow; i++) {
+            double value = coutMoyenMap.get((String) contratColumn[i]);
+            this.c(ncol)[i] = String.valueOf(value);
+            total[i] += value;
+        }
+        this.ncol++;
+    }
     public void addSinMAT(List<Base> bases) {
         String statut = "Sinistre Reglement";
         int begin;
