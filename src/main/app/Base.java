@@ -71,7 +71,7 @@ public class Base extends DF {
     public Map<String, List<Integer>> nEnCours;
     public Map<String, List<Integer>> nEnCoursAccepte;
 
-    public static void main(String[] args) throws IOException, SQLException {
+    public static void main(String[] args) throws Exception {
     }
     public Base(File path, String pays, String mappingColDefault) throws IOException {
         this.source = true;
@@ -179,6 +179,100 @@ public class Base extends DF {
             this.nEnCoursAccepte = countAppearancesByYear("en cours - accepté");
         }
     } //Sin
+    public Base(File path) throws Exception {
+        System.out.println(path);
+        this.source = false;
+        numPolice = extractKeyFromFileName(path.getName(),"aux");
+        this.referentialRow = getRefRow(numPolice);
+        SimpleDateFormat dateDefault = getDateFormatter((String) referentialRow[referentialRow.length-1]);
+
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+
+        try (Reader inputReader = Files.newBufferedReader(path.toPath(), Charset.forName(encoding))) {
+            CsvParser parser = new CsvParser(settings);
+            List<String[]> parsedRows = parser.parseAll(inputReader);
+            Iterator<String[]> rows = parsedRows.iterator();
+
+            nrow = csv_get_nrows(path.getPath(), delim);
+
+            header = rows.next();
+            header = Arrays.stream(header)
+                    .filter(h -> h != null && !h.trim().isEmpty())
+                    .toArray(String[]::new);
+
+            boolean[] cols_kept = header_unify_cols_kept();
+            coltypes_populate(cols_kept);
+
+            if (currentHeaderRef == null) {
+                currentHeaderRef = this.header;
+            }
+
+            ncol = get_len(coltypes);
+            df = new ArrayList<>(ncol);
+            this.df_populate(coltypes);
+
+            if (validateHeader(currentHeaderRef,header,numPolice)) {
+                int i = 0;
+                while (rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != SKP) {
+                            df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            } else {
+                int[] headerIndexes = matchHeaders(currentHeaderRef,header);
+                this.header = copyArray(currentHeaderRef);
+                int i = 0;
+                while (rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != SKP) {
+                            df.get(headerIndexes[j])[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            }
+
+            if (numPolice.equals("ICIGPTB15") || numPolice.equals("ICIMITL16")) {
+                this.transformNumPoliceValues();
+            }
+            this.date_autofill();
+            this.createPivotTable();
+            this.createYearlyPivotTable();
+            this.createTotalPivotTable();
+            this.createPivotAllStatuts();
+            this.createYearlyPivotAllStatuts();
+            this.createTotalPivotAllStatuts();
+            this.createPivotTableN();
+            this.createYearlyPivotTableN();
+            this.createTotalPivotTableN();
+            this.createPivotAllStatutsN();
+            this.createYearlyPivotAllStatutsN();
+            this.createTotalPivotAllStatutsN();
+            this.populateUniqueStatuts();
+            this.populateStatutDateRangeMap();
+            ArrayList<String> statutsOrder = new ArrayList<>(Arrays.asList("en attente de prescription", "en cours", "en cours - accepté"));
+            ArrayList<String> firstAndSecondExclude = new ArrayList<>(statutsOrder.subList(0, 2));
+            this.coutMoyenEnCours = calculateMeanExcludingStatuses(firstAndSecondExclude);
+            this.coutMoyenEnCoursAccepte = calculateMeanExcludingStatuses(statutsOrder);
+            this.nEnCours = countAppearancesByYear("en cours");
+            this.nEnCoursAccepte = countAppearancesByYear("en cours - accepté");
+        }
+    } //Sin_aux
     public Base(String folder, String map_col) throws IOException {
         switch (map_col) {
             case "FIC France" -> {
@@ -467,7 +561,7 @@ public class Base extends DF {
                 start = fileName.indexOf("FRMP");
             }
             end = fileName.indexOf("_", start);
-        } else if (pays.equals("Italie") || pays.equals("Pologne")) {
+        } else if (pays.equals("Italie") || pays.equals("Pologne") || pays.equals("aux")) {
             start = fileName.indexOf("ICI");
             end = fileName.indexOf(".csv", start);
         } else if (pays.equals("Espagne")) {
@@ -480,6 +574,25 @@ public class Base extends DF {
         }
 
         return fileName; // Default to full file name if pattern not found
+    }
+    public void transformNumPoliceValues() {
+        // Get the num_police column using your c method
+        Object[] statutValues = c("statut");
+
+        // Loop over all the values in the column and apply the transformations
+        for (int i = 0; i < statutValues.length; i++) {
+            String currentValue = (String) statutValues[i];
+
+            switch (currentValue) {
+                case "termine - accepte" -> statutValues[i] = "terminé - accepté";
+                case "termine - refuse immediat" -> statutValues[i] = "terminé - refusé avant instruction";
+                default -> statutValues[i] = "terminé sans suite";
+            }
+        }
+
+        // Replace the old column with the transformed one
+        int index = find_in_arr_first_index(header, "statut");
+        df.set(index, statutValues);
     }
     public Map<Date, Map<Date, Double>> createPivotTableExcludingStatuses(ArrayList<String> excludedStatuses) {
         Map<Date, Map<Date, List<Double>>> accumulator = new HashMap<>();
@@ -577,7 +690,16 @@ public class Base extends DF {
 
         return finalCount;
     }
-
+    public SimpleDateFormat getDateParser(String format) {
+        switch (format) {
+            case "dd/mm/yyyy":
+                return new SimpleDateFormat("dd/MM/yyyy");
+            case "#yyyy-mm-dd#":
+                return new SimpleDateFormat("yyyy-MM-dd");
+            default:
+                throw new IllegalArgumentException("Unsupported date format: " + format);
+        }
+    }
     public void createPivotTable() {
         // define the format to capture only the month and year of a date
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
@@ -1475,6 +1597,15 @@ public class Base extends DF {
 
         throw new RuntimeException("Referential row not found for keys: " + Arrays.toString(keys));
     }
+    Object[] getRefRow(String key) throws Exception {
+        for (int rowIndex = 0; rowIndex < ref_cols.nrow; rowIndex++) {
+            Object[] row = ref_cols.r(rowIndex);
+            if (row[1].equals(key.toLowerCase())) {
+                return row;
+            }
+        }
+        throw new Exception("cant find ref row by key: " + key);
+    }
     void header_unify() {
         for (int i = 0; i < header.length; i++) {
             int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
@@ -1529,7 +1660,7 @@ public class Base extends DF {
         }
         return unifiedHeader;
     }
-    String[] getColsToTake() {
+    String[] getColsFromRefRow() {
         List<String> colsList = new ArrayList<>();
         for (int i = 2; i < referentialRow.length - 1; i++) {
             String colValue = referentialRow[i].toString().toLowerCase().trim();

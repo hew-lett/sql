@@ -62,7 +62,7 @@ public class App {
         PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
     }
 
-    public static void main(String[] args) throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InterruptedException {
+    public static void main(String[] args) throws Exception {
         printMemoryUsage();
 
         Stopwatch stopwatch = new Stopwatch();
@@ -100,6 +100,10 @@ public class App {
                 Base base = new Base(file,pays,mapcol);
                 basesSin.add(base);
             }
+            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGSSW18.csv")));
+            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
+            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
+
             for (Base base : basesSin) {
                 policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
                 updateStatutDates(base); //global
