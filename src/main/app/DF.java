@@ -85,19 +85,19 @@ public class DF implements Serializable {
 //        tdb2.saveToCSVFile_simple("populated");
 
 //        tdb2.addCoefficientColumns();
+//        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
+//        tdb2coef = new DF(tdb2, 0);
+//        tdb2coef.checkSumOfColumns();
+//        tdb2coef.saveToCSVFile_sortedCoef("coef");
+//        stopwatch.printElapsedTime("hf");
+//
+//        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
+//        tdb2coef = new DF(tdb2, 0);
+//        tdb2coef.checkSumOfColumns();
+//        tdb2coef.saveToCSVFile_sortedCoef("coef");
+//        stopwatch.printElapsedTime("fr");
 
-        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
-        tdb2coef = new DF(tdb2, 0);
-        tdb2coef.checkSumOfColumns();
-        tdb2coef.saveToCSVFile_sortedCoef("coef");
-        stopwatch.printElapsedTime("hf");
-
-        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
-        tdb2coef = new DF(tdb2, 0);
-        tdb2coef.checkSumOfColumns();
-        tdb2coef.saveToCSVFile_sortedCoef("coef");
-        stopwatch.printElapsedTime("fr");
-
+        stopwatch.printElapsedTime();
     }
     public DF(String path, char delim, Double sql) {
         fileName = path.substring(path.lastIndexOf("/") + 1);

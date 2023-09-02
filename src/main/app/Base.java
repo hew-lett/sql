@@ -77,6 +77,7 @@ public class Base extends DF {
         this.source = true;
         this.pays = pays;
         this.referentialRow = getReferentialRow(new String[]{"source"});
+        SimpleDateFormat dateParser = dateDefault; //override obligatoire (gamestop)
 
         if (pays.equals("Pologne")) {
             delim = '\t';
@@ -108,9 +109,26 @@ public class Base extends DF {
             nrow = csv_get_nrows(path.getPath(), delim);
 
             header = rows.next();
-            header = Arrays.stream(header)
-                    .filter(h -> h != null && !h.trim().isEmpty())
-                    .toArray(String[]::new);
+            if (pays.equals("Gamestop")) {
+                dateParser = new SimpleDateFormat("#yyyy-MM-dd#");
+                header = Arrays.stream(header)
+                        .map(h -> {
+                            if (h != null) {
+                                String trimmedHeader = h.trim();
+                                if ("Date_Declaration".equals(trimmedHeader)) {
+                                    return "Date_Déclaration";
+                                }
+                                return trimmedHeader;
+                            }
+                            return "";
+                        })
+                        .toArray(String[]::new);
+            } else {
+                header = Arrays.stream(header)
+                        .map(h -> h != null ? h.trim() : "")
+                        .toArray(String[]::new);
+            }
+
             boolean[] cols_kept = this.mapColnamesAndGetColsKept(mapping_col);
             header_unify();
             coltypes_populate(cols_kept);
@@ -130,7 +148,7 @@ public class Base extends DF {
                     String[] parsedRow = rows.next();
                     for (String s : parsedRow) {
                         if (coltypes[k] != SKP) {
-                            df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateParser);
                             j++;
                         }
                         k++;
@@ -147,7 +165,7 @@ public class Base extends DF {
                     String[] parsedRow = rows.next();
                     for (String s : parsedRow) {
                         if (coltypes[k] != SKP) {
-                            df.get(headerIndexes[j])[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            df.get(headerIndexes[j])[i] = get_lowercase_cell_of_type(s, coltypes[k], dateParser);
                             j++;
                         }
                         k++;
@@ -156,6 +174,9 @@ public class Base extends DF {
                 }
             }
             this.cleanStatut();
+            if(pays.equals("Gamestop")) {
+                this.cleanNumPoliceGS();
+            }
             this.date_autofill();
             this.createPivotTable();
             this.createYearlyPivotTable();
@@ -428,7 +449,6 @@ public class Base extends DF {
                 if (fileList.isEmpty()) return;
 
                 int dim = computeDimFICItaPol(folder, "Pologne");
-                System.out.println(dim);
                 CsvParserSettings settings = new CsvParserSettings();
                 settings.setDelimiterDetectionEnabled(true, TAB_DELIMITER);
                 settings.trimValues(true);
@@ -561,12 +581,17 @@ public class Base extends DF {
                 start = fileName.indexOf("FRMP");
             }
             end = fileName.indexOf("_", start);
-        } else if (pays.equals("Italie") || pays.equals("Pologne") || pays.equals("aux")) {
+        }
+        else if (pays.equals("Italie") || pays.equals("Pologne") || pays.equals("aux")) {
             start = fileName.indexOf("ICI");
             end = fileName.indexOf(".csv", start);
-        } else if (pays.equals("Espagne")) {
+        }
+        else if (pays.equals("Espagne")) {
             start = fileName.indexOf("ICI");
             end = fileName.indexOf("_", start);
+        }
+        else if (pays.equals("Gamestop")) {
+            return extractKeyGamestop(fileName);
         }
 
         if (start != -1 && end != -1) {
@@ -574,6 +599,16 @@ public class Base extends DF {
         }
 
         return fileName; // Default to full file name if pattern not found
+    }
+    public static String extractKeyGamestop(String input) {
+        int startIndex = input.indexOf("ICI");
+        int endIndex = input.indexOf(" at");
+
+        if (startIndex != -1 && endIndex != -1 && startIndex < endIndex) {
+            return input.substring(startIndex, endIndex).replace(" ","");
+        } else {
+            return "";
+        }
     }
     public void transformNumPoliceValues() {
         // Get the num_police column using your c method
@@ -1192,6 +1227,21 @@ public class Base extends DF {
         for (int i = 0; i < statuts.length; i++) {
             String currentStatut = (String) statuts[i];
             statuts[i] = currentStatut.replace("–", "-");
+        }
+    }
+    public void cleanNumPoliceGS() {
+        // Get the "statut" column
+        Object[] polices = this.c("num_police");
+
+        // Check if the column exists
+        if (polices == null) {
+            return;
+        }
+
+        // Iterate through each value in the column and replace big dashes with little dashes
+        for (int i = 0; i < polices.length; i++) {
+            String currentValue = (String) polices[i];
+            polices[i] = currentValue.replace(" ", "");
         }
     }
     void print(String statut) {

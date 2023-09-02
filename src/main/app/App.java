@@ -72,7 +72,7 @@ public class App {
         ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
         ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
         mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
-
+        getCoefsAcquisition();
         stopwatch.printElapsedTime("refs");
 //        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
 //        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
@@ -85,7 +85,7 @@ public class App {
 
             Base.currentHeaderRef = null;
             String folder = (String) ref_source.c("path")[i];
-            String pays = (String) ref_source.c("pays")[i];
+            String pays = (String) ref_source.c("pays_filekey")[i];
             String mapcol = (String) ref_source.c("mapping")[i];
             String estim = (String) ref_source.c("estimate")[i];
             String path_fic = (String) ref_source.c("path_fic")[i];
@@ -97,24 +97,35 @@ public class App {
             List<Base> basesSin = new ArrayList<>();
 
             for (File file : fileList) {
+//                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
                 Base base = new Base(file,pays,mapcol);
                 basesSin.add(base);
             }
-            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGSSW18.csv")));
-            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
-            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
+            if (pays.equals("Italie")) {
+                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
+                for (File file : fileListGS) {
+//                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
+                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
+                    basesSin.add(base);
+                }
+                //            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGSSW18.csv")));
+                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
+                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
+            }
 
             for (Base base : basesSin) {
                 policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
                 updateStatutDates(base); //global
             }
             estimate.getUniqueStatutsFromMap();
+            estimate.getUniqueNumPoliceEstimate();
             updateGlobalDatesFromStatutMap();
 
             Base baseFic = new Base(wd + path_fic,map_fic);
+            estimate.addFicMAT(baseFic);
+
             stopwatch.printElapsedTime("integration success");
 
-            estimate.addFicMAT(baseFic);
             estimate.addSinMAT(basesSin);
             estimate.addProvisions(basesSin);
 
@@ -181,7 +192,14 @@ public class App {
         }
         return false;
     }
-
+    public static void getCoefsAcquisition() {
+        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated_coef.csv",';',0);
+        TableCoefAcquisition addCA = new TableCoefAcquisition(tdb2);
+        tdb2 = new DF(wd + "TDB Part 2_France_populated_coef.csv",';',0);
+        addCA = new TableCoefAcquisition(tdb2);
+        System.out.println(FloatArrayDictionary.getTotalArraysPassed() + " total coefs added");
+        System.out.println(FloatArrayDictionary.getUniqueArraysStored() + " unique coefs stored");
+    }
     // VECTORS
     public static String[] keep_from_array(String[] arr, boolean[] which) {
         int len = sum_boolean(which);

@@ -27,6 +27,7 @@ public class Estimate extends DF {
     boolean[] mask_col;
     protected Stopwatch stopwatch = new Stopwatch();
     public Set<String> uniqueStatutsEstimate;
+    public Set<String> uniqueNumPoliceEstimate = new HashSet<>();
     public static final HashMap<String, Integer> monthMap = new HashMap<String, Integer>() {{
         put("jan.", Calendar.JANUARY);
         put("feb.", Calendar.FEBRUARY);
@@ -131,6 +132,16 @@ public class Estimate extends DF {
 
         this.uniqueStatutsEstimate = new LinkedHashSet<>(sortedStatuts);
     }
+    public void getUniqueNumPoliceEstimate() {
+        int contratIndex = find_in_arr_first_index(header, "Contrat");
+        for (int i = 0; i < nrow; i++) {
+            Object[] row = r(i);
+            String contratValue = (String) row[contratIndex];
+            if (contratValue != null && !contratValue.trim().isEmpty()) {
+                uniqueNumPoliceEstimate.add(contratValue);
+            }
+        }
+    }
 
     public void populateMonthSin(List<Base> bases, String statut) {
         int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
@@ -148,7 +159,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -201,7 +211,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -245,7 +254,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -282,7 +290,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -336,7 +343,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -380,7 +386,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -416,7 +421,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
@@ -457,7 +461,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
@@ -491,7 +494,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -522,7 +524,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
@@ -563,7 +564,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
                 if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
@@ -597,7 +597,6 @@ public class Estimate extends DF {
 
         for (Base base : bases) {
             String police = base.numPolice;
-            System.out.print(police + " | ");
 
             boolean[] mask_row = new boolean[this.nrow];
             for (int row = 0; row < this.nrow; row++) {
@@ -628,7 +627,6 @@ public class Estimate extends DF {
         } // showing mask
 
         for (String police : base.uniqueNumPoliceValues) {
-            System.out.print(police + " | ");
             Date minDateForPolice = base.numPoliceDateRangeMap.get(police).get(0);
             Date maxDateForPolice = base.numPoliceDateRangeMap.get(police).get(1);
             Map<String, Map<String, Double>> pivotForPolice = base.pivotTableFic.get(police).get(STATUT_FICTIF_FIC);
@@ -672,7 +670,6 @@ public class Estimate extends DF {
         } // showing mask
 
         for (String police : base.uniqueNumPoliceValues) {
-            System.out.print(police + " | ");
             Date minDateForPolice = base.numPoliceDateRangeMap.get(police).get(0);
             Date maxDateForPolice = base.numPoliceDateRangeMap.get(police).get(1);
             Map<String, Map<String, Double>> pivotForPolice = base.pivotTableYearlyFic.get(police).get(STATUT_FICTIF_FIC);
@@ -712,7 +709,6 @@ public class Estimate extends DF {
 
 
         for (String police : base.uniqueNumPoliceValues) {
-            System.out.print(police + " | ");
 
             Map<String, Double> pivotForPolice = base.pivotTableTotalFic.get(police).get(STATUT_FICTIF_FIC);
 
@@ -894,7 +890,7 @@ public class Estimate extends DF {
         subHeaderNames.add(""); // bequille
         appendMultipleTables(columnNames, subHeaderNames);
     }
-    public void byMonth() {
+    public void addMois() {
         ArrayList<String> columnNames = new ArrayList<>();
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
 
@@ -920,7 +916,7 @@ public class Estimate extends DF {
 
         begin = ncol;
         tableName_ind = header.length;
-        byMonth();
+        addMois();
         subheader[tableName_ind] = status + " mensuel";
         appendUpdate(begin);
         populateMonthFic(baseFic);
@@ -939,6 +935,101 @@ public class Estimate extends DF {
         appendUpdate(begin);
         populateTotalFic(baseFic);
 
+    }
+    public void addSinMAT(List<Base> bases) {
+        String statut = "Sinistre total";
+        int begin;
+        int tableName_ind;
+
+        begin = ncol;
+        tableName_ind = header.length;
+        addMois();
+        subheader[tableName_ind] = statut + " mensuel";
+        appendUpdate(begin);
+        populateMonthSinAllStatuts(bases);
+
+        begin = ncol;
+        tableName_ind = header.length;
+        addAnnees();
+        subheader[tableName_ind] = statut + " annuel";
+        appendUpdate(begin);
+        populateYearSinAllStatuts(bases);
+
+        begin = ncol;
+        tableName_ind = header.length;
+        addTotal();
+        subheader[tableName_ind] = statut + " total";
+        appendUpdate(begin);
+        populateTotalSinAllStatuts(bases);
+
+        for (String statutEs : uniqueStatutsEstimate) {
+            begin = ncol;
+            tableName_ind = header.length;
+            addMois();
+            subheader[tableName_ind] = statutEs + " mensuel";
+            appendUpdate(begin);
+            populateMonthSin(bases, statutEs);
+
+            begin = ncol;
+            tableName_ind = header.length;
+            addAnnees();
+            subheader[tableName_ind] = statutEs + " annuel";
+            appendUpdate(begin);
+            populateYearSin(bases, statutEs);
+
+            begin = ncol;
+            tableName_ind = header.length;
+            addTotal();
+            subheader[tableName_ind] = statutEs + " total";
+            appendUpdate(begin);
+            populateTotalSin(bases, statutEs);
+        }
+
+        statut = "Sinistre Nombre";
+
+        begin = ncol;
+        tableName_ind = header.length;
+        addMois();
+        subheader[tableName_ind] = statut + " mensuel";
+        appendUpdate(begin);
+        populateMonthSinAllStatutsN(bases);
+
+        begin = ncol;
+        tableName_ind = header.length;
+        addAnnees();
+        subheader[tableName_ind] = statut + " annuel";
+        appendUpdate(begin);
+        populateYearSinAllStatutsN(bases);
+
+        begin = ncol;
+        tableName_ind = header.length;
+        addTotal();
+        subheader[tableName_ind] = statut + " total";
+        appendUpdate(begin);
+        populateTotalSinAllStatutsN(bases);
+
+        for (String statutEs : uniqueStatutsEstimate) {
+            begin = ncol;
+            tableName_ind = header.length;
+            addMois();
+            subheader[tableName_ind] = statutEs + " mensuel";
+            appendUpdate(begin);
+            populateMonthSinN(bases, statutEs);
+
+            begin = ncol;
+            tableName_ind = header.length;
+            addAnnees();
+            subheader[tableName_ind] = statutEs + " annuel";
+            appendUpdate(begin);
+            populateYearSinN(bases, statutEs);
+
+            begin = ncol;
+            tableName_ind = header.length;
+            addTotal();
+            subheader[tableName_ind] = statutEs + " total";
+            appendUpdate(begin);
+            populateTotalSinN(bases, statutEs);
+        }
     }
     public void addProvisions(List<Base> bases) {
         int begin = ncol;
@@ -972,6 +1063,38 @@ public class Estimate extends DF {
         subheader = Arrays.copyOf(subheader, ncol);
         Arrays.fill(subheader, subheader.length - (ncol - begin), subheader.length, "");
         appendUpdateProvisions(begin);
+    }
+    public void addPrimesAcquises() {
+        int begin = ncol;
+        int tableName_ind = header.length;
+        subheader[tableName_ind] = "Primes acquises mensuel";
+        addMois();
+        appendUpdate(begin);
+        populatePrimesAcquises();
+    }
+    public void populatePrimesAcquises() {
+        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
+        int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
+        int begin = ncol - lastAppendSize;
+        int localBegin;
+
+        for (int i = 0; i < nrow; i++) {
+            String contractKey = (String) this.c(ind_contrat)[i];
+            String dateKey = (String) this.c(ind_datePeriode)[i];
+            String combinedKey = contractKey + "_" + dateKey;
+            List<Object> values = TableCoefAcquisition.getResultMap().get(combinedKey);
+//            Double nAdhe = (Double) values.get(0);
+            Double prime = (Double) values.get(1);
+            float[] coefs = (float[]) values.get(2);
+
+            for (localBegin = begin; ; localBegin++) {
+                if (header[i].equals(dateKey)) break;
+            }
+            for (int col = localBegin, coefInd = 0; col < ncol; col++, coefInd++) {
+                this.c(col)[i] = String.format("%.2f", prime * coefs[coefInd]);
+            }
+        }
+
     }
     private void populateProvisionsColumns(Object[] contratColumn, Object[] datePeriodeColumn,
                                            Map<String, Map<String, List<Integer>>> dataMap,
@@ -1020,112 +1143,22 @@ public class Estimate extends DF {
         updateHeaderForCoutMoyen(label);
     }
     private void updateHeaderForCoutMoyen(String statut) {
-        List<String> newHeaders = new ArrayList<>(Arrays.asList(header));
+        List<String> newHeaders = new ArrayList<>(Arrays.asList(subheader));
         newHeaders.add("Cout Moyen: " + statut);
-        header = newHeaders.toArray(new String[0]);
+        subheader = newHeaders.toArray(new String[0]);
     }
     private void updateHeaderForProvisions(String statut) {
         List<String> newHeaders = new ArrayList<>(Arrays.asList(header));
         for (int year = 2013; year <= 2026; year++) {
-            newHeaders.add("Provisions: " + statut + " " + year);
+            newHeaders.add(String.valueOf(year));
         }
         header = newHeaders.toArray(new String[0]);
+
+        List<String> newSubHeaders = new ArrayList<>(Arrays.asList(subheader));
+        newSubHeaders.add("Provisions: " + statut);
+        subheader = newSubHeaders.toArray(new String[0]);
     }
-    public void addSinMAT(List<Base> bases) {
-        String statut = "Sinistre Reglement";
-        int begin;
-        int tableName_ind;
 
-        begin = ncol;
-        tableName_ind = header.length;
-        byMonth();
-        subheader[tableName_ind] = statut + " mensuel";
-        appendUpdate(begin);
-        populateMonthSinAllStatuts(bases);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addAnnees();
-        subheader[tableName_ind] = statut + " annuel";
-        appendUpdate(begin);
-        populateYearSinAllStatuts(bases);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addTotal();
-        subheader[tableName_ind] = statut + " total";
-        appendUpdate(begin);
-        populateTotalSinAllStatuts(bases);
-
-        for (String statutEs : uniqueStatutsEstimate) {
-            begin = ncol;
-            tableName_ind = header.length;
-            byMonth();
-            subheader[tableName_ind] = statutEs + " mensuel";
-            appendUpdate(begin);
-            populateMonthSin(bases, statutEs);
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addAnnees();
-            subheader[tableName_ind] = statutEs + " annuel";
-            appendUpdate(begin);
-            populateYearSin(bases, statutEs);
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addTotal();
-            subheader[tableName_ind] = statutEs + " total";
-            appendUpdate(begin);
-            populateTotalSin(bases, statutEs);
-        }
-
-        statut = "Sinistre Nombre";
-
-        begin = ncol;
-        tableName_ind = header.length;
-        byMonth();
-        subheader[tableName_ind] = statut + " mensuel";
-        appendUpdate(begin);
-        populateMonthSinAllStatutsN(bases);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addAnnees();
-        subheader[tableName_ind] = statut + " annuel";
-        appendUpdate(begin);
-        populateYearSinAllStatutsN(bases);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addTotal();
-        subheader[tableName_ind] = statut + " total";
-        appendUpdate(begin);
-        populateTotalSinAllStatutsN(bases);
-
-        for (String statutEs : uniqueStatutsEstimate) {
-            begin = ncol;
-            tableName_ind = header.length;
-            byMonth();
-            subheader[tableName_ind] = statutEs + " mensuel";
-            appendUpdate(begin);
-            populateMonthSinN(bases, statutEs);
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addAnnees();
-            subheader[tableName_ind] = statutEs + " annuel";
-            appendUpdate(begin);
-            populateYearSinN(bases, statutEs);
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addTotal();
-            subheader[tableName_ind] = statutEs + " total";
-            appendUpdate(begin);
-            populateTotalSinN(bases, statutEs);
-        }
-    }
     private void appendUpdate(int begin) {
         int end;
         boolean[] newMaskCol;
