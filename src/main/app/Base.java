@@ -1043,13 +1043,15 @@ public class Base extends DF {
             String statut = (String) statuts[i];
             String date_sous = format.format((Date) date_sousArray[i]);
             String date_surv = format.format((Date) date_survArray[i]);
-
+//            if (statut.equals("terminé - accepté") && date_sous.equals("11-2022") && date_surv.equals("05-2023")) {
+//                System.out.println("here");
+//            }
             pivotTableN
                     .computeIfAbsent(statut, k -> new HashMap<>())
                     .computeIfAbsent(date_sous, k -> new HashMap<>())
                     .merge(date_surv, 1, Integer::sum); // Increase the counter by 1 for each appearance
         }
-
+        System.out.println("ended");
         // The rounding part is no longer necessary since you are just counting appearances.
     }
     public void createYearlyPivotTableN() {
@@ -1066,6 +1068,7 @@ public class Base extends DF {
 
                 for (Map.Entry<String, Integer> innerEntry : innerMap.entrySet()) {
                     String date_surv = innerEntry.getKey();
+                    Integer value = innerEntry.getValue();
 
                     try {
                         Date date = format.parse(date_surv);
@@ -1074,7 +1077,7 @@ public class Base extends DF {
                         pivotTableYearlyN
                                 .computeIfAbsent(statut, k -> new HashMap<>())
                                 .computeIfAbsent(date_sous, k -> new HashMap<>())
-                                .merge(year, 1, Integer::sum); // Increase the counter by 1 for each appearance
+                                .merge(year, value, Integer::sum); // Sum the actual value instead of incrementing by 1
 
                     } catch (ParseException e) {
                         e.printStackTrace(); // handle parsing exceptions
@@ -1119,11 +1122,11 @@ public class Base extends DF {
 
                     pivotTableAllStatutsN
                             .computeIfAbsent(date_sous, k -> new HashMap<>())
-                            .merge(date_surv, 1, Integer::sum); // Count appearances
+                            .merge(date_surv, count, Integer::sum); // Sum the actual value instead of counting appearances
                 }
             }
         }
-        // No need for rounding since we are just counting appearances.
+        // No need for rounding since we are summing actual values.
     }
     public void createYearlyPivotAllStatutsN() {
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
@@ -1143,7 +1146,7 @@ public class Base extends DF {
 
                     pivotTableAllStatutsYearlyN
                             .computeIfAbsent(date_sous, k -> new HashMap<>())
-                            .merge(year, 1, Integer::sum); // Count appearances
+                            .merge(year, count, Integer::sum); // Count appearances
 
                 } catch (ParseException e) {
                     e.printStackTrace();
