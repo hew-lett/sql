@@ -7,6 +7,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -47,6 +48,10 @@ public class App {
     public static DF tdb2coef;
     public static DF tdb2fr;
     public static DF tdb2_ref;
+    public static DF SPprevi;
+    public static DF PB;
+    public static Map<String,Map<Double, Double>> mapSPprevi = new HashMap<>();
+    public static Map<String,Map<String, Double>> mapPB = new HashMap<>();
     public static SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
     public static Map<String, Map<String, List<Date>>> policeStatutDateRangeMap = new HashMap<>();
     public static Map<String, List<Date>> globalStatutDateRangeMap = new HashMap<>();
@@ -61,6 +66,7 @@ public class App {
         CURRENT_MONTH = now.format(formatter);
         PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
     }
+    private static final LocalDate TODAY = LocalDate.now();
 
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
@@ -72,6 +78,10 @@ public class App {
         ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
         ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
         mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
+        PB = new DF(wd + "PB Micromania.csv",';','!');
+        PB.mapPoliceToPB();
+        SPprevi = new DF(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1");
+        SPprevi.mapPoliceToSPPrevi();
         getCoefsAcquisition();
         stopwatch.printElapsedTime("refs");
 //        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
@@ -122,12 +132,12 @@ public class App {
             updateGlobalDatesFromStatutMap();
 
             Base baseFic = new Base(wd + path_fic,map_fic);
-//            estimate.addFicMAT(baseFic);
-//
-//            stopwatch.printElapsedTime("integration success");
-//
-//            estimate.addSinMAT(basesSin);
-//            estimate.addProvisions(basesSin);
+            estimate.addFicMAT(baseFic);
+
+            stopwatch.printElapsedTime("integration success");
+
+            estimate.addSinMAT(basesSin);
+            estimate.addProvisions(basesSin);
             estimate.addPrimesAcquises();
 
             stopwatch.printElapsedTime("calculated");
@@ -135,6 +145,16 @@ public class App {
 
         }
 
+    }
+    public static boolean isMonthAfterCurrent(String monthYear) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-yyyy");
+        YearMonth inputYearMonth = YearMonth.parse(monthYear, formatter);
+
+        // Extract the current year and month from the TODAY variable
+        YearMonth currentYearMonth = YearMonth.from(TODAY);
+
+        // Check if inputYearMonth is after currentYearMonth
+        return inputYearMonth.isAfter(currentYearMonth);
     }
     public static void updateStatutDates(Base base) {
         for (Map.Entry<String, List<Date>> entry : base.statutDateRangeMap.entrySet()) {

@@ -1229,6 +1229,9 @@ public class Base extends DF {
         for (int i = 0; i < statuts.length; i++) {
             String currentStatut = (String) statuts[i];
             statuts[i] = currentStatut.replace("–", "-");
+            if ("en cours - en attente de prescription".equals(currentStatut)) {
+                statuts[i] = "en attente de prescription";
+            }
         }
     }
     public void cleanNumPoliceGS() {

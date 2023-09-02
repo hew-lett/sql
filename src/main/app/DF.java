@@ -201,6 +201,53 @@ public class DF implements Serializable {
         }
         this.headerAndColtypesDropSKP();
     } //ref_prog
+    public DF(String path, char delim, char PB) {
+        String filename = path.substring(path.lastIndexOf("/") + 1);
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+        try (Reader inputReader = new InputStreamReader(Files.newInputStream(
+                new File(path).toPath()), encoding)) {
+            CsvParser parser = new CsvParser(settings);
+            List<String[]> parsedRows = parser.parseAll(inputReader);
+            Iterator<String[]> rows = parsedRows.iterator();
+            header = rows.next();
+            for (int i = 0; i < header.length; i++) {
+                header[i] = header[i].toLowerCase();
+            }
+            ncol = header.length;
+            coltypes = new Col_types[header.length];
+
+            Arrays.fill(coltypes,STR);
+            for (int i = 0; i < ncol; i++) {
+                if (header[i].startsWith("date")) {
+                    coltypes[i] = DAT;
+                }
+            }
+
+            nrow = parsedRows.size() - 1;
+            df = new ArrayList<>(get_len(coltypes));
+            this.df_populate(coltypes);
+
+            int i = 0;
+            while (rows.hasNext()) {
+                int j = 0;
+                int k = 0;
+                String[] parsedRow = rows.next();
+                for (String s : parsedRow) {
+                    if (coltypes[k] != Col_types.SKP) {
+                        df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k],dateDefault);
+                        j++;
+                    }
+                    k++;
+                }
+                i++;
+            }
+        } catch (IOException ignored) {
+        }
+        this.headerAndColtypesDropSKP();
+        this.cleanPB();
+    } //PB
     public DF(String path, char delim, int tdb) {
         this.fullPath = path;
         CsvParserSettings settings = new CsvParserSettings();
@@ -1036,14 +1083,14 @@ public class DF implements Serializable {
         header = new String[ncol];
         int i = 0;
         for (Cell c : row) {
-            header[i] = c.getStringCellValue();
+            header[i] = c.getStringCellValue().replace("\n","");
             i++;
         }
 
         Row secondRow = rowIter.hasNext() ? rowIter.next() : null;
 
         if (secondRow != null) {
-            coltypes = detectColumnTypesXlsx(secondRow);
+            coltypes = detectColumnTypesXlsx(secondRow, header.length);
         } else {
             coltypes = new Col_types[ncol];
             Arrays.fill(coltypes, Col_types.STR);  // Default types to STR if there's no second row
@@ -1066,6 +1113,7 @@ public class DF implements Serializable {
             row_number++;
         }
     } //ref_triangle //mapping
+
     public DF (String path, String sheet_name, boolean uppercase) throws IOException {
 
         InputStream is = Files.newInputStream(new File(path).toPath());
@@ -1207,9 +1255,8 @@ public class DF implements Serializable {
             stmt.executeUpdate(updateSQL);
         }
     }
-    private Col_types[] detectColumnTypesXlsx(Row headerRow) {
-        int totalColumns = headerRow.getLastCellNum();
-        Col_types[] detectedTypes = new Col_types[totalColumns];
+    private Col_types[] detectColumnTypesXlsx(Row headerRow, int size) {
+        Col_types[] detectedTypes = new Col_types[size];
 
         // Default all columns to STR
         Arrays.fill(detectedTypes, Col_types.STR);
@@ -2611,6 +2658,84 @@ public class DF implements Serializable {
     }
     public void sortByColumnName(String colName) {
         sortByColumnName(colName, true);
+    }
+    public void mapPoliceToSPPrevi() {
+        int identifiantIndex = find_in_arr_first_index(header, "IDENTIFIANT CONTRAT");
+        int spPreviIndex = find_in_arr_first_index(header, "S/P PREVI SANS ICI");
+        int anneesIndex = find_in_arr_first_index(header, "ANNEES");
+
+        // Error handling if columns are not found
+        if (identifiantIndex == -1 || spPreviIndex == -1 || anneesIndex == -1) {
+            throw new IllegalArgumentException("Required columns not found in header.");
+        }
+
+        for (int i = 0; i < nrow; i++) {
+            String identifiant = (String) SPprevi.c(identifiantIndex)[i];
+            Double annee = (Double) SPprevi.c(anneesIndex)[i];
+            Double spPrevi = (Double) SPprevi.c(spPreviIndex)[i];
+
+            mapSPprevi
+                    .computeIfAbsent(identifiant, k -> new HashMap<>())
+                    .put(annee, spPrevi);
+        }
+    }
+
+    public void mapPoliceToPB() {
+        int identifiantIndex = find_in_arr_first_index(header, "identifiant contrat");
+        int indexPB = find_in_arr_first_index(header, "participation aux benefices");
+        int dateIndex = find_in_arr_first_index(header, "date");
+
+        // Error handling if columns are not found
+        if (identifiantIndex == -1 || indexPB == -1 || dateIndex == -1) {
+            throw new IllegalArgumentException("Required columns not found in header.");
+        }
+
+        SimpleDateFormat sdfOutput = new SimpleDateFormat("MM-yyyy");
+
+        for (int i = 0; i < nrow; i++) {
+            System.out.println((String) PB.c(indexPB)[i]);
+            String identifiant = (String) PB.c(identifiantIndex)[i];
+            Date dateValue = (Date) PB.c(dateIndex)[i];
+            String formattedDate = sdfOutput.format(dateValue);
+            Double PBv = Double.parseDouble((String) PB.c(indexPB)[i]);
+
+            mapPB
+                    .computeIfAbsent(identifiant, k -> new HashMap<>())
+                    .put(formattedDate, PBv);
+        }
+    }
+
+
+    public void cleanPB() {
+        // Assuming df is a list of columns and each column is an array of values
+        int participationIndex = -1;
+        for (int i = 0; i < header.length; i++) {
+            if ("PARTICIPATION AUX BENEFICES".equalsIgnoreCase(header[i])) {
+                participationIndex = i;
+                break;
+            }
+        }
+
+        if (participationIndex != -1) {
+            Object[] participationCol = df.get(participationIndex);
+            for (int j = 0; j < participationCol.length; j++) {
+                if (participationCol[j] != null) {
+                    String value = (String) participationCol[j];
+                    value = value.replace("-", "")
+                            .replace("€", "")
+                            .replaceAll("\\s+", "")  // This removes regular whitespace
+                            .replace("\u00A0", "")  // This removes non-breaking spaces
+                            .replace("\u202F", "")  // This removes narrow non-breaking spaces
+                            .replace(",", ".");
+                    if (value.isEmpty()) {
+                        value = "0";
+                    }
+                    participationCol[j] = value;
+                }
+
+
+            }
+        }
     }
 
 }

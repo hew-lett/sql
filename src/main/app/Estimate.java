@@ -21,8 +21,12 @@ public class Estimate extends DF {
     public List<Date> headerCalcul;
     int baseNcol = 0;
     int lastAppendSize = 0;
-    protected static Set<String> uniqueNumPoliceValues = new HashSet<>();
-
+    String[] totalPA;
+    String[] totalPAaDate;
+    String[] tauxAcquisition;
+    Double[] SPprevi;
+    Double[] colPB;
+    Double[] SinUltime;
 
     boolean[] mask_col;
     protected Stopwatch stopwatch = new Stopwatch();
@@ -853,7 +857,7 @@ public class Estimate extends DF {
         // Copy old values
         System.arraycopy(header, 0, newHeader, 0, ncol);
         System.arraycopy(subheader, 0, newSubheader, 0, ncol);
-        System.arraycopy(coltypes, 0, newColtypes, 0, ncol);
+//        System.arraycopy(coltypes, 0, newColtypes, 0, ncol);
         newDf.addAll(df);
 
         // Initialize new values
@@ -1012,21 +1016,21 @@ public class Estimate extends DF {
             begin = ncol;
             tableName_ind = header.length;
             addMois();
-            subheader[tableName_ind] = statutEs + " mensuel";
+            subheader[tableName_ind] = "Nombre" + statutEs + " mensuel";
             appendUpdate(begin);
             populateMonthSinN(bases, statutEs);
 
             begin = ncol;
             tableName_ind = header.length;
             addAnnees();
-            subheader[tableName_ind] = statutEs + " annuel";
+            subheader[tableName_ind] = "Nombre" + statutEs + " annuel";
             appendUpdate(begin);
             populateYearSinN(bases, statutEs);
 
             begin = ncol;
             tableName_ind = header.length;
             addTotal();
-            subheader[tableName_ind] = statutEs + " total";
+            subheader[tableName_ind] = "Nombre" + statutEs + " total";
             appendUpdate(begin);
             populateTotalSinN(bases, statutEs);
         }
@@ -1062,23 +1066,50 @@ public class Estimate extends DF {
         for (int col = begin; col < ncol; col++) {
             if (subheader[col] == null) subheader[col] = "";
         }
-        appendUpdateProvisions(begin);
+        appendUpdateKeepAll(begin);
     }
     public void addPrimesAcquises() {
         int begin = ncol;
         addMois();
         subheader[begin] = "Primes acquises mensuel";
-        appendUpdate(begin);
-        populatePrimesAcquises();
+        appendUpdateKeepAll(begin);
+        populatePrimesAcquisesMonthTotal();
+
+        begin = ncol;
+        addAnnees();
+        subheader[begin] = "Primes acquises annuel";
+        appendUpdateKeepAll(begin);
+        populatePrimesAcquisesYearly();
+
+        begin = ncol;
+        this.df.add(totalPA);
+        this.df.add(totalPAaDate);
+        ncol+=2;
+        // Extend and populate header and subheader
+        header = Arrays.copyOf(header, ncol);
+        subheader = Arrays.copyOf(subheader, ncol);
+        subheader[ncol - 2] = "Total primes acquises";
+        subheader[ncol - 1] = "Total PA à date";
+        header[ncol - 2] = ""; header[ncol - 1] = "";
+        appendUpdateKeepAll(begin);
+
     }
-    public void populatePrimesAcquises() {
+    public void populatePrimesAcquisesMonthTotal() {
         int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
         int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
         int begin = ncol - lastAppendSize;
-        int localBegin;
+        int monthBegin;
+        double[] total = new double[nrow];
+        double[] total_aDate = new double[nrow];
+        double[] taux = new double[nrow];
 
         // Create a map to store contractKey and its corresponding count of missing dateKeys.
         Map<String, Integer> warningMap = new HashMap<>();
+
+        // Get today's month and year
+        Calendar today = Calendar.getInstance();
+        int currentYear = today.get(Calendar.YEAR);
+        int currentMonth = today.get(Calendar.MONTH) + 1;  // Calendar.MONTH is zero-based
 
         for (int i = 0; i < nrow; i++) {
             String contractKey = (String) this.c(ind_contrat)[i];
@@ -1095,11 +1126,107 @@ public class Estimate extends DF {
             Double prime = (Double) values.get(1);
             float[] coefs = (float[]) values.get(2);
 
-            for (localBegin = begin; ; localBegin++) {
-                if (header[localBegin].equals(dateKey)) break;
+            // Extract the year and month from the dateKey which is in "MM-yyyy" format.
+            String[] parts = dateKey.split("-");
+            int month = Integer.parseInt(parts[0]);
+            int year = Integer.parseInt(parts[1]);
+
+            monthBegin = -1;
+            for (int col = begin; col < ncol; col++) {
+                if (header[col].equals(dateKey)) {
+                    monthBegin = col; break;
+                }
             }
-            for (int col = localBegin, coefInd = 0; col < ncol; col++, coefInd++) {
-                this.c(col)[i] = String.format("%.4f", prime * coefs[coefInd]);
+
+            for (int col = monthBegin, coefInd = 0; col < ncol && coefInd < coefs.length; col++, coefInd++) {
+                double value = prime * coefs[coefInd];
+                this.c(col)[i] = String.format("%.2f", value);
+
+                // Add to the total
+                total[i] += value;
+
+                // If the date is less than or equal to today's month/year, add to totalsToToday
+                if (year < currentYear || (year == currentYear && month <= currentMonth)) {
+                    total_aDate[i] += value;
+                }
+
+                // Adjust the month and year for the next iteration
+                month++;
+                if (month > 12) {
+                    month = 1;
+                    year++;
+                }
+            }
+        }
+
+        totalPA = convertToStringArrayWithTwoDecimals(total);
+        totalPAaDate = convertToStringArrayWithTwoDecimals(total_aDate);
+        for (int i = 0; i < nrow; i++) {
+            taux[i] = total_aDate[i] / total[i];
+        }
+        tauxAcquisition = convertToStringArrayWithTwoDecimals(taux);
+
+        // Print out the warning messages after iterating through all rows.
+        for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
+            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " mois.");
+        }
+    }
+    public void populatePrimesAcquisesYearly() {
+        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
+        int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
+        int begin = ncol - lastAppendSize;
+
+        // Create a map to store contractKey and its corresponding count of missing dateKeys.
+        Map<String, Integer> warningMap = new HashMap<>();
+
+        for (int i = 0; i < nrow; i++) {
+            String contractKey = (String) this.c(ind_contrat)[i];
+            String dateKey = (String) this.c(ind_datePeriode)[i];
+            String combinedKey = contractKey + "_" + dateKey;
+
+            // Extract the year and month from the dateKey which is in "MM-yyyy" format.
+            String[] parts = dateKey.split("-");
+            int month = Integer.parseInt(parts[0]);
+            String yearKey = parts[1];
+
+            List<Object> values = TableCoefAcquisition.getResultMap().get(combinedKey.toLowerCase());
+            if (values == null) {
+                // Update the count for the contractKey in the warning map.
+                warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
+                continue;
+            }
+
+            Double prime = (Double) values.get(1);
+            float[] coefs = (float[]) values.get(2);
+
+            int coefIndex = 0;
+            while (coefIndex < coefs.length) {
+                int monthsRemaining = 12 - month + 1;  // Including the current month
+                float accumulatedCoefficient = 0f;
+                for (int j = 0; j < monthsRemaining && coefIndex < coefs.length; j++) {
+                    accumulatedCoefficient += coefs[coefIndex];
+                    coefIndex++;
+                }
+
+                int yearColumnIndex = -1;
+                for (int col = begin; col < ncol; col++) {
+                    if (header[col].equals(yearKey)) {
+                        yearColumnIndex = col;
+                        break;
+                    }
+                }
+
+                if (yearColumnIndex == -1) {
+                    System.out.println("Error: No column found for year " + yearKey);
+                    break;
+                }
+
+                double value = prime * accumulatedCoefficient;
+                this.c(yearColumnIndex)[i] = String.format("%.2f", value);
+
+                // Reset for the next year
+                yearKey = String.valueOf(Integer.parseInt(yearKey) + 1);
+                month = 1;
             }
         }
 
@@ -1108,7 +1235,135 @@ public class Estimate extends DF {
             System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " mois.");
         }
     }
+/*    S/P previ hors PB
+    S/P si pas réel acquis avec provision
+    S/P si pas reel ultime avant PB
+    S/P si pas reel ultime apres PB
+            LastTriangle*/
 
+    public void addSP() {
+        int begin = ncol;
+
+        String[] colsToAdd = new String[] {"PB","S/P previ hors PB","S/P si pas réel acquis avec provision",
+                "S/P si pas reel ultime avant PB","S/P si pas reel ultime apres PB", "Sinistre Ultime"};
+        addColumnsString(colsToAdd);
+        int startTriangle = ncol;
+        addMois();
+        appendUpdateKeepAll(begin);
+        populateLT(startTriangle);
+    }
+    private void populateLT (int startCol) {
+        int trianglePAindex = find_in_arr_first_index(subheader, "Primes acquises mensuel");
+        int triangleComptaIndex = find_in_arr_first_index(subheader, "Comptable mensuel");
+        int cmEncours = find_in_arr_first_index(subheader, "Cout Moyen: En cours");
+        int cmEncoursAcc = find_in_arr_first_index(subheader, "Cout Moyen: En cours - accepté");
+        int nEnCours = find_in_arr_first_index(subheader, "en cours mensuel");
+        int nEnAttente = find_in_arr_first_index(subheader, "en attente de prescription mensuel");
+        int nEnCoursAcc = find_in_arr_first_index(subheader, "en cours - accepté mensuel");
+        int regulIndex = find_in_arr_first_index(header, "Régularisation");
+
+        int[] indexes = {trianglePAindex,triangleComptaIndex,cmEncours,cmEncoursAcc,nEnCours,nEnAttente,nEnCoursAcc,regulIndex};
+
+        for (int index : indexes) {
+            if (index == -1) {
+                throw new RuntimeException("Impossible de calculer SP, une des colonnes absente");
+            }
+        }
+
+        SinUltime = new Double[nrow]; // Initialize the SinUltime array to store the sums.
+
+        boolean regul;
+        for (int i = 0; i < nrow; i++) {
+            double rowSum = 0.0; // To keep track of the sum for the current row.
+
+            regul = "oui".equalsIgnoreCase((String) this.c(regulIndex)[i]);
+            if (regul) {
+                for (int col = startCol; col < ncol; col++) {
+                    this.c(col)[i] = 0;
+                }
+            } else {
+                for (int col = startCol, offset = 0; col < ncol; col++, offset++) {
+                    double currentCellValue;
+
+                    if (isMonthAfterCurrent(header[col])) {
+                        currentCellValue = SPprevi[i] * parseValueAt(trianglePAindex + offset, i);
+                    } else {
+                        double triangleComptaValue = parseValueAt(triangleComptaIndex + offset, i);
+                        double cmEncoursValue = parseValueAt(cmEncours, i);
+                        double nEnCoursValue = parseValueAt(nEnCours + offset, i);
+                        double nEnAttenteValue = parseValueAt(nEnAttente + offset, i);
+                        double cmEncoursAccValue = parseValueAt(cmEncoursAcc, i);
+                        double nEnCoursAccValue = parseValueAt(nEnCoursAcc + offset, i);
+
+                        currentCellValue = triangleComptaValue + cmEncoursValue * (nEnCoursValue + nEnAttenteValue) + cmEncoursAccValue * nEnCoursAccValue;
+                    }
+
+                    this.c(col)[i] = currentCellValue; // Assigning the computed value to the cell.
+                    rowSum += currentCellValue; // Add the current cell's value to the row's running sum.
+                }
+            }
+
+            SinUltime[i] = rowSum; // Store the sum for the current row in the SinUltime array.
+        }
+
+    }
+    private void populateCoefsSP (String[] cols) {
+        int indSinUltime = find_in_arr_first_index(subheader,"Sinistre Ultime");
+        int indSPprevi = find_in_arr_first_index(subheader,"S/P previ hors PB");
+        int indSPAaP = find_in_arr_first_index(subheader,"S/P si pas réel acquis avec provision");
+        int indSPUavantPB = find_in_arr_first_index(subheader,"S/P si pas reel ultime avant PB");
+        int indSPUapresPB = find_in_arr_first_index(subheader,"S/P si pas reel ultime apres PB");
+        int indexPAaDate = find_in_arr_first_index(subheader, "Total PA à date");
+        int indexPB = find_in_arr_first_index(subheader, "PB");
+
+        int indexCMenCours = find_in_arr_first_index(subheader, "Cout Moyen: En cours");
+        int indexEncours = find_in_arr_first_index(subheader, "Nombre en cours total");
+        int indexEnAttente = find_in_arr_first_index(subheader, "Nombre en cours total");
+        int indexSumFic = find_in_arr_first_index(subheader, "Comptable total");
+
+        int indexContrat = find_in_arr_first_index(header, "Contrat");
+        int indexDP = find_in_arr_first_index(header, "Date Periode");
+        int indexMTPA = find_in_arr_first_index(header, "MONTANT TOTAL PRIME ASSUREUR");
+
+
+        SPprevi = new Double[nrow];
+        colPB = new Double[nrow];
+        String contrat; String date;
+        for (int i = 0; i < nrow; i++) {
+            contrat = (String) this.c(indexContrat)[i];
+            date = (String) this.c(indexDP)[i];
+
+            // Extract year from the date
+            String[] dateParts = date.split("-");
+            double year = Double.parseDouble(dateParts[1]);
+
+            Map<Double, Double> spPreviMap = mapSPprevi.get(contrat);
+            if (spPreviMap != null) {
+                SPprevi[i] = spPreviMap.get(year);
+            } else {
+                // Handle or set default value if not found
+                SPprevi[i] = 0.0;  // or any default value
+            }
+
+            Map<String, Double> pbMap = mapPB.get(contrat);
+            if (pbMap != null) {
+                colPB[i] = pbMap.get(date);
+            } else {
+                // Handle or set default value if not found
+                colPB[i] = 0.0;  // or any default value
+            }
+        }
+
+        for (int i = 0; i < nrow; i++) {
+            this.c(indSPprevi)[i] = SPprevi[i];
+            this.c(indSinUltime)[i] = SinUltime[i];
+            this.c(indexPB)[i] = colPB[i];
+//            this.c(indSPAaP)[i] =
+        }
+    }
+    private double parseValueAt(int col, int row) {
+        return Double.parseDouble((String) this.c(col)[row]);
+    }
     private void populateProvisionsColumns(Object[] contratColumn, Object[] datePeriodeColumn,
                                            Map<String, Map<String, List<Integer>>> dataMap,
                                            Map<String, Double> coutMoyenMap,
@@ -1180,7 +1435,7 @@ public class Estimate extends DF {
             }
         }
     }
-    private void appendUpdateProvisions(int begin) {
+    private void appendUpdateKeepAll(int begin) {
         int end;
         boolean[] newMaskCol;
 
@@ -1349,7 +1604,27 @@ public class Estimate extends DF {
         subheader[ncol - 1] = newSubheader;
 
     }
+    public void addColumnsString(String[] colsToAdd) {
+        // Extend the header and subheader
+        int ncols = colsToAdd.length;
+        ncol += ncols;
+        header = Arrays.copyOf(header, ncol);
+        subheader = Arrays.copyOf(subheader, ncol);
 
+        // Initialize the new columns in the dataframe
+        for (int cta = 0; cta < colsToAdd.length; cta++) {
+            this.df.add(new String[nrow]);
+            header[ncol - ncols + cta] = "";
+            subheader[ncol - ncols + cta] = colsToAdd[cta];
+        }
+    }
+    public static String[] convertToStringArrayWithTwoDecimals(double[] input) {
+        String[] result = new String[input.length];
+        for (int i = 0; i < input.length; i++) {
+            result[i] = String.format("%.2f", input[i]);
+        }
+        return result;
+    }
 
 
 }
