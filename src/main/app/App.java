@@ -97,7 +97,7 @@ public class App {
             List<Base> basesSin = new ArrayList<>();
 
             for (File file : fileList) {
-//                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
+                if (!file.toPath().toString().contains("EXDI"))  continue;
                 Base base = new Base(file,pays,mapcol);
                 basesSin.add(base);
             }
@@ -122,15 +122,16 @@ public class App {
             updateGlobalDatesFromStatutMap();
 
             Base baseFic = new Base(wd + path_fic,map_fic);
-            estimate.addFicMAT(baseFic);
-
-            stopwatch.printElapsedTime("integration success");
-
-            estimate.addSinMAT(basesSin);
-            estimate.addProvisions(basesSin);
+//            estimate.addFicMAT(baseFic);
+//
+//            stopwatch.printElapsedTime("integration success");
+//
+//            estimate.addSinMAT(basesSin);
+//            estimate.addProvisions(basesSin);
+            estimate.addPrimesAcquises();
 
             stopwatch.printElapsedTime("calculated");
-            estimate.saveToCSVFile(true);
+            estimate.saveToCSVFile(false);
 
         }
 

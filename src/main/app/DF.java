@@ -85,17 +85,17 @@ public class DF implements Serializable {
 //        tdb2.saveToCSVFile_simple("populated");
 
 //        tdb2.addCoefficientColumns();
-//        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
-//        tdb2coef = new DF(tdb2, 0);
-//        tdb2coef.checkSumOfColumns();
-//        tdb2coef.saveToCSVFile_sortedCoef("coef");
-//        stopwatch.printElapsedTime("hf");
-//
-//        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
-//        tdb2coef = new DF(tdb2, 0);
-//        tdb2coef.checkSumOfColumns();
-//        tdb2coef.saveToCSVFile_sortedCoef("coef");
-//        stopwatch.printElapsedTime("fr");
+        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
+        tdb2coef = new DF(tdb2, 0);
+        tdb2coef.checkSumOfColumns();
+        tdb2coef.saveToCSVFile_sortedCoef("coef");
+        stopwatch.printElapsedTime("hf");
+
+        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
+        tdb2coef = new DF(tdb2, 0);
+        tdb2coef.checkSumOfColumns();
+        tdb2coef.saveToCSVFile_sortedCoef("coef");
+        stopwatch.printElapsedTime("fr");
 
         stopwatch.printElapsedTime();
     }
@@ -520,6 +520,54 @@ public class DF implements Serializable {
         int begin = 0;
         String lastPolice = null;
 
+
+        for (int i = 0; i < this.nrow; ) {
+            police = (String) this.c(contractIndex)[i];
+            if (!actifByContract.get(police)) {
+                i++; continue;
+            }
+            if (!police.equals(lastPolice)) {
+                begin = i;  // Update the 'begin' index whenever we encounter a new police
+                lastPolice = police;
+            }
+
+            maxDate = maxDateByContract.get(police);
+
+            do {
+                currentDate = (Date) this.c(dateIndex)[i];
+
+                if ("prévi".equals(this.c("previ/reel")[i])) {
+                    last3.clear();  // Reset the last 3 list
+//                    if (police.equals("iciaqcs19") && currentDate.equals(dateDefault.parse( "01/07/2023"))) {
+//                        System.out.println("here");
+//                    }
+                    // Find the last 3 positive payment indices
+                    for (int j = i - 1; j >= begin && last3.size() < 3; j--) {
+                        if ((Double) this.c(montantPrimeIndex)[j] >= 0) {
+                            last3.add(j);
+                        }
+                    }
+
+                    // If less than 3 found, duplicate the oldest value until there are 3
+                    while (last3.size() < 3 && !last3.isEmpty()) {
+                        last3.add(last3.get(0));
+                    }
+
+
+//                    System.out.println(police);
+//                    System.out.println(currentDate);
+                    // Calculate average for current row
+                    for (int coliter = 0; coliter < 201; coliter++) {
+                        int colIndex = mIndex + coliter;
+                        this.c(colIndex)[i] = ((Float) this.c(colIndex)[last3.get(0)] +
+                                (Float) this.c(colIndex)[last3.get(1)] +
+                                (Float) this.c(colIndex)[last3.get(2)]) / 3;
+                    }
+                }
+
+                i++;
+            } while (currentDate.before(maxDate));
+        }
         for (int i = 0; i < this.nrow; ) {
             police = (String) this.c(contractIndex)[i];
             if (!actifByContract.get(police)) {
@@ -570,53 +618,6 @@ public class DF implements Serializable {
                 last3.addLast(i);
                 i++;
             } while (!currentDate.equals(ultimateDate));
-        }
-        for (int i = 0; i < this.nrow; ) {
-            police = (String) this.c(contractIndex)[i];
-            if (!actifByContract.get(police)) {
-                i++; continue;
-            }
-            if (!police.equals(lastPolice)) {
-                begin = i;  // Update the 'begin' index whenever we encounter a new police
-                lastPolice = police;
-            }
-
-            maxDate = maxDateByContract.get(police);
-
-            do {
-                currentDate = (Date) this.c(dateIndex)[i];
-
-                if ("prévi".equals(this.c("previ/reel")[i])) {
-                    last3.clear();  // Reset the last 3 list
-                    if (police.equals("iciaqcs19") && currentDate.equals(dateDefault.parse( "01/07/2023"))) {
-                        System.out.println("here");
-                    }
-                    // Find the last 3 positive payment indices
-                    for (int j = i - 1; j >= begin && last3.size() < 3; j--) {
-                        if ((Double) this.c(montantPrimeIndex)[j] >= 0) {
-                            last3.add(j);
-                        }
-                    }
-
-                    // If less than 3 found, duplicate the oldest value until there are 3
-                    while (last3.size() < 3 && !last3.isEmpty()) {
-                        last3.add(last3.get(0));
-                    }
-
-
-//                    System.out.println(police);
-//                    System.out.println(currentDate);
-                    // Calculate average for current row
-                    for (int coliter = 0; coliter < 201; coliter++) {
-                        int colIndex = mIndex + coliter;
-                        this.c(colIndex)[i] = ((Float) this.c(colIndex)[last3.get(0)] +
-                                (Float) this.c(colIndex)[last3.get(1)] +
-                                (Float) this.c(colIndex)[last3.get(2)]) / 3;
-                    }
-                }
-
-                i++;
-            } while (currentDate.before(maxDate));
         }
 //        Date startDate; // Placeholder for starting date
 //        Date endDate = dateDefault.parse("01/12/2025");

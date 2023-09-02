@@ -1057,18 +1057,17 @@ public class Estimate extends DF {
 
         // Add total column
         this.df.add(Arrays.stream(total).mapToObj(val -> String.format("%.2f", val)).toArray(String[]::new));
-        header = Arrays.copyOf(header, ncol + 1);
-        header[ncol] = "Total provisions";
-        ncol++;
-        subheader = Arrays.copyOf(subheader, ncol);
-        Arrays.fill(subheader, subheader.length - (ncol - begin), subheader.length, "");
+        this.addCol("","Total provisions");
+
+        for (int col = begin; col < ncol; col++) {
+            if (subheader[col] == null) subheader[col] = "";
+        }
         appendUpdateProvisions(begin);
     }
     public void addPrimesAcquises() {
         int begin = ncol;
-        int tableName_ind = header.length;
-        subheader[tableName_ind] = "Primes acquises mensuel";
         addMois();
+        subheader[begin] = "Primes acquises mensuel";
         appendUpdate(begin);
         populatePrimesAcquises();
     }
@@ -1078,24 +1077,38 @@ public class Estimate extends DF {
         int begin = ncol - lastAppendSize;
         int localBegin;
 
+        // Create a map to store contractKey and its corresponding count of missing dateKeys.
+        Map<String, Integer> warningMap = new HashMap<>();
+
         for (int i = 0; i < nrow; i++) {
             String contractKey = (String) this.c(ind_contrat)[i];
             String dateKey = (String) this.c(ind_datePeriode)[i];
             String combinedKey = contractKey + "_" + dateKey;
-            List<Object> values = TableCoefAcquisition.getResultMap().get(combinedKey);
-//            Double nAdhe = (Double) values.get(0);
+
+            List<Object> values = TableCoefAcquisition.getResultMap().get(combinedKey.toLowerCase());
+            if (values == null) {
+                // Update the count for the contractKey in the warning map.
+                warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
+                continue;
+            }
+
             Double prime = (Double) values.get(1);
             float[] coefs = (float[]) values.get(2);
 
             for (localBegin = begin; ; localBegin++) {
-                if (header[i].equals(dateKey)) break;
+                if (header[localBegin].equals(dateKey)) break;
             }
             for (int col = localBegin, coefInd = 0; col < ncol; col++, coefInd++) {
-                this.c(col)[i] = String.format("%.2f", prime * coefs[coefInd]);
+                this.c(col)[i] = String.format("%.4f", prime * coefs[coefInd]);
             }
         }
 
+        // Print out the warning messages after iterating through all rows.
+        for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
+            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " mois.");
+        }
     }
+
     private void populateProvisionsColumns(Object[] contratColumn, Object[] datePeriodeColumn,
                                            Map<String, Map<String, List<Integer>>> dataMap,
                                            Map<String, Double> coutMoyenMap,
@@ -1107,7 +1120,6 @@ public class Estimate extends DF {
 
         for (int i = 0; i < nrow; i++) {
             String contratValue = (String) contratColumn[i];
-            System.out.println(contratValue);
             String datePeriodeValue = (String) datePeriodeColumn[i];
 
             // Fetch the data list for the current contract and date
@@ -1139,14 +1151,9 @@ public class Estimate extends DF {
             if(value == null) continue;
             this.c(ncol)[i] = String.format("%.2f", value);
         }
-        this.ncol++;
-        updateHeaderForCoutMoyen(label);
+        this.addCol("","Cout Moyen: " + label);
     }
-    private void updateHeaderForCoutMoyen(String statut) {
-        List<String> newHeaders = new ArrayList<>(Arrays.asList(subheader));
-        newHeaders.add("Cout Moyen: " + statut);
-        subheader = newHeaders.toArray(new String[0]);
-    }
+
     private void updateHeaderForProvisions(String statut) {
         List<String> newHeaders = new ArrayList<>(Arrays.asList(header));
         for (int year = 2013; year <= 2026; year++) {
@@ -1154,9 +1161,9 @@ public class Estimate extends DF {
         }
         header = newHeaders.toArray(new String[0]);
 
-        List<String> newSubHeaders = new ArrayList<>(Arrays.asList(subheader));
-        newSubHeaders.add("Provisions: " + statut);
-        subheader = newSubHeaders.toArray(new String[0]);
+        int index = subheader.length;
+        subheader = Arrays.copyOf(subheader, header.length);
+        subheader[index] = "Provisions: " + statut;
     }
 
     private void appendUpdate(int begin) {
@@ -1304,7 +1311,11 @@ public class Estimate extends DF {
             if (!firstCol) {
                 writer.write(";");
             }
-            writer.write(row[colIndex]);
+            try {
+                writer.write(row[colIndex]);
+            } catch (NullPointerException npe) {
+                writer.write("NOTHINGGGGGGGGGGGGGG");
+            }
             firstCol = false;
         }
         writer.newLine();
@@ -1320,4 +1331,25 @@ public class Estimate extends DF {
         }
         writer.newLine();
     }
+    public static String[] subarray(String[] array, int begin) {
+        if (array == null || begin >= array.length) {
+            return new String[0];
+        }
+
+        return Arrays.copyOfRange(array, begin, array.length);
+    }
+    public void addCol(String newHeader, String newSubheader) {
+        // Increment the column count
+        ncol++;
+
+        // Extend and populate header and subheader
+        header = Arrays.copyOf(header, ncol);
+        subheader = Arrays.copyOf(subheader, ncol);
+        header[ncol - 1] = newHeader;
+        subheader[ncol - 1] = newSubheader;
+
+    }
+
+
+
 }

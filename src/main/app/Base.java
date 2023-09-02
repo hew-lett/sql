@@ -1051,7 +1051,6 @@ public class Base extends DF {
                     .computeIfAbsent(date_sous, k -> new HashMap<>())
                     .merge(date_surv, 1, Integer::sum); // Increase the counter by 1 for each appearance
         }
-        System.out.println("ended");
         // The rounding part is no longer necessary since you are just counting appearances.
     }
     public void createYearlyPivotTableN() {
