@@ -12,6 +12,7 @@ import java.util.*;
 
 import java.util.Date;
 
+import static java.lang.Math.max;
 import static main.app.App.*;
 import static main.app.Base.STATUT_FICTIF_FIC;
 
@@ -24,9 +25,9 @@ public class Estimate extends DF {
     String[] totalPA;
     String[] totalPAaDate;
     String[] tauxAcquisition;
-    Double[] SPprevi;
+    Double[] colSPprevi;
     Double[] colPB;
-    Double[] SinUltime;
+    Double[] colSinUltime;
 
     boolean[] mask_col;
     protected Stopwatch stopwatch = new Stopwatch();
@@ -1016,21 +1017,21 @@ public class Estimate extends DF {
             begin = ncol;
             tableName_ind = header.length;
             addMois();
-            subheader[tableName_ind] = "Nombre" + statutEs + " mensuel";
+            subheader[tableName_ind] = "Nombre " + statutEs + " mensuel";
             appendUpdate(begin);
             populateMonthSinN(bases, statutEs);
 
             begin = ncol;
             tableName_ind = header.length;
             addAnnees();
-            subheader[tableName_ind] = "Nombre" + statutEs + " annuel";
+            subheader[tableName_ind] = "Nombre " + statutEs + " annuel";
             appendUpdate(begin);
             populateYearSinN(bases, statutEs);
 
             begin = ncol;
             tableName_ind = header.length;
             addTotal();
-            subheader[tableName_ind] = "Nombre" + statutEs + " total";
+            subheader[tableName_ind] = "Nombre " + statutEs + " total";
             appendUpdate(begin);
             populateTotalSinN(bases, statutEs);
         }
@@ -1250,7 +1251,11 @@ public class Estimate extends DF {
         int startTriangle = ncol;
         addMois();
         appendUpdateKeepAll(begin);
+        subheader[startTriangle] = "SINISTRES PREVISIONNEL SI PAS REEL comptable";
+
+        populatePBetSPprevi();
         populateLT(startTriangle);
+        populateCoefsSP();
     }
     private void populateLT (int startCol) {
         int trianglePAindex = find_in_arr_first_index(subheader, "Primes acquises mensuel");
@@ -1270,7 +1275,7 @@ public class Estimate extends DF {
             }
         }
 
-        SinUltime = new Double[nrow]; // Initialize the SinUltime array to store the sums.
+        colSinUltime = new Double[nrow]; // Initialize the SinUltime array to store the sums.
 
         boolean regul;
         for (int i = 0; i < nrow; i++) {
@@ -1285,8 +1290,8 @@ public class Estimate extends DF {
                 for (int col = startCol, offset = 0; col < ncol; col++, offset++) {
                     double currentCellValue;
 
-                    if (isMonthAfterCurrent(header[col])) {
-                        currentCellValue = SPprevi[i] * parseValueAt(trianglePAindex + offset, i);
+                    if (isMonthAfterOrEQCurrent(header[col])) {
+                        currentCellValue = colSPprevi[i] * parseValueAt(trianglePAindex + offset, i);
                     } else {
                         double triangleComptaValue = parseValueAt(triangleComptaIndex + offset, i);
                         double cmEncoursValue = parseValueAt(cmEncours, i);
@@ -1298,16 +1303,16 @@ public class Estimate extends DF {
                         currentCellValue = triangleComptaValue + cmEncoursValue * (nEnCoursValue + nEnAttenteValue) + cmEncoursAccValue * nEnCoursAccValue;
                     }
 
-                    this.c(col)[i] = currentCellValue; // Assigning the computed value to the cell.
+                    this.c(col)[i] = String.format("%.2f", currentCellValue);  // Assigning the computed value to the cell.
                     rowSum += currentCellValue; // Add the current cell's value to the row's running sum.
                 }
             }
 
-            SinUltime[i] = rowSum; // Store the sum for the current row in the SinUltime array.
+            colSinUltime[i] = rowSum; // Store the sum for the current row in the SinUltime array.
         }
 
     }
-    private void populateCoefsSP (String[] cols) {
+    private void populateCoefsSP () {
         int indSinUltime = find_in_arr_first_index(subheader,"Sinistre Ultime");
         int indSPprevi = find_in_arr_first_index(subheader,"S/P previ hors PB");
         int indSPAaP = find_in_arr_first_index(subheader,"S/P si pas réel acquis avec provision");
@@ -1318,19 +1323,54 @@ public class Estimate extends DF {
 
         int indexCMenCours = find_in_arr_first_index(subheader, "Cout Moyen: En cours");
         int indexEncours = find_in_arr_first_index(subheader, "Nombre en cours total");
-        int indexEnAttente = find_in_arr_first_index(subheader, "Nombre en cours total");
+        int indexEnAttente = find_in_arr_first_index(subheader, "Nombre en attente de prescription total");
         int indexSumFic = find_in_arr_first_index(subheader, "Comptable total");
 
-        int indexContrat = find_in_arr_first_index(header, "Contrat");
-        int indexDP = find_in_arr_first_index(header, "Date Periode");
         int indexMTPA = find_in_arr_first_index(header, "MONTANT TOTAL PRIME ASSUREUR");
 
+        for (int i = 0; i < nrow; i++) {
+            this.c(indSPprevi)[i] = String.format("%.2f", colSPprevi[i]);
+            this.c(indexPB)[i] = String.format("%.2f", colPB[i]);
+            this.c(indSinUltime)[i] = String.format("%.2f", colSinUltime[i]);
 
-        SPprevi = new Double[nrow];
+            double sumFic = parseObjectToDouble(this.c(indexSumFic)[i]);
+            double enAttente = parseObjectToDouble(this.c(indexEnAttente)[i]);
+            double enCours = parseObjectToDouble(this.c(indexEncours)[i]);
+            double cMenCours = parseObjectToDouble(this.c(indexCMenCours)[i]);
+            double pAaDate = parseObjectToDouble(this.c(indexPAaDate)[i]);
+            double tauxAcq = parseObjectToDouble(tauxAcquisition[i]);
+
+            double calculatedValue = max((sumFic + (enAttente + enCours) * cMenCours) +
+                    (pAaDate + colPB[i] * tauxAcq), 0.0);
+            this.c(indSPAaP)[i] = Double.isNaN(calculatedValue) ? "0.00" : String.format("%.2f", calculatedValue);
+
+
+            Double mtpa = parseObjectToDouble(this.c(indexMTPA)[i]);
+            this.c(indSPUavantPB)[i] = String.format("%.2f", mtpa.equals(0.0) ? 0 : colSinUltime[i] / mtpa);
+            this.c(indSPUapresPB)[i] = String.format("%.2f", mtpa.equals(0.0) ? 0 : colSinUltime[i] / (mtpa + colPB[i]));
+        }
+    }
+    private double parseValueAt(int col, int row) {
+        Object value = this.c(col)[row];
+        if (value == null) {
+            return 0.0;
+        }
+
+        try {
+            return Double.parseDouble(((String) value).replace(',','.'));
+        } catch (NumberFormatException e) {
+            // You can choose to log this exception or just return a default value
+            return 0.0;
+        }
+    }
+    private void populatePBetSPprevi() {
+        int indexContrat = find_in_arr_first_index(header, "Contrat");
+        int indexDP = find_in_arr_first_index(header, "Date Periode");
+        colSPprevi = new Double[nrow];
         colPB = new Double[nrow];
         String contrat; String date;
         for (int i = 0; i < nrow; i++) {
-            contrat = (String) this.c(indexContrat)[i];
+            contrat = ((String) this.c(indexContrat)[i]).toLowerCase();
             date = (String) this.c(indexDP)[i];
 
             // Extract year from the date
@@ -1339,10 +1379,10 @@ public class Estimate extends DF {
 
             Map<Double, Double> spPreviMap = mapSPprevi.get(contrat);
             if (spPreviMap != null) {
-                SPprevi[i] = spPreviMap.get(year);
+                colSPprevi[i] = spPreviMap.get(year);
             } else {
                 // Handle or set default value if not found
-                SPprevi[i] = 0.0;  // or any default value
+                colSPprevi[i] = 0.0;  // or any default value
             }
 
             Map<String, Double> pbMap = mapPB.get(contrat);
@@ -1353,17 +1393,8 @@ public class Estimate extends DF {
                 colPB[i] = 0.0;  // or any default value
             }
         }
+    }
 
-        for (int i = 0; i < nrow; i++) {
-            this.c(indSPprevi)[i] = SPprevi[i];
-            this.c(indSinUltime)[i] = SinUltime[i];
-            this.c(indexPB)[i] = colPB[i];
-//            this.c(indSPAaP)[i] =
-        }
-    }
-    private double parseValueAt(int col, int row) {
-        return Double.parseDouble((String) this.c(col)[row]);
-    }
     private void populateProvisionsColumns(Object[] contratColumn, Object[] datePeriodeColumn,
                                            Map<String, Map<String, List<Integer>>> dataMap,
                                            Map<String, Double> coutMoyenMap,
@@ -1624,6 +1655,20 @@ public class Estimate extends DF {
             result[i] = String.format("%.2f", input[i]);
         }
         return result;
+    }
+    private double parseObjectToDouble(Object value) {
+        if (value == null) {
+            return 0.0;
+        }
+
+        String stringValue = (String) value;
+
+        try {
+            return Double.parseDouble(stringValue.replace(',', '.'));
+        } catch (NumberFormatException e) {
+            // You can choose to log this exception or just return a default value
+            return 0.0;
+        }
     }
 
 

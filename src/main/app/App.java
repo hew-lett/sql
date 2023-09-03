@@ -107,7 +107,7 @@ public class App {
             List<Base> basesSin = new ArrayList<>();
 
             for (File file : fileList) {
-                if (!file.toPath().toString().contains("EXDI"))  continue;
+//                if (!file.toPath().toString().contains("EXDI"))  continue;
                 Base base = new Base(file,pays,mapcol);
                 basesSin.add(base);
             }
@@ -139,6 +139,7 @@ public class App {
             estimate.addSinMAT(basesSin);
             estimate.addProvisions(basesSin);
             estimate.addPrimesAcquises();
+            estimate.addSP();
 
             stopwatch.printElapsedTime("calculated");
             estimate.saveToCSVFile(false);
@@ -146,7 +147,7 @@ public class App {
         }
 
     }
-    public static boolean isMonthAfterCurrent(String monthYear) {
+    public static boolean isMonthAfterOrEQCurrent(String monthYear) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-yyyy");
         YearMonth inputYearMonth = YearMonth.parse(monthYear, formatter);
 
@@ -154,7 +155,7 @@ public class App {
         YearMonth currentYearMonth = YearMonth.from(TODAY);
 
         // Check if inputYearMonth is after currentYearMonth
-        return inputYearMonth.isAfter(currentYearMonth);
+        return !inputYearMonth.isBefore(currentYearMonth);
     }
     public static void updateStatutDates(Base base) {
         for (Map.Entry<String, List<Date>> entry : base.statutDateRangeMap.entrySet()) {

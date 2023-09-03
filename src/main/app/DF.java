@@ -49,7 +49,8 @@ public class DF implements Serializable {
     public static void main(String[] args) throws Exception {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
-        ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
+        DF test = new DF(wd+"TDB estimate par gestionnaire/SPB Italie_extended.csv",';');
+        stopwatch.printElapsedTime();
 
 //        Set<String> contratFR = getUniqueContratValues(true);
 //        Set<String> contratHF = getUniqueContratValues(false);
@@ -85,19 +86,19 @@ public class DF implements Serializable {
 //        tdb2.saveToCSVFile_simple("populated");
 
 //        tdb2.addCoefficientColumns();
-        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
-        tdb2coef = new DF(tdb2, 0);
-        tdb2coef.checkSumOfColumns();
-        tdb2coef.saveToCSVFile_sortedCoef("coef");
-        stopwatch.printElapsedTime("hf");
-
-        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
-        tdb2coef = new DF(tdb2, 0);
-        tdb2coef.checkSumOfColumns();
-        tdb2coef.saveToCSVFile_sortedCoef("coef");
-        stopwatch.printElapsedTime("fr");
-
-        stopwatch.printElapsedTime();
+//        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
+//        tdb2coef = new DF(tdb2, 0);
+//        tdb2coef.checkSumOfColumns();
+//        tdb2coef.saveToCSVFile_sortedCoef("coef");
+//        stopwatch.printElapsedTime("hf");
+//
+//        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
+//        tdb2coef = new DF(tdb2, 0);
+//        tdb2coef.checkSumOfColumns();
+//        tdb2coef.saveToCSVFile_sortedCoef("coef");
+//        stopwatch.printElapsedTime("fr");
+//
+//        stopwatch.printElapsedTime();
     }
     public DF(String path, char delim, Double sql) {
         fileName = path.substring(path.lastIndexOf("/") + 1);
@@ -164,6 +165,8 @@ public class DF implements Serializable {
         String filename = path.substring(path.lastIndexOf("/") + 1);
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
+        settings.setMaxColumns(6000);
+        settings.setMaxCharsPerColumn(256);
         settings.trimValues(true);
         try (Reader inputReader = new InputStreamReader(Files.newInputStream(
                 new File(path).toPath()), encoding)) {
@@ -171,9 +174,9 @@ public class DF implements Serializable {
             List<String[]> parsedRows = parser.parseAll(inputReader);
             Iterator<String[]> rows = parsedRows.iterator();
             header = rows.next();
-            for (int i = 0; i < header.length; i++) {
-                header[i] = header[i].toLowerCase();
-            }
+//            for (int i = 0; i < header.length; i++) {
+//                header[i] = header[i].toLowerCase();
+//            }
 
             coltypes = new Col_types[header.length];
             Arrays.fill(coltypes,STR);
@@ -2679,7 +2682,6 @@ public class DF implements Serializable {
                     .put(annee, spPrevi);
         }
     }
-
     public void mapPoliceToPB() {
         int identifiantIndex = find_in_arr_first_index(header, "identifiant contrat");
         int indexPB = find_in_arr_first_index(header, "participation aux benefices");
@@ -2693,7 +2695,6 @@ public class DF implements Serializable {
         SimpleDateFormat sdfOutput = new SimpleDateFormat("MM-yyyy");
 
         for (int i = 0; i < nrow; i++) {
-            System.out.println((String) PB.c(indexPB)[i]);
             String identifiant = (String) PB.c(identifiantIndex)[i];
             Date dateValue = (Date) PB.c(dateIndex)[i];
             String formattedDate = sdfOutput.format(dateValue);
@@ -2704,8 +2705,6 @@ public class DF implements Serializable {
                     .put(formattedDate, PBv);
         }
     }
-
-
     public void cleanPB() {
         // Assuming df is a list of columns and each column is an array of values
         int participationIndex = -1;
