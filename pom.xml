@@ -30,6 +30,21 @@
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi</artifactId>
+      <version>5.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>5.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.monitorjbl</groupId>
+      <artifactId>xlsx-streamer</artifactId>
+      <version>2.2.0</version>
+    </dependency>
       <dependency>
         <groupId>com.jcraft</groupId>
         <artifactId>jsch</artifactId>
@@ -76,16 +91,7 @@
           <scope>compile</scope>
       </dependency>
     <!-- dependency used for XLSX file format -->
-    <dependency>
-      <groupId>org.apache.poi</groupId>
-      <artifactId>poi-ooxml</artifactId>
-      <version>3.17</version>
-    </dependency>
-    <dependency>
-      <groupId>com.monitorjbl</groupId>
-      <artifactId>xlsx-streamer</artifactId>
-      <version>2.1.0</version>
-    </dependency>
+
       <dependency>
           <groupId>backport-util-concurrent</groupId>
           <artifactId>backport-util-concurrent</artifactId>

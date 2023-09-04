@@ -4,6 +4,7 @@ import com.monitorjbl.xlsx.StreamingReader;
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
 import java.math.BigDecimal;
@@ -33,6 +34,64 @@ public class Synthese {
     private ArrayList<Boolean> bu;
     public static Synthese syntAncien;
     private ArrayList<Integer> mapToAncien;
+    public static final String[] INTEGER_COLUMNS;
+    public static final String[] DOUBLE_COLUMNS;
+    public static final String[] PERCENTAGE_COLUMNS;
+    // column formatting types initialization block
+    static {
+        INTEGER_COLUMNS = new String[] {
+                "Nombre Adhésions",
+                "Nombre Dossier En Cours"
+        };
+
+        DOUBLE_COLUMNS = new String[] {
+                "Montant Total HT",
+                "Montant Total Net Compagnie",
+                "Prime Acquise à date",
+                "Participation aux Benefices",
+                "Total Sinistres Comptable",
+                "Total Sinistres Technique",
+                "Ecart sinistres Technique - Comptable",
+                "Provision Sinistre Connu 2013",
+                "Provision Sinistre Connu 2014",
+                "Provision Sinistre Connu 2015",
+                "Provision Sinistre Connu 2016",
+                "Provision Sinistre Connu 2017",
+                "Provision Sinistre Connu 2018",
+                "Provision Sinistre Connu 2019",
+                "Provision Sinistre Connu 2020",
+                "Provision Sinistre Connu 2021",
+                "Provision Sinistre Connu 2022",
+                "Provision Sinistre Connu 2023",
+                "Provision Sinistre Connu 2024",
+                "Provision Sinistre Connu 2025",
+                "Provision Sinistre Connu 2026",
+                "Total Provision Sinistre Connu",
+                "Prime émise réelle",
+                "Solde comptable émis\nyc ICI",
+                "Solde comptable acquis\nyc ICI",
+                "Solde technique émis\nyc ICI",
+                "Solde technique acquis\nyc ICI",
+                "Solde technique provisionné emis\nyc ICI",
+                "Solde technique provisionné acquis\nyc ICI",
+                "Sinistre Ultime",
+                "Prime à l'ultime"
+        };
+
+        PERCENTAGE_COLUMNS = new String[] {
+                "Taux primes émise réelle",
+                "Taux d'acquisition des primes",
+                "PB pour S/P acquis",
+                "S/P comptable émis\nyc ICI",
+                "S/P comptable acquis\nyc ICI",
+                "S/P technique émis\nyc ICI",
+                "S/P technique acquis\nyc ICI",
+                "S/P technique provisionné émis\nyc ICI",
+                "S/P technique provisionné acquis\nyc ICI",
+                "S/P Comptable à l'ultime\nyc ICI"
+        };
+    }
+
     public static void main(String[] args) throws IOException {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
@@ -41,11 +100,28 @@ public class Synthese {
 //        wf.printColumnHeaders(columnsToCheck);
         Synthese wf = new Synthese(wd+"TDB estimate par gestionnaire/SPB Italie_extended.csv",delim,false,true,true);
         syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-//        Synthese synt = new Synthese(wf,"");
-        Synthese synt = new Synthese(wf,1.0);
-        Synthese syntPolice = new Synthese(synt,1.0,true);
-        syntPolice.print(100);
+
+        Synthese syntPolice = new Synthese(wf,"");
+        Synthese syntPoliceagg = new Synthese(syntPolice,"",true);
+        syntPoliceagg.formatAllColumns();
+        syntPolice.formatAllColumns();
+
+        Synthese syntDistrib = new Synthese(wf,1);
+        Synthese syntDistribagg = new Synthese(syntDistrib,1,true);
+        syntDistribagg.formatAllColumns();
+
+        Synthese syntGest = new Synthese(wf,1.0);
+        Synthese syntGestagg = new Synthese(syntGest,1.0,true);
+        syntGestagg.formatAllColumns();
+
+        syntPolice.exportToExcel(wd + "output.xlsx", "Detaillé", null);
+        Workbook workbook = new XSSFWorkbook(new FileInputStream(wd + "output.xlsx"));
+        syntPoliceagg.exportToExcel(wd + "output.xlsx", "Par Police", workbook);
+        syntDistribagg.exportToExcel(wd + "output.xlsx", "Par Distributeur", workbook);
+        syntGestagg.exportToExcel(wd + "output.xlsx", "Par Gestionnaire", workbook);
+
         stopwatch.printElapsedTime();
+
     }
     public Synthese(String path, char delim, boolean toLower, boolean subHeader, boolean detectColtypes) {
         headers = new ArrayList<>();
@@ -133,10 +209,9 @@ public class Synthese {
         columns = new ArrayList<>();
 
         InputStream is = Files.newInputStream(new File(path).toPath());
-        Workbook workbook = StreamingReader.builder()
-                .rowCacheSize(1)      // number of rows to keep in memory (defaults to 10)
-                .bufferSize(4096)     // buffer size to use when reading InputStream to file (defaults to 1024)
-                .open(is);
+
+        // Use Apache POI directly to open the workbook
+        Workbook workbook = new XSSFWorkbook(is);
 
         Sheet sheet = workbook.getSheet(sheetName);
         Iterator<Row> rows = sheet.rowIterator();
@@ -206,10 +281,15 @@ public class Synthese {
                 Cell currentCell = currentRow.getCell(i, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
                 if (currentCell != null) {
                     Object cellValue = parseCell(currentCell, detectedTypes[i], dateFormat);
-                    parsedRow[i] = cellValue.toString();
+                    if (cellValue != null) {
+                        parsedRow[i] = cellValue.toString();
+                    } else {
+                        parsedRow[i] = ""; // or a default value you'd like to use in case of null
+                    }
                 } else {
                     parsedRow[i] = "";
                 }
+
             }
             addRowToColumns(parsedRow, toLower);
         }
@@ -997,16 +1077,18 @@ public class Synthese {
             return String.format("%-" + width + "s", cell);  // Pad with spaces to the fixed width
         }
     }
-    public Object parseCell(Cell cell_i, ColTypes colType, SimpleDateFormat dateFormatter) {
+    public Object parseCell_old(Cell cell_i, ColTypes colType, SimpleDateFormat dateFormatter) {
         Object cellValue = null;
-        if (cell_i.getCellTypeEnum() == CellType.FORMULA) {
-            if (cell_i.getCachedFormulaResultTypeEnum() == CellType.ERROR) {
-                cellValue = getCellOfType(cell_i.getCellFormula(), colType, dateFormatter); // bad formula
-            } else {
-                cellValue = getCellOfType(cell_i.getStringCellValue(), colType, dateFormatter); // good formula
+        if (cell_i.getCellType() == CellType.FORMULA) {
+            switch (cell_i.getCachedFormulaResultType()) {
+                case ERROR -> cellValue = getCellOfType(cell_i.getCellFormula(), colType, dateFormatter); // bad formula
+                case STRING ->
+                        cellValue = getCellOfType(cell_i.getStringCellValue(), colType, dateFormatter); // good formula
+
+                // You may handle other formula result types if needed.
             }
         } else {
-            if (cell_i.getCellTypeEnum() == CellType.NUMERIC) {
+            if (cell_i.getCellType() == CellType.NUMERIC) {
                 if (DateUtil.isCellDateFormatted(cell_i)) {
                     return cell_i.getDateCellValue();
                 } else {
@@ -1023,6 +1105,45 @@ public class Synthese {
         }
         return cellValue;
     } // EXCEL
+    public Object parseCell(Cell cell_i, ColTypes colType, SimpleDateFormat dateFormatter) {
+        switch (cell_i.getCellType()) {
+            case FORMULA -> {
+                return switch (cell_i.getCachedFormulaResultType()) {
+                    case ERROR -> getCellOfType(cell_i.getCellFormula(), colType, dateFormatter);
+                    case STRING -> getCellOfType(cell_i.getStringCellValue(), colType, dateFormatter);
+                    case BOOLEAN ->
+                            cell_i.getBooleanCellValue();  // or however you want to handle boolean formula results
+                    // ... handle other formula result types if needed ...
+                    default -> null; // or some default value
+                };
+            }
+            case NUMERIC -> {
+                if (DateUtil.isCellDateFormatted(cell_i)) {
+                    return cell_i.getDateCellValue();
+                } else if (colType == DBL) {
+                    return cell_i.getNumericCellValue();
+                } else if (colType == STR) {
+                    return Double.toString(cell_i.getNumericCellValue());
+                }
+                return null; // or some default value
+            }
+            case STRING -> {
+                return getCellOfType(cell_i.getStringCellValue(), colType, dateFormatter);
+            }
+            case BOOLEAN -> {
+                return cell_i.getBooleanCellValue();  // or convert it to string or whatever suits your need
+            }
+            case BLANK -> {
+                return "";  // or whatever your default value for blank cells is
+            }
+            case ERROR -> {
+                return "ERROR";  // or handle in a specific way if needed
+            }
+            default -> {
+                return null; // or some default value
+            }
+        }
+    }
 
     // ROWS AND COLS
     public void swapColumns(String colName1, String colName2) {
@@ -1090,14 +1211,12 @@ public class Synthese {
             columns.set(anneesColIndex, new Column<>(cleanedAnnees, ColTypes.STR));
         }
     }
-
-
     private ColTypes[] detectColumnTypesXlsx(Row headerRow, int size) {
         ColTypes[] detectedTypes = new ColTypes[size];
         Arrays.fill(detectedTypes, ColTypes.STR);  // Default all columns to STR
 
         for (Cell c : headerRow) {
-            CellType cellType = c.getCellTypeEnum();
+            CellType cellType = c.getCellType();
             if (cellType == CellType.NUMERIC) {
                 if (DateUtil.isCellDateFormatted(c)) {
                     detectedTypes[c.getColumnIndex()] = ColTypes.DAT;
@@ -1302,6 +1421,25 @@ public class Synthese {
             } else {
                 System.out.println("Column: " + columnName + " is out of bounds.");
                 System.out.println("------------------------------");
+            }
+        }
+    }
+    public void printMeanForDoubleColumns() {
+        for (int i = 0; i < columns.size(); i++) {
+            Column<?> currentColumn = columns.get(i);
+
+            if (currentColumn.getType() == ColTypes.DBL) {
+                ArrayList<Double> columnData = getColumnByIndex(i);
+
+                // Calculate the mean value for the current column
+                double sum = 0.0;
+                for (Double value : columnData) {
+                    sum += value;
+                }
+                double meanValue = sum / columnData.size();
+
+                // Print column name and its mean value
+                System.out.println("Column: " + headers.get(i) + ", Mean Value: " + meanValue);
             }
         }
     }
@@ -1956,7 +2094,154 @@ public class Synthese {
         this.addColumn("Prime émise réelle", primeEmiseReelleData, DBL);
     }
 
+    // OUTPUT
+    public void exportToExcel_old(String fileName) throws IOException {
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Synthese Data");
 
+        // Creating header row
+        Row headerRow = sheet.createRow(0);
+        for (int i = 0; i < headers.size(); i++) {
+            Cell headerCell = headerRow.createCell(i);
+            headerCell.setCellValue(headers.get(i));
+        }
 
+        // Filling in data
+        for (int i = 0; i < columns.size(); i++) {
+            ArrayList<?> columnData = getColumnByIndex(i);
+            for (int j = 0; j < columnData.size(); j++) {
+                Row row = sheet.getRow(j + 1);
+                if (row == null) {
+                    row = sheet.createRow(j + 1);
+                }
+                Cell cell = row.createCell(i);
+                Object value = columnData.get(j);
 
+                // Applying format based on column type
+                if (isInArray(headers.get(i), INTEGER_COLUMNS)) {
+                    cell.setCellValue(Double.parseDouble(value.toString()));
+                    CellStyle style = workbook.createCellStyle();
+                    style.setDataFormat(workbook.createDataFormat().getFormat("0"));
+                    cell.setCellStyle(style);
+                } else if (isInArray(headers.get(i), DOUBLE_COLUMNS)) {
+                    cell.setCellValue(Double.parseDouble(value.toString()));
+                    CellStyle style = workbook.createCellStyle();
+                    style.setDataFormat(workbook.createDataFormat().getFormat("0.00"));
+                    cell.setCellStyle(style);
+                } else if (isInArray(headers.get(i), PERCENTAGE_COLUMNS)) {
+                    double percentValue = Double.parseDouble(value.toString()) * 100;
+                    cell.setCellValue(percentValue + " %");
+                } else {
+                    cell.setCellValue(value.toString());
+                }
+            }
+        }
+
+        // Auto sizing the columns
+        for (int i = 0; i < headers.size(); i++) {
+            sheet.autoSizeColumn(i);
+        }
+
+        // Writing to the file
+        try (FileOutputStream fileOut = new FileOutputStream(fileName)) {
+            workbook.write(fileOut);
+        }
+
+        workbook.close();
+    }
+    public void exportToExcel(String fileName, String sheetName, Workbook existingWorkbook) throws IOException {
+        Workbook workbook = existingWorkbook != null ? existingWorkbook : new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet(sheetName);
+
+        // Creating header row
+        Row headerRow = sheet.createRow(0);
+        for (int i = 0; i < headers.size(); i++) {
+            Cell headerCell = headerRow.createCell(i);
+            headerCell.setCellValue(headers.get(i));
+        }
+
+        // Filling in data
+        for (int i = 0; i < columns.size(); i++) {
+            ArrayList<?> columnData = getColumnByIndex(i);
+            for (int j = 0; j < columnData.size(); j++) {
+                Row row = sheet.getRow(j + 1);
+                if (row == null) {
+                    row = sheet.createRow(j + 1);
+                }
+                Cell cell = row.createCell(i);
+                Object value = columnData.get(j);
+
+                // Simply set cell value as string
+                cell.setCellValue(value.toString());
+            }
+        }
+
+        // Auto sizing the columns
+        for (int i = 0; i < headers.size(); i++) {
+            sheet.autoSizeColumn(i);
+        }
+
+        // Writing to the file
+        try (FileOutputStream fileOut = new FileOutputStream(fileName)) {
+            workbook.write(fileOut);
+        }
+
+        if (existingWorkbook == null) {
+            // Writing to the file
+            try (FileOutputStream fileOut = new FileOutputStream(fileName)) {
+                workbook.write(fileOut);
+            }
+            workbook.close();
+        }
+    }
+
+    private boolean isInArray(String value, String[] array) {
+        for (String s : array) {
+            if (s.equals(value)) return true;
+        }
+        return false;
+    }
+
+    // FORMAT
+    public void formatAndReplaceColumn(String header) {
+        int index = headers.indexOf(header);
+
+        if (index == -1) {
+            throw new IllegalArgumentException("Column with header: " + header + " not found.");
+        }
+
+        Column<?> oldColumn = columns.get(index);
+        ArrayList<String> newColumnData = new ArrayList<>(oldColumn.getData().size());
+
+        // Populate newColumnData based on the header and its type
+        if (Arrays.asList(INTEGER_COLUMNS).contains(header)) {
+            ArrayList<Double> colData = (ArrayList<Double>) oldColumn.getData();
+            for (Double value : colData) {
+                newColumnData.add(String.valueOf(Math.round(value)));
+            }
+        } else if (Arrays.asList(DOUBLE_COLUMNS).contains(header)) {
+            ArrayList<Double> colData = (ArrayList<Double>) oldColumn.getData();
+            for (Double value : colData) {
+                newColumnData.add(String.format("%.2f", value));
+            }
+        } else if (Arrays.asList(PERCENTAGE_COLUMNS).contains(header)) {
+            ArrayList<Double> colData = (ArrayList<Double>) oldColumn.getData();
+            for (Double value : colData) {
+                newColumnData.add(String.format("%.2f %%", value * 100));
+            }
+        } else { // Already a string type or any other type
+            for (Object obj : oldColumn.getData()) {
+                newColumnData.add(obj.toString());
+            }
+        }
+
+        // Replace old column with new formatted column
+        Column<String> newColumn = new Column<>(newColumnData, ColTypes.STR);
+        columns.set(index, newColumn);
+    }
+    public void formatAllColumns() {
+        for (String header : headers) {
+            formatAndReplaceColumn(header);
+        }
+    }
 }

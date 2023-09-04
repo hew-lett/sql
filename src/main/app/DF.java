@@ -128,7 +128,7 @@ public class DF implements Serializable {
 
             for (int i = 0; i < header.length; i++) {
                 if (Arrays.asList(strColumns).contains(header[i])) {
-                    coltypes[i] = STR;
+                    coltypes[i] = Col_types.STR;
                 } else if (Arrays.asList(dateColumns).contains(header[i])) {
                     coltypes[i] = DAT; // Assuming you have a DAT enum value for date type columns
                 } else {
@@ -1260,24 +1260,22 @@ public class DF implements Serializable {
     }
     private Col_types[] detectColumnTypesXlsx(Row headerRow, int size) {
         Col_types[] detectedTypes = new Col_types[size];
-
-        // Default all columns to STR
-        Arrays.fill(detectedTypes, Col_types.STR);
+        Arrays.fill(detectedTypes, Col_types.STR);  // Default all columns to STR
 
         for (Cell c : headerRow) {
-            CellType cellType = c.getCellTypeEnum();
-
+            CellType cellType = c.getCellType();
             if (cellType == CellType.NUMERIC) {
                 if (DateUtil.isCellDateFormatted(c)) {
-                    detectedTypes[c.getColumnIndex()] = Col_types.DAT;
+                    detectedTypes[c.getColumnIndex()] = DAT;
                 } else {
-                    detectedTypes[c.getColumnIndex()] = Col_types.DBL;
+                    detectedTypes[c.getColumnIndex()] = DBL;
                 }
             } // No need for an 'else' branch, as the array is already filled with STR
         }
 
         return detectedTypes;
     }
+
     public void populateFromGrilleTarif(DF src) throws Exception {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
@@ -1903,50 +1901,56 @@ public class DF implements Serializable {
     }
     public Object parseCell(Cell cell_i, Col_types colType, SimpleDateFormat dateFormatter) {
         Object cellValue = null;
-        if (cell_i.getCellTypeEnum() == CellType.FORMULA) {
-            if (cell_i.getCachedFormulaResultTypeEnum() == CellType.ERROR) {
-                cellValue = get_cell_of_type(cell_i.getCellFormula(), colType, dateFormatter); // bad formula
-            } else {
-                cellValue = get_cell_of_type(cell_i.getStringCellValue(), colType, dateFormatter); // good formula
+        if (cell_i.getCellType() == CellType.FORMULA) {
+            switch (cell_i.getCachedFormulaResultType()) {
+                case ERROR:
+                    cellValue = getCellOfType(cell_i.getCellFormula(), colType, dateFormatter); // bad formula
+                    break;
+                case STRING:
+                    cellValue = getCellOfType(cell_i.getStringCellValue(), colType, dateFormatter); // good formula
+                    break;
+                // You may handle other formula result types if needed.
             }
         } else {
-            if (cell_i.getCellTypeEnum() == CellType.NUMERIC) {
+            if (cell_i.getCellType() == CellType.NUMERIC) {
                 if (DateUtil.isCellDateFormatted(cell_i)) {
                     return cell_i.getDateCellValue();
                 } else {
                     // Handle numeric cells based on the expected Col_types
                     if (colType == Col_types.DBL) {
                         return cell_i.getNumericCellValue(); // return the numeric value directly for DBL type
-                    } else if (colType == STR) {
+                    } else if (colType == Col_types.STR) {
                         return Double.toString(cell_i.getNumericCellValue()); // convert to string for STR type
                     }
                 }
             } else {
-                cellValue = get_cell_of_type(cell_i.getStringCellValue(), colType, dateFormatter); // no formula
+                cellValue = getCellOfType(cell_i.getStringCellValue(), colType, dateFormatter); // no formula
             }
         }
         return cellValue;
     }
     public Object parseLowercaseCell(Cell cell_i, Col_types colType, SimpleDateFormat dateFormatter) {
         Object cellValue = null;
-        if (cell_i.getCellTypeEnum() == CellType.FORMULA) {
-            if (cell_i.getCachedFormulaResultTypeEnum() == CellType.ERROR) {
-                cellValue = get_lowercase_cell_of_type(cell_i.getCellFormula(), colType, dateFormatter); // bad formula
-            } else {
-                cellValue = get_lowercase_cell_of_type(cell_i.getStringCellValue(), colType, dateFormatter); // good formula
+        if (cell_i.getCellType() == CellType.FORMULA) {
+            switch (cell_i.getCachedFormulaResultType()) {
+                case ERROR:
+                    cellValue = get_lowercase_cell_of_type(cell_i.getCellFormula(), colType, dateFormatter); // bad formula
+                    break;
+                case STRING:
+                    cellValue = get_lowercase_cell_of_type(cell_i.getStringCellValue(), colType, dateFormatter); // good formula
+                    break;
+                // You may handle other formula result types if needed.
             }
         } else {
-            if (cell_i.getCellTypeEnum() == CellType.NUMERIC) {
+            if (cell_i.getCellType() == CellType.NUMERIC) {
                 if (DateUtil.isCellDateFormatted(cell_i)) {
                     return cell_i.getDateCellValue();
                 } else {
                     // Handle numeric cells based on the expected Col_types
                     if (colType == Col_types.DBL) {
                         return cell_i.getNumericCellValue(); // return the numeric value directly for DBL type
-                    } else if (colType == STR) {
+                    } else if (colType == Col_types.STR) {
                         return Double.toString(cell_i.getNumericCellValue()); // convert to string for STR type
-                    } else if (colType == Col_types.DAT) {
-                        cellValue = cell_i.getDateCellValue(); // though it's numeric, you expect it to be a date
                     }
                 }
             } else {
@@ -1955,6 +1959,45 @@ public class DF implements Serializable {
         }
         return cellValue;
     }
+    public Object getCellOfType(String cell, Col_types type, SimpleDateFormat dateFormatter) {
+        Object out = "";
+        switch (type) {
+            case STR -> {
+                if (cell == null) return "";
+                return cell.trim();
+            }
+            case DBL -> {
+                if (cell == null) return 0d;
+                try {
+                    return Double.parseDouble(cell.replace(",", ".").replace(" €", ""));
+                } catch (NumberFormatException ignored) {
+                    return NA_DBL;
+                }
+            }
+            case DAT -> {
+                if (cell == null) return NA_DAT;
+                // Purify the cell if the date format is "#yyyy-MM-dd#"
+
+                if (cell.length() == 5) {
+                    try {
+                        // If the purified cell has exactly 5 characters, interpret it as a numeric Excel date
+                        double dateValue = Double.parseDouble(cell);
+                        return DateUtil.getJavaDate(dateValue);
+                    } catch (NumberFormatException ignored) {
+                        return NA_DAT;
+                    }
+                } else {
+                    try {
+                        // Otherwise, try to parse the date using the specified format
+                        return dateFormatter.parse(cell);
+                    } catch (ParseException ignored) {
+                        return NA_DAT;
+                    }
+                }
+            }
+        }
+        return out;
+    } // EXCEL
     public Object get_cell_of_type(String cell, Col_types type, SimpleDateFormat dateFormatter) {
         Object out = "";
         switch (type) {
