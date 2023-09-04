@@ -1976,7 +1976,7 @@ public class Base extends DF {
         }
         for (int i = 0; i < referenceHeader.length; i++) {
             if (!referenceHeader[i].equals(currentHeader[i])) {
-                System.out.println("Wrong header at position " + i + " for the file " + fileName);
+//                System.out.println("Wrong header at position " + i + " for the file " + fileName);
                 return false;
             }
         }

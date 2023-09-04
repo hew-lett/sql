@@ -6,7 +6,10 @@ import org.apache.poi.ss.usermodel.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.SQLException;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -125,18 +128,29 @@ public class Estimate extends DF {
     public void getUniqueStatutsFromMap() {
         List<String> sortedStatuts = new ArrayList<>(globalStatutDateRangeMap.keySet());
 
-        // Sort the list so that "terminé - accepté" is at the beginning
+        // Add the required strings if they are not present in the list
+        List<String> requiredStatuts = Arrays.asList("en cours", "en cours - accepté", "en attente de prescription");
+        for (String reqStatut : requiredStatuts) {
+            if (!sortedStatuts.contains(reqStatut)) {
+                sortedStatuts.add(reqStatut);
+            }
+        }
+
+        // Sort the list so that "terminé - accepté" is at the beginning and others as required
         sortedStatuts.sort((statut1, statut2) -> {
             if (statut1.equalsIgnoreCase("terminé - accepté")) {
                 return -1;
             } else if (statut2.equalsIgnoreCase("terminé - accepté")) {
                 return 1;
             }
+            // You can add additional sorting rules for "en cours", "en cours - accepté",
+            // and "en attente de prescription" if required
             return statut1.compareTo(statut2);
         });
 
         this.uniqueStatutsEstimate = new LinkedHashSet<>(sortedStatuts);
     }
+
     public void getUniqueNumPoliceEstimate() {
         int contratIndex = find_in_arr_first_index(header, "Contrat");
         for (int i = 0; i < nrow; i++) {
@@ -148,12 +162,18 @@ public class Estimate extends DF {
         }
     }
 
-    public void populateMonthSin(List<Base> bases, String statut) {
+    public void populateMonthSin(List<Base> bases, String statut) throws ParseException {
         int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
         int begin = ncol - lastAppendSize;
 
-        Date minDateForStatus = globalStatutDateRangeMap.get(statut).get(0);
-        Date maxDateForStatus = globalStatutDateRangeMap.get(statut).get(1);
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+        Date defaultDate = sdf.parse("1/11/2013");
+
+        List<Date> interMap = globalStatutDateRangeMap.getOrDefault(statut, Arrays.asList(defaultDate, defaultDate));
+
+        Date minDateForStatus = interMap.get(0) != null ? interMap.get(0) : defaultDate;
+        Date maxDateForStatus = interMap.get(1) != null ? interMap.get(1) : defaultDate;
+
 
         for (int col = begin; col < ncol; col++) {
             if (!(isLaterSvD(this.header[col], maxDateForStatus, "MM-yyyy") ||
@@ -200,12 +220,17 @@ public class Estimate extends DF {
             }
         }
     }
-    public void populateYearSin(List<Base> bases, String statut) {
+    public void populateYearSin(List<Base> bases, String statut) throws ParseException {
         int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
         int begin = ncol - lastAppendSize;
 
-        Date minDateForStatus = globalStatutDateRangeMap.get(statut).get(0);
-        Date maxDateForStatus = globalStatutDateRangeMap.get(statut).get(1);
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+        Date defaultDate = sdf.parse("1/11/2013");
+
+        List<Date> interMap = globalStatutDateRangeMap.getOrDefault(statut, Arrays.asList(defaultDate, defaultDate));
+
+        Date minDateForStatus = interMap.get(0) != null ? interMap.get(0) : defaultDate;
+        Date maxDateForStatus = interMap.get(1) != null ? interMap.get(1) : defaultDate;
 
         for (int col = begin; col < ncol; col++) {
             if (!(isLaterSvD(this.header[col], maxDateForStatus, "yyyy") ||
@@ -279,12 +304,17 @@ public class Estimate extends DF {
         }
     }
 
-    public void populateMonthSinN(List<Base> bases, String statut) {
+    public void populateMonthSinN(List<Base> bases, String statut) throws ParseException {
         int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
         int begin = ncol - lastAppendSize;
 
-        Date minDateForStatus = globalStatutDateRangeMap.get(statut).get(0);
-        Date maxDateForStatus = globalStatutDateRangeMap.get(statut).get(1);
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+        Date defaultDate = sdf.parse("1/11/2013");
+
+        List<Date> interMap = globalStatutDateRangeMap.getOrDefault(statut, Arrays.asList(defaultDate, defaultDate));
+
+        Date minDateForStatus = interMap.get(0) != null ? interMap.get(0) : defaultDate;
+        Date maxDateForStatus = interMap.get(1) != null ? interMap.get(1) : defaultDate;
 
         for (int col = begin; col < ncol; col++) {
             if (!(isLaterSvD(this.header[col], maxDateForStatus, "MM-yyyy") ||
@@ -332,12 +362,17 @@ public class Estimate extends DF {
             }
         }
     }
-    public void populateYearSinN(List<Base> bases, String statut) {
+    public void populateYearSinN(List<Base> bases, String statut) throws ParseException {
         int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
         int begin = ncol - lastAppendSize;
 
-        Date minDateForStatus = globalStatutDateRangeMap.get(statut).get(0);
-        Date maxDateForStatus = globalStatutDateRangeMap.get(statut).get(1);
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+        Date defaultDate = sdf.parse("1/11/2013");
+
+        List<Date> interMap = globalStatutDateRangeMap.getOrDefault(statut, Arrays.asList(defaultDate, defaultDate));
+
+        Date minDateForStatus = interMap.get(0) != null ? interMap.get(0) : defaultDate;
+        Date maxDateForStatus = interMap.get(1) != null ? interMap.get(1) : defaultDate;
 
         for (int col = begin; col < ncol; col++) {
             if (!(isLaterSvD(this.header[col], maxDateForStatus, "yyyy") ||
@@ -1087,7 +1122,7 @@ public class Estimate extends DF {
         populateTotalFicN(baseFic);
 
     }
-    public void addSinMAT(List<Base> bases) {
+    public void addSinMAT(List<Base> bases) throws ParseException {
         String statut = "Sinistre total";
         int begin;
         int tableName_ind;
@@ -1364,8 +1399,9 @@ public class Estimate extends DF {
                 }
 
                 if (yearColumnIndex == -1) {
-                    System.out.println("Error: No column found for year " + yearKey);
-                    break;
+//                    System.out.println("Error: No column found for year " + yearKey);
+//                    break;
+                    continue;
                 }
 
                 double value = prime * accumulatedCoefficient;
@@ -1525,7 +1561,7 @@ public class Estimate extends DF {
 
             Map<Double, Double> spPreviMap = mapSPprevi.get(contrat);
             if (spPreviMap != null) {
-                colSPprevi[i] = spPreviMap.get(year);
+                colSPprevi[i] = spPreviMap.getOrDefault(year, 0.0);
             } else {
                 // Handle or set default value if not found
                 colSPprevi[i] = 0.0;  // or any default value
@@ -1533,7 +1569,7 @@ public class Estimate extends DF {
 
             Map<String, Double> pbMap = mapPB.get(contrat);
             if (pbMap != null) {
-                colPB[i] = pbMap.get(date);
+                colPB[i] = pbMap.getOrDefault(year, 0.0);
             } else {
                 // Handle or set default value if not found
                 colPB[i] = 0.0;  // or any default value
@@ -1626,7 +1662,9 @@ public class Estimate extends DF {
         Arrays.fill(mask_col, begin, end, true);
     }
     public void saveToCSVFile(boolean applyMask) throws IOException {
-        String filePath = fullPath.replace(".xlsx", "_extended.csv");
+        Path path = Paths.get(fullPath);
+        String newPath = outputFolder + path.getFileName().toString();
+        String filePath = newPath.replace(".xlsx", "_fichier_de_travail.csv");
 
         // Create a FileWriter and a BufferedWriter to write text to the file in UTF-8 encoding
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(

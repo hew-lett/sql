@@ -1069,18 +1069,16 @@ public class DF implements Serializable {
             }
         }
     }
-    public DF (String path, String sheet_name) throws IOException {
+    public DF (String path, String sheetName) throws IOException {
 
         InputStream is = Files.newInputStream(new File(path).toPath());
-        Workbook workbook = StreamingReader.builder()
-                .rowCacheSize(1)      // number of rows to keep in memory (defaults to 10)
-                .bufferSize(4096)     // buffer size to use when reading InputStream to file (defaults to 1024)
-                .open(is);
 
-//        String sheet_name = workbook.getSheetName(0);
-        Sheet sheet = workbook.getSheet(sheet_name);
-        Iterator<Row> rowIter = sheet.rowIterator();
-        Row row = rowIter.next();
+        // Use Apache POI directly to open the workbook
+        Workbook workbook = new XSSFWorkbook(is);
+
+        Sheet sheet = workbook.getSheet(sheetName);
+        Iterator<Row> rows = sheet.rowIterator();
+        Row row = rows.next();
         nrow = sheet.getLastRowNum();
         ncol = row.getLastCellNum();
         header = new String[ncol];
@@ -1090,7 +1088,7 @@ public class DF implements Serializable {
             i++;
         }
 
-        Row secondRow = rowIter.hasNext() ? rowIter.next() : null;
+        Row secondRow = rows.hasNext() ? rows.next() : null;
 
         if (secondRow != null) {
             coltypes = detectColumnTypesXlsx(secondRow, header.length);
@@ -1109,24 +1107,21 @@ public class DF implements Serializable {
             row_number++;
         }
 
-// Continue processing the remaining rows
-        while (rowIter.hasNext()) {
-            row = rowIter.next();
+        // Continue processing the remaining rows
+        while (rows.hasNext()) {
+            row = rows.next();
             processRow(row, row_number);
             row_number++;
         }
     } //ref_triangle //mapping
-
-    public DF (String path, String sheet_name, boolean uppercase) throws IOException {
+    public DF (String path, String sheetName, boolean uppercase) throws IOException {
 
         InputStream is = Files.newInputStream(new File(path).toPath());
-        Workbook workbook = StreamingReader.builder()
-                .rowCacheSize(1)      // number of rows to keep in memory (defaults to 10)
-                .bufferSize(4096)     // buffer size to use when reading InputStream to file (defaults to 1024)
-                .open(is);
 
-//        String sheet_name = workbook.getSheetName(0);
-        Sheet sheet = workbook.getSheet(sheet_name);
+        // Use Apache POI directly to open the workbook
+        Workbook workbook = new XSSFWorkbook(is);
+
+        Sheet sheet = workbook.getSheet(sheetName);
         Iterator<Row> rowIter = sheet.rowIterator();
         Row row = rowIter.next();
         nrow = sheet.getLastRowNum();

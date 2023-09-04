@@ -33,6 +33,15 @@ public class Synthese {
     private List<Integer> refMapping;
     private ArrayList<Boolean> bu;
     public static Synthese syntAncien;
+
+    static {
+        try {
+            syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private ArrayList<Integer> mapToAncien;
     public static final String[] INTEGER_COLUMNS;
     public static final String[] DOUBLE_COLUMNS;
@@ -96,9 +105,7 @@ public class Synthese {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
 
-//        List<String> columnsToCheck = Arrays.asList("A", "AD", "AU", "AX", "EKV", "ETN", "GCH", "GTU", "GTV", "GTW", "GUN", "GUO", "GUP", "HDJ", "HDN", "HDO", "HDM", "M", "RZ", "S");
-//        wf.printColumnHeaders(columnsToCheck);
-        Synthese wf = new Synthese(wd+"TDB estimate par gestionnaire/SPB Italie_extended.csv",delim,false,true,true);
+        Synthese wf = new Synthese(outputFolder+"SPB Italie_fichier_de_travail.csv",delim,false,true,true);
         syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
 
         Synthese syntPolice = new Synthese(wf,"");
@@ -114,23 +121,25 @@ public class Synthese {
         Synthese syntGestagg = new Synthese(syntGest,1.0,true);
         syntGestagg.formatAllColumns();
 
-        syntPolice.exportToExcel(wd + "output.xlsx", "Detaillé", null);
-        Workbook workbook = new XSSFWorkbook(new FileInputStream(wd + "output.xlsx"));
-        syntPoliceagg.exportToExcel(wd + "output.xlsx", "Par Police", workbook);
-        syntDistribagg.exportToExcel(wd + "output.xlsx", "Par Distributeur", workbook);
-        syntGestagg.exportToExcel(wd + "output.xlsx", "Par Gestionnaire", workbook);
+        String output = outputFolder + "output.xlsx";
+        syntPolice.exportToExcel(output, "Detaillé", null);
+        Workbook workbook = new XSSFWorkbook(new FileInputStream(output));
+        syntPoliceagg.exportToExcel(output, "Par Police", workbook);
+        syntDistribagg.exportToExcel(output, "Par Distributeur", workbook);
+        syntGestagg.exportToExcel(output, "Par Gestionnaire", workbook);
 
         stopwatch.printElapsedTime();
 
     }
     public Synthese(String path, char delim, boolean toLower, boolean subHeader, boolean detectColtypes) {
+        System.out.println(path + " debug");
         headers = new ArrayList<>();
         columns = new ArrayList<>();
 
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
         settings.trimValues(true);
-        settings.setMaxColumns(6000);
+        settings.setMaxColumns(8000);
         settings.setMaxCharsPerColumn(256);
 
         try (Reader inputReader = new InputStreamReader(Files.newInputStream(new File(path).toPath()), StandardCharsets.UTF_8)) {
@@ -366,8 +375,6 @@ public class Synthese {
         populateStatutContrat();
 
 
-        System.out.println(this.headers);
-        System.out.println(syntAncien.headers);
         mapToAncien = mapThisToExtern(syntAncien);
         compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable",false);
         compareColumns(syntAncien, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", "Variation des Primes émises",false);
@@ -451,8 +458,6 @@ public class Synthese {
         populateStatutContrat();
 
 
-        System.out.println(this.headers);
-        System.out.println(syntAncien.headers);
         mapToAncien = mapThisToExtern(syntAncien);
         compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable",false);
         compareColumns(syntAncien, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", "Variation des Primes émises",false);
@@ -536,8 +541,6 @@ public class Synthese {
         populateStatutContrat();
 
 
-        System.out.println(this.headers);
-        System.out.println(syntAncien.headers);
         mapToAncien = mapThisToExtern(syntAncien);
         compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable",false);
         compareColumns(syntAncien, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", "Variation des Primes émises",false);

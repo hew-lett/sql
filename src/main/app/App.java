@@ -1,6 +1,8 @@
 package main.app;
 
 import com.univocity.parsers.csv.CsvParserSettings;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
@@ -17,8 +19,9 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-//    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
-    public static final String wd = "E:/202305/wd/";
+    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
+//    public static final String wd = "E:/202305/wd/";
+    public static final String outputFolder = wd + "output/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
     public static final String regex_digits = "[0-9]+";
@@ -67,6 +70,8 @@ public class App {
         PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
     }
     private static final LocalDate TODAY = LocalDate.now();
+    public static char delim = ';';
+    public static Synthese syntAncien;
 
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
@@ -83,6 +88,8 @@ public class App {
         SPprevi = new DF(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1");
         SPprevi.mapPoliceToSPPrevi();
         getCoefsAcquisition();
+        syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
+
         stopwatch.printElapsedTime("refs");
 //        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
 //        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
@@ -92,7 +99,7 @@ public class App {
         for (int i = 0; i < ref_source.nrow; i++) {
             boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
             if (!a_faire) continue;
-
+            stopwatch.start();
             Base.currentHeaderRef = null;
             String folder = (String) ref_source.c("path")[i];
             String pays = (String) ref_source.c("pays_filekey")[i];
@@ -107,7 +114,10 @@ public class App {
             List<Base> basesSin = new ArrayList<>();
 
             for (File file : fileList) {
-//                if (!file.toPath().toString().contains("EXDI"))  continue;
+//                if (!file.toPath().toString().contains("MM101")) {
+////                    System.out.println("here");
+//                    continue;
+//                }
                 Base base = new Base(file,pays,mapcol);
                 basesSin.add(base);
             }
@@ -118,7 +128,6 @@ public class App {
                     Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
                     basesSin.add(base);
                 }
-                //            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGSSW18.csv")));
                 basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
                 basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
             }
@@ -134,16 +143,41 @@ public class App {
             Base baseFic = new Base(wd + path_fic,map_fic);
             estimate.addFicMAT(baseFic);
 
-            stopwatch.printElapsedTime("integration success");
+            stopwatch.printElapsedTime(pays + " integré");
 
             estimate.addSinMAT(basesSin);
             estimate.addProvisions(basesSin);
             estimate.addPrimesAcquises();
             estimate.addSP();
 
-            stopwatch.printElapsedTime("calculated");
+            stopwatch.printElapsedTime("calculé");
             estimate.saveToCSVFile(false);
 
+            stopwatch.start();
+
+            Synthese wf = new Synthese(outputFolder+estim + "_fichier_de_travail.csv",delim,false,true,true);
+
+            Synthese syntPolice = new Synthese(wf,"");
+            Synthese syntPoliceagg = new Synthese(syntPolice,"",true);
+            syntPoliceagg.formatAllColumns();
+            syntPolice.formatAllColumns();
+
+            Synthese syntDistrib = new Synthese(wf,1);
+            Synthese syntDistribagg = new Synthese(syntDistrib,1,true);
+            syntDistribagg.formatAllColumns();
+
+            Synthese syntGest = new Synthese(wf,1.0);
+            Synthese syntGestagg = new Synthese(syntGest,1.0,true);
+            syntGestagg.formatAllColumns();
+
+            String output = outputFolder + estim + "_output.xlsx";
+            syntPolice.exportToExcel(output, "Detaillé", null);
+            Workbook workbook = new XSSFWorkbook(new FileInputStream(output));
+            syntPoliceagg.exportToExcel(output, "Par Police", workbook);
+            syntDistribagg.exportToExcel(output, "Par Distributeur", workbook);
+            syntGestagg.exportToExcel(output, "Par Gestionnaire", workbook);
+
+            stopwatch.printElapsedTime();
         }
 
     }
