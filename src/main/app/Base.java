@@ -66,6 +66,10 @@ public class Base extends DF {
     public Map<String, Map<String, Integer>> pivotTableAllStatutsN = new HashMap<>();
     public Map<String, Map<String, Integer>> pivotTableAllStatutsYearlyN = new HashMap<>();
     public Map<String, Integer> pivotTableAllStatutsTotalN = new HashMap<>();
+    public Map<String, Map<String, Map<String, Map<String, Integer>>>> pivotTableFicN = new HashMap<>();
+    public Map<String, Map<String, Map<String, Map<String, Integer>>>> pivotTableFicYearlyN = new HashMap<>();
+    public Map<String, Map<String, Map<String, Integer>>> pivotTableFicTotalN = new HashMap<>();
+
     public double coutMoyenEnCours;
     public double coutMoyenEnCoursAccepte;
     public Map<String, List<Integer>> nEnCours;
@@ -557,6 +561,9 @@ public class Base extends DF {
         createPivotTableFic();
         createYearlyPivotTableFic();
         createTotalPivotTableFic();
+        createPivotTableFicN();
+        createYearlyPivotTableFicN();
+        createTotalPivotTableFicN();
         populateNumPoliceDateRangeMap();
     } //Fic
     public void addStatutFictif() {
@@ -897,137 +904,6 @@ public class Base extends DF {
         }
     }
 
-    public void createPivotTableFic() {
-        // define the format to capture only the month and year of a date
-        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
-
-        // get column data
-        Object[] montant_IPs = c("montant_IP");
-        Object[] statuts = c("statut");
-        Object[] date_sousArray = c("date_sous");
-        Object[] date_survArray = c("date_surv");
-        Object[] polices = c("num_police"); // Get the police column
-
-        // iterate over the rows to populate the pivot map
-        for (int i = 0; i < nrow; i++) {
-            String police = (String) polices[i];
-            String statut = (String) statuts[i];
-            String date_sous = format.format((Date) date_sousArray[i]);
-            String date_surv = format.format((Date) date_survArray[i]);
-            Double montant_IP = (Double) montant_IPs[i];
-
-            pivotTableFic
-                    .computeIfAbsent(police, p -> new HashMap<>()) // External layer for police
-                    .computeIfAbsent(statut, k -> new HashMap<>())
-                    .computeIfAbsent(date_sous, k -> new HashMap<>())
-                    .merge(date_surv, montant_IP, Double::sum);
-        }
-
-        // Iterate over the pivot map to round the values
-        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableFic.entrySet()) {
-            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
-
-            for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : outerMap.entrySet()) {
-                Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
-
-                for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
-                    Map<String, Double> innerMap = middleEntry.getValue();
-
-                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
-                        double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
-                        innerEntry.setValue(roundedValue);
-                    }
-                }
-            }
-        }
-    }
-    public void createYearlyPivotTableFic() {
-        // Format to extract only the year from a date
-        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy");
-
-        // Iterate over the existing pivotTableFic
-        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableFic.entrySet()) {
-            String police = outermostEntry.getKey();
-            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
-
-            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
-                String statut = secondEntry.getKey();
-                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
-
-                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
-                    String date_sous = thirdEntry.getKey();
-                    Map<String, Double> innerMap = thirdEntry.getValue();
-
-                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
-                        String date_surv = innerEntry.getKey();
-                        try {
-                            String year = yearFormat.format(new SimpleDateFormat("MM-yyyy").parse(date_surv));
-                            Double montant_IP = innerEntry.getValue();
-
-                            pivotTableYearlyFic
-                                    .computeIfAbsent(police, p -> new HashMap<>())
-                                    .computeIfAbsent(statut, s -> new HashMap<>())
-                                    .computeIfAbsent(date_sous, ds -> new HashMap<>())
-                                    .merge(year, montant_IP, Double::sum);
-                        } catch (ParseException e) {
-                            e.printStackTrace(); // handle parsing exceptions
-                        }
-                    }
-                }
-            }
-        }
-
-        // Round the values in pivotTableYearlyFic
-        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableYearlyFic.entrySet()) {
-            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
-
-            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
-                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
-
-                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
-                    Map<String, Double> innerMap = thirdEntry.getValue();
-
-                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
-                        double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
-                        innerEntry.setValue(roundedValue);
-                    }
-                }
-            }
-        }
-
-        // You can now replace pivotTableFic with pivotTableYearlyFic or keep both as needed.
-    }
-    public void createTotalPivotTableFic() {
-        // Iterate over the existing pivotTableYearlyFic
-        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableYearlyFic.entrySet()) {
-            String police = outermostEntry.getKey();
-            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
-
-            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
-                String statut = secondEntry.getKey();
-                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
-
-                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
-                    String date_sous = thirdEntry.getKey();
-                    Map<String, Double> innerMap = thirdEntry.getValue();
-
-                    double total = 0.0; // Variable to keep the total for a given date_sous
-                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
-                        total += innerEntry.getValue();
-                    }
-
-                    // Round the total to 2 decimal places
-                    double roundedTotal = Math.round(total * 100.0) / 100.0;
-
-                    // Add the total to pivotTableTotalFic
-                    pivotTableTotalFic
-                            .computeIfAbsent(police, p -> new HashMap<>())
-                            .computeIfAbsent(statut, s -> new HashMap<>())
-                            .put(date_sous, roundedTotal);
-                }
-            }
-        }
-    }
 
     public void createPivotTableN() {
         // Define the format to capture only the month and year of a date
@@ -1167,6 +1043,224 @@ public class Base extends DF {
         }
     }
 
+    public void createPivotTableFic() {
+        // define the format to capture only the month and year of a date
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        // get column data
+        Object[] montant_IPs = c("montant_IP");
+        Object[] statuts = c("statut");
+        Object[] date_sousArray = c("date_sous");
+        Object[] date_survArray = c("date_surv");
+        Object[] polices = c("num_police"); // Get the police column
+
+        // iterate over the rows to populate the pivot map
+        for (int i = 0; i < nrow; i++) {
+            String police = (String) polices[i];
+            String statut = (String) statuts[i];
+            String date_sous = format.format((Date) date_sousArray[i]);
+            String date_surv = format.format((Date) date_survArray[i]);
+            Double montant_IP = (Double) montant_IPs[i];
+
+            pivotTableFic
+                    .computeIfAbsent(police, p -> new HashMap<>()) // External layer for police
+                    .computeIfAbsent(statut, k -> new HashMap<>())
+                    .computeIfAbsent(date_sous, k -> new HashMap<>())
+                    .merge(date_surv, montant_IP, Double::sum);
+        }
+
+        // Iterate over the pivot map to round the values
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableFic.entrySet()) {
+            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : outerMap.entrySet()) {
+                Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
+                    Map<String, Double> innerMap = middleEntry.getValue();
+
+                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                        double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
+                        innerEntry.setValue(roundedValue);
+                    }
+                }
+            }
+        }
+    }
+    public void createYearlyPivotTableFic() {
+        // Format to extract only the year from a date
+        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy");
+
+        // Iterate over the existing pivotTableFic
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableFic.entrySet()) {
+            String police = outermostEntry.getKey();
+            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
+                String statut = secondEntry.getKey();
+                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
+                    String date_sous = thirdEntry.getKey();
+                    Map<String, Double> innerMap = thirdEntry.getValue();
+
+                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                        String date_surv = innerEntry.getKey();
+                        try {
+                            String year = yearFormat.format(new SimpleDateFormat("MM-yyyy").parse(date_surv));
+                            Double montant_IP = innerEntry.getValue();
+
+                            pivotTableYearlyFic
+                                    .computeIfAbsent(police, p -> new HashMap<>())
+                                    .computeIfAbsent(statut, s -> new HashMap<>())
+                                    .computeIfAbsent(date_sous, ds -> new HashMap<>())
+                                    .merge(year, montant_IP, Double::sum);
+                        } catch (ParseException e) {
+                            e.printStackTrace(); // handle parsing exceptions
+                        }
+                    }
+                }
+            }
+        }
+
+        // Round the values in pivotTableYearlyFic
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableYearlyFic.entrySet()) {
+            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
+                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
+                    Map<String, Double> innerMap = thirdEntry.getValue();
+
+                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                        double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
+                        innerEntry.setValue(roundedValue);
+                    }
+                }
+            }
+        }
+
+        // You can now replace pivotTableFic with pivotTableYearlyFic or keep both as needed.
+    }
+    public void createTotalPivotTableFic() {
+        // Iterate over the existing pivotTableYearlyFic
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableYearlyFic.entrySet()) {
+            String police = outermostEntry.getKey();
+            Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
+                String statut = secondEntry.getKey();
+                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
+                    String date_sous = thirdEntry.getKey();
+                    Map<String, Double> innerMap = thirdEntry.getValue();
+
+                    double total = 0.0; // Variable to keep the total for a given date_sous
+                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                        total += innerEntry.getValue();
+                    }
+
+                    // Round the total to 2 decimal places
+                    double roundedTotal = Math.round(total * 100.0) / 100.0;
+
+                    // Add the total to pivotTableTotalFic
+                    pivotTableTotalFic
+                            .computeIfAbsent(police, p -> new HashMap<>())
+                            .computeIfAbsent(statut, s -> new HashMap<>())
+                            .put(date_sous, roundedTotal);
+                }
+            }
+        }
+    }
+
+    public void createPivotTableFicN() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+
+        // Get column data
+        Object[] statuts = c("statut");
+        Object[] date_sousArray = c("date_sous");
+        Object[] date_survArray = c("date_surv");
+        Object[] polices = c("num_police");
+
+        for (int i = 0; i < nrow; i++) {
+            String police = (String) polices[i];
+            String statut = (String) statuts[i];
+            String date_sous = format.format((Date) date_sousArray[i]);
+            String date_surv = format.format((Date) date_survArray[i]);
+
+            pivotTableFicN
+                    .computeIfAbsent(police, p -> new HashMap<>())
+                    .computeIfAbsent(statut, k -> new HashMap<>())
+                    .computeIfAbsent(date_sous, k -> new HashMap<>())
+                    .merge(date_surv, 1, Integer::sum); // Increment by 1 for each appearance
+        }
+    }
+    public void createYearlyPivotTableFicN() {
+        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
+        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy");
+
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Integer>>>> outermostEntry : pivotTableFicN.entrySet()) {
+            String police = outermostEntry.getKey();
+            Map<String, Map<String, Map<String, Integer>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Integer>>> outerEntry : outerMap.entrySet()) {
+                String statut = outerEntry.getKey();
+                Map<String, Map<String, Integer>> middleMap = outerEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Integer>> middleEntry : middleMap.entrySet()) {
+                    String date_sous = middleEntry.getKey();
+                    Map<String, Integer> innerMap = middleEntry.getValue();
+
+                    for (Map.Entry<String, Integer> innerEntry : innerMap.entrySet()) {
+                        String date_surv = innerEntry.getKey();
+                        Integer value = innerEntry.getValue();
+
+                        try {
+                            Date date = format.parse(date_surv);
+                            String year = yearFormat.format(date);
+
+                            pivotTableFicYearlyN
+                                    .computeIfAbsent(police, p -> new HashMap<>())
+                                    .computeIfAbsent(statut, k -> new HashMap<>())
+                                    .computeIfAbsent(date_sous, k -> new HashMap<>())
+                                    .merge(year, value, Integer::sum);
+
+                        } catch (ParseException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    public void createTotalPivotTableFicN() {
+        for (Map.Entry<String, Map<String, Map<String, Map<String, Integer>>>> outermostEntry : pivotTableFicYearlyN.entrySet()) {
+            String police = outermostEntry.getKey();
+            Map<String, Map<String, Map<String, Integer>>> outerMap = outermostEntry.getValue();
+
+            for (Map.Entry<String, Map<String, Map<String, Integer>>> outerEntry : outerMap.entrySet()) {
+                String statut = outerEntry.getKey();
+                Map<String, Map<String, Integer>> middleMap = outerEntry.getValue();
+
+                for (Map.Entry<String, Map<String, Integer>> middleEntry : middleMap.entrySet()) {
+                    String date_sous = middleEntry.getKey();
+                    Map<String, Integer> innerMap = middleEntry.getValue();
+
+                    int yearlyTotal = 0;
+                    for (Integer count : innerMap.values()) {
+                        yearlyTotal += count;
+                    }
+
+                    pivotTableFicTotalN
+                            .computeIfAbsent(police, p -> new HashMap<>())
+                            .computeIfAbsent(statut, k -> new HashMap<>())
+                            .put(date_sous, yearlyTotal);
+                }
+            }
+        }
+    }
 
     void date_autofill() {
         // Indices for required columns in the current DF
