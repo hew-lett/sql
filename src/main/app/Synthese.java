@@ -34,13 +34,13 @@ public class Synthese {
     private ArrayList<Boolean> bu;
     public static Synthese syntAncien;
 
-    static {
-        try {
-            syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
+//    static {
+//        try {
+//            syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
+//    }
 
     private ArrayList<Integer> mapToAncien;
     public static final String[] INTEGER_COLUMNS;
@@ -106,8 +106,8 @@ public class Synthese {
         stopwatch.start();
 
         Synthese wf = new Synthese(outputFolder+"SPB Italie_fichier_de_travail.csv",delim,false,true,true);
-        syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-
+//        syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
+        wf.printRowsForContrat("ICIMITL16","NOMBRE TOTAL ADHESIONS");
         Synthese syntPolice = new Synthese(wf,"");
         Synthese syntPoliceagg = new Synthese(syntPolice,"",true);
         syntPoliceagg.formatAllColumns();
@@ -1332,14 +1332,6 @@ public class Synthese {
             printRow(row, fixedWidth);
         }
     }
-    private void printRow(List<String> row, int width) {
-        for (String cell : row) {
-            // Trim or pad the cell to match the desired width
-            String formattedCell = formatCell(cell, width);
-            System.out.print("| " + formattedCell + " ");
-        }
-        System.out.println("|");  // End the row with a boundary and move to the next line
-    }
     public void analyzeDataframe() {
         // Initializing counters for each type
         int strCount = 0;
@@ -1446,6 +1438,57 @@ public class Synthese {
             }
         }
     }
+    public void printRowsForContrat(String contratValue, String userColumn) {
+        int contratIndex = headers.indexOf("Contrat");
+        int datePeriodeIndex = headers.indexOf("Date Periode");
+        int userColumnIndex = headers.indexOf(userColumn);
+
+        if (contratIndex == -1) {
+            System.out.println("Contrat column not found.");
+            return;
+        }
+
+        if (datePeriodeIndex == -1) {
+            System.out.println("Date Periode column not found.");
+            return;
+        }
+
+        if (userColumnIndex == -1) {
+            System.out.println(userColumn + " column not found.");
+            return;
+        }
+
+        final int fixedWidth = 20;
+
+        // Print headers for Date Periode and user column
+        System.out.println(padRight("Date Periode", fixedWidth) + padRight(userColumn, fixedWidth));
+
+        // Retrieve the column for "Contrat"
+        ArrayList<String> contratColumn = getColumnByIndex(contratIndex);
+        ArrayList<String> datePeriodeColumn = getColumnByIndex(datePeriodeIndex);
+        ArrayList<String> userInputColumn = getColumnByIndex(userColumnIndex);
+
+        // Iterate over each row
+        for (int rowIndex = 0; rowIndex < contratColumn.size(); rowIndex++) {
+            if (contratColumn.get(rowIndex).equals(contratValue)) {
+                String datePeriodeValue = datePeriodeColumn.get(rowIndex);
+                String userInputValue = String.valueOf(userInputColumn.get(rowIndex));
+                System.out.println(padRight(datePeriodeValue, fixedWidth) + padRight(userInputValue, fixedWidth));
+            }
+        }
+    }
+
+
+    private void printRow(List<String> row, int width) {
+        for (String cell : row) {
+            System.out.print(padRight(cell, width));
+        }
+        System.out.println();
+    }
+    private String padRight(String s, int width) {
+        return String.format("%-" + width + "s", s);
+    }
+
 
     // MATH
     private double safeDivision(double numerator, double denominator) {

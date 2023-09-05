@@ -19,8 +19,8 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
-//    public static final String wd = "E:/202305/wd/";
+//    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
+    public static final String wd = "E:/202305/wd/";
     public static final String outputFolder = wd + "output/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
@@ -89,12 +89,9 @@ public class App {
         SPprevi.mapPoliceToSPPrevi();
         getCoefsAcquisition();
         syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
+        Synthese wff = new Synthese(outputFolder+"SPB Italie_fichier_de_travail.csv",delim,false,true,true);
 
         stopwatch.printElapsedTime("refs");
-//        Base base = new Base(wd + "Source FIC/SPB France/","FIC France");
-//        Base base = new Base(wd + "Source FIC/SPB Italie/","DB Claims Italie");
-//        Base base = new Base(wd + "Source FIC/SPB Pologne/","FIC Pologne");
-//        Base base = new Base(wd + "Source FIC/SPB Espagne/","FIC Espagne");
 
         for (int i = 0; i < ref_source.nrow; i++) {
             boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
@@ -114,10 +111,6 @@ public class App {
             List<Base> basesSin = new ArrayList<>();
 
             for (File file : fileList) {
-//                if (!file.toPath().toString().contains("MM101")) {
-////                    System.out.println("here");
-//                    continue;
-//                }
                 Base base = new Base(file,pays,mapcol);
                 basesSin.add(base);
             }
