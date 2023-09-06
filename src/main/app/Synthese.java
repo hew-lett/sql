@@ -4,6 +4,7 @@ import com.monitorjbl.xlsx.StreamingReader;
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
@@ -14,10 +15,14 @@ import java.nio.file.Files;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.logging.FileHandler;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static java.lang.Math.min;
+import static java.lang.Math.round;
 import static main.app.App.*;
 import static main.app.App.NA_DAT;
 import static main.app.Synthese.ColTypes.*;
@@ -100,35 +105,96 @@ public class Synthese {
                 "S/P Comptable à l'ultime\nyc ICI"
         };
     }
+    protected Map<String, ArrayList<Integer>> frequencies = new LinkedHashMap<>();
+    private static int offset = 0;
+    private static final String LOG_FILE_PATH = outputFolder +"logfile.txt";
+    private void writeToLogFile(String message) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(LOG_FILE_PATH, true))) { //true means append mode
+            writer.write(message);
+            writer.newLine(); // for new line
+        } catch (IOException e) {
+            System.err.println("Failed to write to log file: " + e.getMessage());
+        }
+    }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
+        printMemoryUsage();
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
 
         Synthese wf = new Synthese(outputFolder+"SPB Italie_fichier_de_travail.csv",delim,false,true,true);
+        int i = 0;
+        for (; i < ref_source.nrow; i++) {
+            if(ref_source.c("pays_filekey")[i].equals("Italie")) break;
+        }
+        Base.currentHeaderRef = null;
+        String folder = (String) ref_source.c("path")[i];
+        String pays = (String) ref_source.c("pays_filekey")[i];
+        String mapcol = (String) ref_source.c("mapping")[i];
+        String estim = (String) ref_source.c("estimate")[i];
+        String path_fic = (String) ref_source.c("path_fic")[i];
+        String map_fic = (String) ref_source.c("map_fic")[i];
+
+        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+
+        File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+        List<Base> basesSin = new ArrayList<>();
+
+        for (File file : fileList) {
+            Base base = new Base(file,pays,mapcol);
+            basesSin.add(base);
+        }
+        if (pays.equals("Italie")) {
+            File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
+            for (File file : fileListGS) {
+//                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
+                Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
+                basesSin.add(base);
+            }
+            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
+            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
+        }
+
+        for (Base base : basesSin) {
+            policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+            updateStatutDates(base); //global
+        }
+        estimate.getUniqueStatutsFromMap();
+        estimate.getUniqueNumPoliceEstimate();
+        updateGlobalDatesFromStatutMap();
+
+        Base baseFic = new Base(wd + path_fic,map_fic);
+
 //        syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-        wf.printRowsForContrat("ICIMITL16","NOMBRE TOTAL ADHESIONS");
-        Synthese syntPolice = new Synthese(wf,"");
-        Synthese syntPoliceagg = new Synthese(syntPolice,"",true);
-        syntPoliceagg.formatAllColumns();
-        syntPolice.formatAllColumns();
-
-        Synthese syntDistrib = new Synthese(wf,1);
-        Synthese syntDistribagg = new Synthese(syntDistrib,1,true);
-        syntDistribagg.formatAllColumns();
-
-        Synthese syntGest = new Synthese(wf,1.0);
-        Synthese syntGestagg = new Synthese(syntGest,1.0,true);
-        syntGestagg.formatAllColumns();
-
-        String output = outputFolder + "output.xlsx";
-        syntPolice.exportToExcel(output, "Detaillé", null);
-        Workbook workbook = new XSSFWorkbook(new FileInputStream(output));
-        syntPoliceagg.exportToExcel(output, "Par Police", workbook);
-        syntDistribagg.exportToExcel(output, "Par Distributeur", workbook);
-        syntGestagg.exportToExcel(output, "Par Gestionnaire", workbook);
+        wf.analyzeDataframe();
+        wf.calculateHeaderFrequencies();
+        wf.addComputedColumns();
+        wf.saveToCSV(outputFolder+"SPB Italie_fichier_de_travail_controle.csv");
 
         stopwatch.printElapsedTime();
+
+//        wf.printRowsForContrat("ICIMITL16","NOMBRE TOTAL ADHESIONS");
+//        Synthese syntPolice = new Synthese(wf,"");
+//        Synthese syntPoliceagg = new Synthese(syntPolice,"",true);
+//        syntPoliceagg.formatAllColumns();
+//        syntPolice.formatAllColumns();
+//
+//        Synthese syntDistrib = new Synthese(wf,1);
+//        Synthese syntDistribagg = new Synthese(syntDistrib,1,true);
+//        syntDistribagg.formatAllColumns();
+//
+//        Synthese syntGest = new Synthese(wf,1.0);
+//        Synthese syntGestagg = new Synthese(syntGest,1.0,true);
+//        syntGestagg.formatAllColumns();
+//
+//        String output = outputFolder + "output.xlsx";
+//        syntPolice.exportToExcel(output, "Detaillé", null);
+//        Workbook workbook = new XSSFWorkbook(new FileInputStream(output));
+//        syntPoliceagg.exportToExcel(output, "Par Police", workbook);
+//        syntDistribagg.exportToExcel(output, "Par Distributeur", workbook);
+//        syntGestagg.exportToExcel(output, "Par Gestionnaire", workbook);
+//
+//        stopwatch.printElapsedTime();
 
     }
     public Synthese(String path, char delim, boolean toLower, boolean subHeader, boolean detectColtypes) {
@@ -179,14 +245,13 @@ public class Synthese {
                     String cell = typeRow[i];
 
                     // Check if the header matches the "06-2020" pattern
-                    if (header.matches("\\d{2}-\\d{4}")) {
-                        columns.add(new Column<>(new ArrayList<>(), DBL));
-                    } else if (cell == null) {
+//                    if (header.matches("\\d{2}-\\d{4}") || header.matches("\\d{4}") || cell.matches("[\\d.,\\s]+")) {
+//                        columns.add(new Column<>(new ArrayList<>(), DBL));
+//                    } else
+                    if (cell == null) {
                         columns.add(new Column<>(new ArrayList<>(), ColTypes.STR));
                     } else if (cell.matches("\\d{2}/\\d{2}/\\d{4}")) {
                         columns.add(new Column<>(new ArrayList<>(), ColTypes.DAT));
-                    } else if (cell.matches("[\\d.,\\s]+")) {
-                        columns.add(new Column<>(new ArrayList<>(), DBL));
                     } else {
                         columns.add(new Column<>(new ArrayList<>(), ColTypes.STR));
                     }
@@ -946,7 +1011,6 @@ public class Synthese {
             }
         }
     }
-
     /**
      * This method duplicates a row and modifies some of its values
      *
@@ -1149,6 +1213,37 @@ public class Synthese {
     }
 
     // ROWS AND COLS
+    @SuppressWarnings("unchecked")
+    public <T> ArrayList<T> getColumnByIndex(int index) {
+        if (index < 0 || index >= columns.size()) {
+            throw new IndexOutOfBoundsException("Invalid column index: " + index);
+        }
+        return ((Column<T>) columns.get(index)).getData();
+    }
+    public enum ColTypes {
+        STR,
+        DAT,
+        DBL,
+        FLT,
+        SKP
+    }
+    private static class Column<T> {
+        private final ArrayList<T> data;
+        private final ColTypes type;
+
+        public Column(ArrayList<T> data, ColTypes type) {
+            this.data = data;
+            this.type = type;
+        }
+
+        public ArrayList<T> getData() {
+            return data;
+        }
+
+        public ColTypes getType() {
+            return type;
+        }
+    }
     public void swapColumns(String colName1, String colName2) {
         int index1 = headers.indexOf(colName1);
         int index2 = headers.indexOf(colName2);
@@ -1264,37 +1359,6 @@ public class Synthese {
             return ((Column<T>) columns.get(index)).getData();
         } else {
             throw new IllegalArgumentException("Column with header: " + header + " not found.");
-        }
-    }
-    @SuppressWarnings("unchecked")
-    public <T> ArrayList<T> getColumnByIndex(int index) {
-        if (index < 0 || index >= columns.size()) {
-            throw new IndexOutOfBoundsException("Invalid column index: " + index);
-        }
-        return ((Column<T>) columns.get(index)).getData();
-    }
-    public enum ColTypes {
-        STR,
-        DAT,
-        DBL,
-        FLT,
-        SKP
-    }
-    private static class Column<T> {
-        private final ArrayList<T> data;
-        private final ColTypes type;
-
-        public Column(ArrayList<T> data, ColTypes type) {
-            this.data = data;
-            this.type = type;
-        }
-
-        public ArrayList<T> getData() {
-            return data;
-        }
-
-        public ColTypes getType() {
-            return type;
         }
     }
     @SuppressWarnings("unchecked")
@@ -1476,6 +1540,43 @@ public class Synthese {
                 System.out.println(padRight(datePeriodeValue, fixedWidth) + padRight(userInputValue, fixedWidth));
             }
         }
+    }
+    public void calculateHeaderFrequencies() {
+
+        boolean foundFirst = false;
+
+        for (int i = 0; i < headers.size(); i++) {
+            if ("11-2013".equals(headers.get(i))) {
+                foundFirst = true;
+            }
+
+            if (foundFirst) {
+                if (!this.subheaders.get(i).isEmpty()) {
+                    String key = this.subheaders.get(i);
+                    frequencies.put(key, new ArrayList(List.of(i)));
+                    for (int j = i; j < headers.size(); j++) {
+                        if ("2013".equals(headers.get(j))) {
+                            frequencies.get(key).add(j);
+                            i = j;
+                            for (int k = j; k < headers.size(); k++) {
+                                if ("Total".equals(headers.get(k))) {
+                                    frequencies.get(key).add(k);
+                                    i = k;
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+//        for (Map.Entry<String, ArrayList<Integer>> entry : frequencies.entrySet()) {
+//            String key = entry.getKey();
+//            ArrayList<Integer> values = entry.getValue();
+//            System.out.println(key + " => " + values);
+//        }
     }
 
 
@@ -2195,7 +2296,7 @@ public class Synthese {
 
         workbook.close();
     }
-    public void exportToExcel(String fileName, String sheetName, Workbook existingWorkbook) throws IOException {
+    public void exportToExcel2(String fileName, String sheetName, Workbook existingWorkbook) throws IOException {
         Workbook workbook = existingWorkbook != null ? existingWorkbook : new XSSFWorkbook();
         Sheet sheet = workbook.createSheet(sheetName);
 
@@ -2238,6 +2339,105 @@ public class Synthese {
                 workbook.write(fileOut);
             }
             workbook.close();
+        }
+    }
+    public static String columnNumberToExcelLetter(int col) {
+        StringBuilder columnName = new StringBuilder();
+        while (col > 0) {
+            int rem = (col - 1) % 26;
+            columnName.append((char)(rem + 'A'));
+            col = (col - rem) / 26;
+        }
+        return columnName.reverse().toString();
+    }
+    public void exportToExcel(String fileName, String sheetName, Workbook existingWorkbook) throws IOException {
+        Workbook workbook = existingWorkbook != null ? existingWorkbook : new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet(sheetName);
+
+        // Creating header row
+        Row headerRow = sheet.createRow(0);
+        for (int i = 0; i < headers.size(); i++) {
+            Cell headerCell = headerRow.createCell(i);
+            headerCell.setCellValue(headers.get(i));
+        }
+
+        // Filling in data
+        for (int i = 0; i < columns.size(); i++) {
+            ArrayList<?> columnData = getColumnByIndex(i);
+            for (int j = 0; j < columnData.size(); j++) {
+                Row row = sheet.getRow(j + 1);
+                if (row == null) {
+                    row = sheet.createRow(j + 1);
+                }
+                Cell cell = row.createCell(i);
+                Object value = columnData.get(j);
+
+                if (value != null) { // Check if value is not null
+                    if (value instanceof Double) {
+                        cell.setCellValue((Double) value);  // Set value as numeric
+                    } else {
+                        cell.setCellValue(value.toString());  // Otherwise, set value as string
+                    }
+                }
+                // if value is null, the cell will remain empty
+            }
+        }
+
+        // Auto sizing the columns
+        for (int i = 0; i < headers.size(); i++) {
+            sheet.autoSizeColumn(i);
+        }
+
+        // Writing to the file
+        try (FileOutputStream fileOut = new FileOutputStream(fileName)) {
+            workbook.write(fileOut);
+        }
+
+        if (existingWorkbook == null) {
+            // Writing to the file
+            try (FileOutputStream fileOut = new FileOutputStream(fileName)) {
+                workbook.write(fileOut);
+            }
+            workbook.close();
+        }
+    }
+    public void saveToCSV(String fileName) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(fileName), StandardCharsets.UTF_8))) {
+            // Write BOM for UTF-8
+            writer.write('\ufeff');
+            // Writing the headers
+            writer.write(String.join(";", headers));
+            writer.newLine();
+            writer.write(String.join(";", subheaders));
+            writer.newLine();
+            // Assuming the number of rows across all columns is consistent
+            int numberOfRows = columns.get(0).getData().size();
+
+            // Iterate over rows
+            for (int rowIndex = 0; rowIndex < numberOfRows; rowIndex++) {
+                List<String> rowValues = new ArrayList<>();
+
+                // Iterate over columns
+                for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
+                    Object value = getColumnByIndex(columnIndex).get(rowIndex);
+
+                    if (value != null) {
+                        // Format double values as rounded to 2 decimals and with ',' instead of '.'
+                        if (value instanceof Double) {
+                            String formattedValue = String.format(Locale.FRANCE, "%.2f", (Double) value);
+                            rowValues.add(formattedValue);
+                        } else {
+                            rowValues.add(value.toString());
+                        }
+                    } else {
+                        rowValues.add(""); // Empty value for null
+                    }
+                }
+
+                // Writing the row
+                writer.write(String.join(";", rowValues));
+                writer.newLine();
+            }
         }
     }
 
@@ -2290,4 +2490,76 @@ public class Synthese {
             formatAndReplaceColumn(header);
         }
     }
+
+    public void addComputedColumns() {
+        for (Map.Entry<String, ArrayList<Integer>> entry : frequencies.entrySet()) {
+            ArrayList<Integer> indices = entry.getValue();
+            String key = entry.getKey();  // This is the string key you're interested in.
+
+            if (indices.size() == 3) {
+                int x = indices.get(0) + offset;
+                int y = indices.get(1) + offset;
+                int z = indices.get(2) + offset;
+
+                insertColumn(z + 1, computeSumSubtract(x, y - 1, y, z - 1, key), "Controle année - mois");  // Passing the key here
+                offset++;  // Increase offset after inserting a column
+
+                insertColumn(z + 2, computeSumSubtract(y, z - 1, z, z, key),"Controle total - année");  // Passing the key here too
+                offset++;  // Increase offset again for the second column
+            }
+        }
+    }
+
+
+    private void insertColumn(int index, ArrayList<Double> data, String nom) {
+        Column<Double> newColumn = new Column<>(data, ColTypes.DBL);
+        columns.add(index, newColumn);
+        headers.add(index, nom);
+        subheaders.add(index, "");
+    }
+
+    private ArrayList<Double> computeSumSubtract(int x1, int x2, int y1, int y2, String key) {
+        ArrayList<Double> result = new ArrayList<>();
+
+        int numRows = columns.get(0).getData().size();
+        for (int i = 0; i < numRows; i++) {
+            double sumX = sumRange(i, x1, x2);
+            double sumY = sumRange(i, y1, y2);
+            if (round(sumX - sumY) != 0) {
+                if (y1 == y2) {
+                    writeToLogFile("l'écart entre année et total: " + key);
+                } else {
+                    writeToLogFile("l'écart entre mois et année: " + key);
+                }
+            }
+            result.add(sumX - sumY);
+        }
+
+        return result;
+    }
+
+
+    private double sumRange(int row, int startCol, int endCol) {
+        double sum = 0;
+        for (int col = startCol; col <= endCol; col++) {
+            ArrayList<?> colData = getColumnByIndex(col);
+            Object value = colData.get(row);
+
+            if (value instanceof String) {
+                String stringValue = (String) value;
+                if (!stringValue.isEmpty()) {
+                    try {
+                        sum += Double.parseDouble(stringValue.replace(',', '.'));
+                    } catch (NumberFormatException e) {
+                        // If it's not a parsable double, continue without adding to sum
+                    }
+                }
+            } else if (value instanceof Number) {
+                sum += ((Number) value).doubleValue();
+            }
+        }
+        return sum;
+    }
+
+
 }

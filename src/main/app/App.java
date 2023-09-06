@@ -88,11 +88,10 @@ public class App {
         SPprevi = new DF(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1");
         SPprevi.mapPoliceToSPPrevi();
         getCoefsAcquisition();
-        syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-        Synthese wff = new Synthese(outputFolder+"SPB Italie_fichier_de_travail.csv",delim,false,true,true);
+
+//        syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
 
         stopwatch.printElapsedTime("refs");
-
         for (int i = 0; i < ref_source.nrow; i++) {
             boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
             if (!a_faire) continue;
@@ -105,73 +104,123 @@ public class App {
             String path_fic = (String) ref_source.c("path_fic")[i];
             String map_fic = (String) ref_source.c("map_fic")[i];
 
-            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+            Synthese wf = new Synthese(outputFolder + estim +"_fichier_de_travail.csv",delim,false,true,true);
 
             File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
             List<Base> basesSin = new ArrayList<>();
 
             for (File file : fileList) {
+                if (!file.toPath().toString().contains("MWTL")) continue;
                 Base base = new Base(file,pays,mapcol);
                 basesSin.add(base);
             }
-            if (pays.equals("Italie")) {
-                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
-                for (File file : fileListGS) {
-//                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
-                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
-                    basesSin.add(base);
-                }
-                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
-                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
-            }
+//            if (pays.equals("Italie")) {
+//                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
+//                for (File file : fileListGS) {
+////                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
+//                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
+//                    basesSin.add(base);
+//                }
+//                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
+//                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
+//            }
+//
+//            for (Base base : basesSin) {
+//                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+//                updateStatutDates(base); //global
+//            }
+//
+//            Base baseFic = new Base(wd + path_fic,map_fic);
 
-            for (Base base : basesSin) {
-                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-                updateStatutDates(base); //global
-            }
-            estimate.getUniqueStatutsFromMap();
-            estimate.getUniqueNumPoliceEstimate();
-            updateGlobalDatesFromStatutMap();
-
-            Base baseFic = new Base(wd + path_fic,map_fic);
-            estimate.addFicMAT(baseFic);
-
-            stopwatch.printElapsedTime(pays + " integré");
-
-            estimate.addSinMAT(basesSin);
-            estimate.addProvisions(basesSin);
-            estimate.addPrimesAcquises();
-            estimate.addSP();
-
-            stopwatch.printElapsedTime("calculé");
-            estimate.saveToCSVFile(false);
-
-            stopwatch.start();
-
-            Synthese wf = new Synthese(outputFolder+estim + "_fichier_de_travail.csv",delim,false,true,true);
-
-            Synthese syntPolice = new Synthese(wf,"");
-            Synthese syntPoliceagg = new Synthese(syntPolice,"",true);
-            syntPoliceagg.formatAllColumns();
-            syntPolice.formatAllColumns();
-
-            Synthese syntDistrib = new Synthese(wf,1);
-            Synthese syntDistribagg = new Synthese(syntDistrib,1,true);
-            syntDistribagg.formatAllColumns();
-
-            Synthese syntGest = new Synthese(wf,1.0);
-            Synthese syntGestagg = new Synthese(syntGest,1.0,true);
-            syntGestagg.formatAllColumns();
-
-            String output = outputFolder + estim + "_output.xlsx";
-            syntPolice.exportToExcel(output, "Detaillé", null);
-            Workbook workbook = new XSSFWorkbook(new FileInputStream(output));
-            syntPoliceagg.exportToExcel(output, "Par Police", workbook);
-            syntDistribagg.exportToExcel(output, "Par Distributeur", workbook);
-            syntGestagg.exportToExcel(output, "Par Gestionnaire", workbook);
+            wf.calculateHeaderFrequencies();
+            wf.addComputedColumns();
+            wf.saveToCSV(outputFolder+ estim + "_fichier_de_travail_controle.csv");
 
             stopwatch.printElapsedTime();
         }
+
+
+//        for (int i = 0; i < ref_source.nrow; i++) {
+//            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
+//            if (!a_faire) continue;
+//            stopwatch.start();
+//            Base.currentHeaderRef = null;
+//            String folder = (String) ref_source.c("path")[i];
+//            String pays = (String) ref_source.c("pays_filekey")[i];
+//            String mapcol = (String) ref_source.c("mapping")[i];
+//            String estim = (String) ref_source.c("estimate")[i];
+//            String path_fic = (String) ref_source.c("path_fic")[i];
+//            String map_fic = (String) ref_source.c("map_fic")[i];
+//
+//            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+//
+//            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+//            List<Base> basesSin = new ArrayList<>();
+//
+//            for (File file : fileList) {
+//                Base base = new Base(file,pays,mapcol);
+//                basesSin.add(base);
+//            }
+//            if (pays.equals("Italie")) {
+//                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
+//                for (File file : fileListGS) {
+////                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
+//                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
+//                    basesSin.add(base);
+//                }
+//                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
+//                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
+//            }
+//
+//            for (Base base : basesSin) {
+//                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+//                updateStatutDates(base); //global
+//            }
+//            estimate.getUniqueStatutsFromMap();
+//            estimate.getUniqueNumPoliceEstimate();
+//            updateGlobalDatesFromStatutMap();
+//
+//            Base baseFic = new Base(wd + path_fic,map_fic);
+//            estimate.addFicMAT(baseFic);
+//
+//            stopwatch.printElapsedTime(pays + " integré");
+//
+//            estimate.addSinMAT(basesSin);
+//            estimate.addProvisions(basesSin);
+//            estimate.addPrimesAcquises();
+//            estimate.addSP();
+//
+//            stopwatch.printElapsedTime("calculé");
+//            estimate.saveToCSVFile(false);
+//
+//            stopwatch.start();
+//        }
+
+
+//            Synthese wf = new Synthese(outputFolder+estim + "_fichier_de_travail.csv",delim,false,true,true);
+//
+//            Synthese syntPolice = new Synthese(wf,"");
+//            Synthese syntPoliceagg = new Synthese(syntPolice,"",true);
+//            syntPoliceagg.formatAllColumns();
+//            syntPolice.formatAllColumns();
+//
+//            Synthese syntDistrib = new Synthese(wf,1);
+//            Synthese syntDistribagg = new Synthese(syntDistrib,1,true);
+//            syntDistribagg.formatAllColumns();
+//
+//            Synthese syntGest = new Synthese(wf,1.0);
+//            Synthese syntGestagg = new Synthese(syntGest,1.0,true);
+//            syntGestagg.formatAllColumns();
+//
+//            String output = outputFolder + estim + "_output.xlsx";
+//            syntPolice.exportToExcel(output, "Detaillé", null);
+//            Workbook workbook = new XSSFWorkbook(new FileInputStream(output));
+//            syntPoliceagg.exportToExcel(output, "Par Police", workbook);
+//            syntDistribagg.exportToExcel(output, "Par Distributeur", workbook);
+//            syntGestagg.exportToExcel(output, "Par Gestionnaire", workbook);
+//
+//            stopwatch.printElapsedTime();
+//        }
 
     }
     public static boolean isMonthAfterOrEQCurrent(String monthYear) {
@@ -369,5 +418,13 @@ public class App {
         System.out.println("Heap Size = " + formatMemory(heapSize));
         System.out.println("Max Heap Size = " + formatMemory(heapMaxSize));
         System.out.println("Free Heap Size = " + formatMemory(heapFreeSize));
+    }
+    public static int getPositionOfStringContaining(Object[] array, String x) {
+        for (int i = 0; i < array.length; i++) {
+            if (array[i] != null && array[i].toString().contains(x)) {
+                return i;
+            }
+        }
+        return -1; // Return -1 if not found
     }
 }

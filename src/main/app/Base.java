@@ -31,6 +31,7 @@ public class Base extends DF {
     public static final String STATUT_FICTIF_FIC = "Comptable";
     public static final char DEFAULT_DELIMITER = ';';
     public static final char TAB_DELIMITER = '\t';
+    public static final Date MAX_PREVI_DATE;
     static final String CURRENT_MONTH;
     static final String PREVIOUS_MONTH;
     static {
@@ -39,6 +40,12 @@ public class Base extends DF {
 
         CURRENT_MONTH = now.format(formatter);
         PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(Calendar.YEAR, 2026);
+        calendar.set(Calendar.MONTH, Calendar.DECEMBER);
+        calendar.set(Calendar.DAY_OF_MONTH, 31);
+        MAX_PREVI_DATE = calendar.getTime();
     }
     String numPolice = "";
     protected Set<String> uniqueStatuts = new HashSet<>();
@@ -1273,11 +1280,16 @@ public class Base extends DF {
         int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
         int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
 
-        Date dateDebut = null; Date dateFin = null;
+        Date dateDebut = null; Date dateFin = null; Date dateMaxaAttribuer = null;
         for (int i = 0; i < ref_prog.nrow; i++) {
             if (this.numPolice.equalsIgnoreCase(ref_prog.c(indexContrat)[i].toString())) {
                 dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
                 dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
+                if (dateFin.after(MAX_PREVI_DATE)) {
+                    dateMaxaAttribuer = MAX_PREVI_DATE;
+                } else {
+                    dateMaxaAttribuer = dateFin;
+                }
                 break;
             }
         }
@@ -1286,6 +1298,9 @@ public class Base extends DF {
         }
 
         for (int i = 0; i < nrow; i++) {
+            if(c(indexDateSurv)[i].toString().contains("2323")) {
+                System.out.println("here");
+            }
             Date dateSurv = (Date) c(indexDateSurv)[i];
             Date dateSous = (Date) c(indexDateSous)[i];
 
@@ -1305,9 +1320,125 @@ public class Base extends DF {
                     dateSous = dateDebut;
                 }
             }
+            if (dateSurv.after(dateFin) || dateSurv.before(dateDebut)) {
+                dateSurv = dateSous;
+            }
+            if (dateSous.after(dateFin) || dateSous.before(dateDebut)) {
+                dateSous = dateSurv;
+            }
+            if (dateSous.after(dateFin) && dateSurv.after(dateFin)) {
+                dateSous = dateMaxaAttribuer;
+                dateSurv = dateMaxaAttribuer;
+            }
+            if (dateSous.before(dateDebut) && dateSurv.before(dateDebut)) {
+                dateSous = dateDebut;
+                dateSurv = dateDebut;
+            }
 
-            date_transform(dateSurv, dateDebut, dateFin, indexDateSurv, i);
-            date_transform(dateSous, dateDebut, dateFin, indexDateSous, i);
+            date_transform(dateSurv, indexDateSurv, i);
+            date_transform(dateSous, indexDateSous, i);
+        }
+    }
+    void date_autofill_agg() {
+        // Indices for required columns in the current DF
+        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
+        int indexDateSous = find_in_arr_first_index(header, "date_sous");
+        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
+        int indexNumPolice = find_in_arr_first_index(header, "num_police");
+
+        // Indices for required columns in the ref_prog DF
+        int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
+        int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
+        int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
+
+        // Return early if the num_police column doesn't exist
+        if (indexNumPolice == -1) return;
+
+        // If date_surv column doesn't exist, create it
+        if (indexDateSurv == -1) {
+            indexDateSurv = ncol;
+            Object[] newColumn = new Object[nrow];
+            Arrays.fill(newColumn, NA_DAT);
+            df.add(newColumn);
+            ncol++;
+        }
+
+        // If date_sous column doesn't exist, create it
+        if (indexDateSous == -1) {
+            indexDateSous = ncol;
+            Object[] newColumn = new Object[nrow];
+            Arrays.fill(newColumn, NA_DAT);
+            df.add(newColumn);
+            ncol++;
+        }
+
+        // Cache for quick lookup of ref_prog data based on num_police/n°contrat
+        Map<String, Date[]> refprogLookup = new HashMap<>();
+        for (int i = 0; i < ref_prog.nrow; i++) {
+            String contrat = ref_prog.c(indexContrat)[i].toString();
+            Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
+            Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
+            Date dateMaxaAttribuer = MAX_PREVI_DATE;
+            if (dateFin.before(MAX_PREVI_DATE)) {
+                dateMaxaAttribuer = dateFin;
+            }
+            refprogLookup.put(contrat, new Date[]{dateDebut, dateFin, dateMaxaAttribuer});
+        }
+
+        Set<String> missing_refprog = new HashSet<>();
+        for (int i = 0; i < nrow; i++) {
+//            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
+            String currentNumPolice = c(indexNumPolice)[i].toString();
+            Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
+            if (refDates == null) {
+                if (!missing_refprog.contains(currentNumPolice)) {
+                    System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
+                    missing_refprog.add(currentNumPolice);
+                }
+                continue;
+            }
+
+            Date dateDebutRef = refDates[0];
+            Date dateFinRef = refDates[1];
+            Date dateMaxaAttribuer = refDates[2];
+
+            Date dateSurv = (Date) c(indexDateSurv)[i];
+            Date dateSous = (Date) c(indexDateSous)[i];
+
+            // Date filling logic...
+            if (dateSurv.equals(NA_DAT)) {
+                if (indexDateDecla != -1 && !c(indexDateDecla)[i].equals(NA_DAT)) {
+                    dateSurv = (Date) c(indexDateDecla)[i];
+                } else if (!dateSous.equals(NA_DAT)) {
+                    dateSurv = dateSous;
+                } else {
+                    dateSurv = dateDebutRef;
+                }
+            }
+            if (dateSous.equals(NA_DAT)) {
+                if(!dateSurv.equals(NA_DAT)){
+                    dateSous = dateSurv;
+                } else {
+                    dateSous = dateDebutRef;
+                }
+            }
+            if (dateSurv.after(dateFinRef) || dateSurv.before(dateDebutRef)) {
+                dateSurv = dateSous;
+            }
+            if (dateSous.after(dateFinRef) || dateSous.before(dateDebutRef)) {
+                dateSous = dateSurv;
+            }
+            if (dateSous.after(dateFinRef) && dateSurv.after(dateFinRef)) {
+                dateSous = dateMaxaAttribuer;
+                dateSurv = dateMaxaAttribuer;
+            }
+            if (dateSous.before(dateDebutRef) && dateSurv.before(dateDebutRef)) {
+                dateSous = dateDebutRef;
+                dateSurv = dateDebutRef;
+            }
+            // Apply transformations...
+            date_transform(dateSurv, indexDateSurv, i);
+            date_transform(dateSous, indexDateSous, i);
         }
     }
     public void cleanStatut() {
@@ -1405,7 +1536,6 @@ public class Base extends DF {
             e.printStackTrace();
         }
     }
-
     private int[] remapIndices(int[] auxToMainMapping) {
         int[] newMapping = new int[auxToMainMapping.length];
         int countKept = 0;  // Count of columns that are not -1
@@ -1528,178 +1658,8 @@ public class Base extends DF {
 
         return new SimpleDateFormat(pattern);
     }
-    void date_autofill_agg() {
-        // Indices for required columns in the current DF
-        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
-        int indexDateSous = find_in_arr_first_index(header, "date_sous");
-        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
-        int indexNumPolice = find_in_arr_first_index(header, "num_police");
 
-        // Indices for required columns in the ref_prog DF
-        int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
-        int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
-        int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
-
-        // Return early if the num_police column doesn't exist
-        if (indexNumPolice == -1) return;
-
-        // If date_surv column doesn't exist, create it
-        if (indexDateSurv == -1) {
-            indexDateSurv = ncol;
-            Object[] newColumn = new Object[nrow];
-            Arrays.fill(newColumn, NA_DAT);
-            df.add(newColumn);
-            ncol++;
-        }
-
-        // If date_sous column doesn't exist, create it
-        if (indexDateSous == -1) {
-            indexDateSous = ncol;
-            Object[] newColumn = new Object[nrow];
-            Arrays.fill(newColumn, NA_DAT);
-            df.add(newColumn);
-            ncol++;
-        }
-
-        // Cache for quick lookup of ref_prog data based on num_police/n°contrat
-        Map<String, Date[]> refprogLookup = new HashMap<>();
-        for (int i = 0; i < ref_prog.nrow; i++) {
-            String contrat = ref_prog.c(indexContrat)[i].toString();
-            Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
-            Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
-            refprogLookup.put(contrat, new Date[]{dateDebut, dateFin});
-        }
-
-        Set<String> missing_refprog = new HashSet<>();
-        for (int i = 0; i < nrow; i++) {
-//            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
-            String currentNumPolice = c(indexNumPolice)[i].toString();
-            Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
-            if (refDates == null) {
-                if (!missing_refprog.contains(currentNumPolice)) {
-                    System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
-                    missing_refprog.add(currentNumPolice);
-                }
-                continue;
-            }
-
-            Date dateDebutRef = refDates[0];
-            Date dateFinRef = refDates[1];
-
-            Date dateSurv = (Date) c(indexDateSurv)[i];
-            Date dateSous = (Date) c(indexDateSous)[i];
-
-            // Date filling logic...
-            if (dateSurv.equals(NA_DAT)) {
-                if (indexDateDecla != -1 && !c(indexDateDecla)[i].equals(NA_DAT)) {
-                    dateSurv = (Date) c(indexDateDecla)[i];
-                } else if (!dateSous.equals(NA_DAT)) {
-                    dateSurv = dateSous;
-                } else {
-                    dateSurv = dateDebutRef;
-                }
-            }
-            if (dateSous.equals(NA_DAT)) {
-                if(!dateSurv.equals(NA_DAT)){
-                    dateSous = dateSurv;
-                } else {
-                    dateSous = dateDebutRef;
-                }
-            }
-
-            // Apply transformations...
-            date_transform(dateSurv, dateDebutRef, dateFinRef, indexDateSurv, i);
-            date_transform(dateSous, dateDebutRef, dateFinRef, indexDateSous, i);
-        }
-    }
-    void date_autofill_agg_par_police(ArrayList<Object[]> df) {
-        // Indices for required columns in the current DF
-        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
-        int indexDateSous = find_in_arr_first_index(header, "date_sous");
-        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
-        int indexNumPolice = find_in_arr_first_index(header, "num_police");
-
-        // Indices for required columns in the ref_prog DF
-        int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
-        int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
-        int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
-
-        // Return early if the num_police column doesn't exist
-        if (indexNumPolice == -1) return;
-
-        // If date_surv column doesn't exist, create it
-        if (indexDateSurv == -1) {
-            indexDateSurv = ncol;
-            Object[] newColumn = new Object[nrow];
-            Arrays.fill(newColumn, NA_DAT);
-            df.add(newColumn);
-            ncol++;
-        }
-
-        // If date_sous column doesn't exist, create it
-        if (indexDateSous == -1) {
-            indexDateSous = ncol;
-            Object[] newColumn = new Object[nrow];
-            Arrays.fill(newColumn, NA_DAT);
-            df.add(newColumn);
-            ncol++;
-        }
-
-        // Cache for quick lookup of ref_prog data based on num_police/n°contrat
-        Map<String, Date[]> refprogLookup = new HashMap<>();
-        for (int i = 0; i < ref_prog.nrow; i++) {
-            String contrat = ref_prog.c(indexContrat)[i].toString();
-            Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
-            Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
-            refprogLookup.put(contrat, new Date[]{dateDebut, dateFin});
-        }
-
-        for (int i = 0; i < nrow; i++) {
-//            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
-            String currentNumPolice = c(indexNumPolice)[i].toString();
-            Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
-            if (refDates == null) {
-                System.out.println("Warning: No ref_prog data found for num_police " + currentNumPolice);
-                continue;
-            }
-
-            Date dateDebutRef = refDates[0];
-            Date dateFinRef = refDates[1];
-
-            Date dateSurv = (Date) c(indexDateSurv)[i];
-            Date dateSous = (Date) c(indexDateSous)[i];
-
-            // Date filling logic...
-            if (dateSurv.equals(NA_DAT)) {
-                if (indexDateDecla != -1 && !c(indexDateDecla)[i].equals(NA_DAT)) {
-                    dateSurv = (Date) c(indexDateDecla)[i];
-                } else if (!dateSous.equals(NA_DAT)) {
-                    dateSurv = dateSous;
-                } else {
-                    dateSurv = dateDebutRef;
-                }
-            }
-            if (dateSous.equals(NA_DAT)) {
-                if(!dateSurv.equals(NA_DAT)){
-                    dateSous = dateSurv;
-                } else {
-                    dateSous = dateDebutRef;
-                }
-            }
-
-            // Apply transformations...
-            date_transform(dateSurv, dateDebutRef, dateFinRef, indexDateSurv, i);
-            date_transform(dateSous, dateDebutRef, dateFinRef, indexDateSous, i);
-        }
-    }
-    void date_transform (Date date, Date dateDebutRef, Date dateFinRef, int columnIndex, int rowIndex) {
-        // Control that dates are in the desired interval
-        if (date.before(dateDebutRef)) {
-            date = dateDebutRef;
-        }
-        if (date.after(dateFinRef)) {
-            date = dateFinRef;
-        }
+    void date_transform (Date date, int columnIndex, int rowIndex) {
 
         // Change the date to the 1st day of the month
         Calendar cal = Calendar.getInstance();
