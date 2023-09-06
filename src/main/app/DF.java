@@ -2290,7 +2290,7 @@ public class DF implements Serializable {
         }
         this.nrow = counter;
     }
-    // DATA
+    // GETTERS
     public Object[] r(int index){
         Object[] row = new Object[ncol];
         for(int i=0; i<this.ncol; i++){
@@ -2774,5 +2774,31 @@ public class DF implements Serializable {
             }
         }
     }
+    public double filterAndSum(String valueA, String dateB) {
+        Object[] statuts = c("statut");
+        Object[] dateSurv = c("date_surv");
+        Object[] montantIPs = c("montant_IP");
 
+        SimpleDateFormat sdf = new SimpleDateFormat("MM-yyyy");
+        Date targetDate;
+        try {
+            targetDate = sdf.parse(dateB);
+        } catch (ParseException e) {
+            throw new RuntimeException("Invalid date format.", e);
+        }
+
+        double sum = 0;
+        for (int i = 0; i < nrow; i++) {
+            // Ensure proper typecasting
+            String statut = (String) statuts[i];
+            Date date = (Date) dateSurv[i];
+            double montant = (double) montantIPs[i];
+
+            // Filtering
+            if (statut.equals(valueA) && date.equals(targetDate)) {
+                sum += montant;
+            }
+        }
+        return sum;
+    }
 }

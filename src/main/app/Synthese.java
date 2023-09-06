@@ -18,6 +18,8 @@ import java.util.*;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -119,83 +121,8 @@ public class Synthese {
 
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
-        Stopwatch stopwatch = new Stopwatch();
-        stopwatch.start();
-
-        Synthese wf = new Synthese(outputFolder+"SPB Italie_fichier_de_travail.csv",delim,false,true,true);
-        int i = 0;
-        for (; i < ref_source.nrow; i++) {
-            if(ref_source.c("pays_filekey")[i].equals("Italie")) break;
-        }
-        Base.currentHeaderRef = null;
-        String folder = (String) ref_source.c("path")[i];
-        String pays = (String) ref_source.c("pays_filekey")[i];
-        String mapcol = (String) ref_source.c("mapping")[i];
-        String estim = (String) ref_source.c("estimate")[i];
-        String path_fic = (String) ref_source.c("path_fic")[i];
-        String map_fic = (String) ref_source.c("map_fic")[i];
-
-        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
-
-        File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-        List<Base> basesSin = new ArrayList<>();
-
-        for (File file : fileList) {
-            Base base = new Base(file,pays,mapcol);
-            basesSin.add(base);
-        }
-        if (pays.equals("Italie")) {
-            File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
-            for (File file : fileListGS) {
-//                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
-                Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
-                basesSin.add(base);
-            }
-            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
-            basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
-        }
-
-        for (Base base : basesSin) {
-            policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-            updateStatutDates(base); //global
-        }
-        estimate.getUniqueStatutsFromMap();
-        estimate.getUniqueNumPoliceEstimate();
-        updateGlobalDatesFromStatutMap();
-
-        Base baseFic = new Base(wd + path_fic,map_fic);
-
-//        syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-        wf.analyzeDataframe();
-        wf.calculateHeaderFrequencies();
-        wf.addComputedColumns();
-        wf.saveToCSV(outputFolder+"SPB Italie_fichier_de_travail_controle.csv");
-
-        stopwatch.printElapsedTime();
-
-//        wf.printRowsForContrat("ICIMITL16","NOMBRE TOTAL ADHESIONS");
-//        Synthese syntPolice = new Synthese(wf,"");
-//        Synthese syntPoliceagg = new Synthese(syntPolice,"",true);
-//        syntPoliceagg.formatAllColumns();
-//        syntPolice.formatAllColumns();
-//
-//        Synthese syntDistrib = new Synthese(wf,1);
-//        Synthese syntDistribagg = new Synthese(syntDistrib,1,true);
-//        syntDistribagg.formatAllColumns();
-//
-//        Synthese syntGest = new Synthese(wf,1.0);
-//        Synthese syntGestagg = new Synthese(syntGest,1.0,true);
-//        syntGestagg.formatAllColumns();
-//
-//        String output = outputFolder + "output.xlsx";
-//        syntPolice.exportToExcel(output, "Detaillé", null);
-//        Workbook workbook = new XSSFWorkbook(new FileInputStream(output));
-//        syntPoliceagg.exportToExcel(output, "Par Police", workbook);
-//        syntDistribagg.exportToExcel(output, "Par Distributeur", workbook);
-//        syntGestagg.exportToExcel(output, "Par Gestionnaire", workbook);
-//
-//        stopwatch.printElapsedTime();
-
+        Synthese mapStatut = new Synthese(wd + "map_statuts.csv",delim,true,false,false);
+        mapStatut.print();
     }
     public Synthese(String path, char delim, boolean toLower, boolean subHeader, boolean detectColtypes) {
         System.out.println(path + " debug");
@@ -1541,43 +1468,6 @@ public class Synthese {
             }
         }
     }
-    public void calculateHeaderFrequencies() {
-
-        boolean foundFirst = false;
-
-        for (int i = 0; i < headers.size(); i++) {
-            if ("11-2013".equals(headers.get(i))) {
-                foundFirst = true;
-            }
-
-            if (foundFirst) {
-                if (!this.subheaders.get(i).isEmpty()) {
-                    String key = this.subheaders.get(i);
-                    frequencies.put(key, new ArrayList(List.of(i)));
-                    for (int j = i; j < headers.size(); j++) {
-                        if ("2013".equals(headers.get(j))) {
-                            frequencies.get(key).add(j);
-                            i = j;
-                            for (int k = j; k < headers.size(); k++) {
-                                if ("Total".equals(headers.get(k))) {
-                                    frequencies.get(key).add(k);
-                                    i = k;
-                                    break;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-//        for (Map.Entry<String, ArrayList<Integer>> entry : frequencies.entrySet()) {
-//            String key = entry.getKey();
-//            ArrayList<Integer> values = entry.getValue();
-//            System.out.println(key + " => " + values);
-//        }
-    }
 
 
     private void printRow(List<String> row, int width) {
@@ -2491,6 +2381,43 @@ public class Synthese {
         }
     }
 
+    public void calculateHeaderFrequencies() {
+
+        boolean foundFirst = false;
+
+        for (int i = 0; i < headers.size(); i++) {
+            if ("11-2013".equals(headers.get(i))) {
+                foundFirst = true;
+            }
+
+            if (foundFirst) {
+                if (!this.subheaders.get(i).isEmpty()) {
+                    String key = this.subheaders.get(i);
+                    frequencies.put(key, new ArrayList(List.of(i)));
+                    for (int j = i; j < headers.size(); j++) {
+                        if ("2013".equals(headers.get(j))) {
+                            frequencies.get(key).add(j);
+                            i = j;
+                            for (int k = j; k < headers.size(); k++) {
+                                if ("Total".equals(headers.get(k))) {
+                                    frequencies.get(key).add(k);
+                                    i = k;
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+//        for (Map.Entry<String, ArrayList<Integer>> entry : frequencies.entrySet()) {
+//            String key = entry.getKey();
+//            ArrayList<Integer> values = entry.getValue();
+//            System.out.println(key + " => " + values);
+//        }
+    }
     public void addComputedColumns() {
         for (Map.Entry<String, ArrayList<Integer>> entry : frequencies.entrySet()) {
             ArrayList<Integer> indices = entry.getValue();
@@ -2509,15 +2436,12 @@ public class Synthese {
             }
         }
     }
-
-
     private void insertColumn(int index, ArrayList<Double> data, String nom) {
         Column<Double> newColumn = new Column<>(data, ColTypes.DBL);
         columns.add(index, newColumn);
         headers.add(index, nom);
         subheaders.add(index, "");
     }
-
     private ArrayList<Double> computeSumSubtract(int x1, int x2, int y1, int y2, String key) {
         ArrayList<Double> result = new ArrayList<>();
 
@@ -2537,8 +2461,6 @@ public class Synthese {
 
         return result;
     }
-
-
     private double sumRange(int row, int startCol, int endCol) {
         double sum = 0;
         for (int col = startCol; col <= endCol; col++) {
@@ -2560,6 +2482,160 @@ public class Synthese {
         }
         return sum;
     }
+    public void populateStatutMap() {
+        ArrayList<String> statuts = getColumn("statut");
+        ArrayList<String> statutsReferentiel = getColumn("statut referentiel");
 
+        for (int i = 0; i < statuts.size(); i++) {
+            String statut = statuts.get(i);
+            String referentiel = statutsReferentiel.get(i);
+
+            // Populate the map. If the key already exists, it won't overwrite the value.
+            statutMap.putIfAbsent(statut, referentiel);
+        }
+    }
+
+    public void insertEmptyRowsAndMarkColumns() {
+        ArrayList<String> contratColumn = getColumn("Contrat");
+        ArrayList<Boolean> treatColumns = getTreatColumnsList(); // Get the columns to treat
+
+        // We're using a reverse iteration since we're modifying the column, which would affect indices.
+        for (int i = contratColumn.size() - 1; i > 0; i--) {
+            if (!contratColumn.get(i).equals(contratColumn.get(i - 1))) {
+                insertEmptyRowAt(i, treatColumns);
+            }
+        }
+    }
+    private void insertEmptyRowAt(int index, ArrayList<Boolean> treatColumns) {
+        for (Column<?> col : columns) {
+            ArrayList<?> data = col.getData();
+            if (data.size() > index) {
+                data.add(index, null); // insert an empty/null value at the specified index
+            }
+        }
+        // Handle the treatColumns as needed
+        // For now, we've just prepared the boolean list, but you can utilize it later as per your requirements.
+    }
+    private ArrayList<Boolean> getTreatColumnsList() {
+        ArrayList<Boolean> treatColumns = new ArrayList<>(headers.size());
+        Pattern pattern = Pattern.compile("(\\d{2}-\\d{4}|\\d{4}|Total)");
+
+        String lastNonEmptySubheader = "";
+
+        for (int i = 0; i < headers.size(); i++) {
+            String headerName = headers.get(i);
+            String subheader = (i < subheaders.size()) ? subheaders.get(i) : "";
+
+            if (!subheader.trim().isEmpty()) {
+                lastNonEmptySubheader = subheader;
+            }
+
+            if (lastNonEmptySubheader.startsWith("Statut") || lastNonEmptySubheader.startsWith("Nombre")) {
+                treatColumns.add(pattern.matcher(headerName).matches());
+            } else {
+                treatColumns.add(false); // or true, depending on your default behaviour
+            }
+        }
+        return treatColumns;
+    }
+    private List<SummaryType> determineSummaryTypes() {
+        List<SummaryType> types = new ArrayList<>(headers.size());
+        statutsForTreatment = new ArrayList<>(headers.size());
+        String lastNonEmptySubheader = "";
+        ArrayList<Boolean> treatColumns = getTreatColumnsList();
+
+        Pattern startPattern = Pattern.compile("^(Statut|Nombre)\\s*");
+        Pattern endPattern = Pattern.compile("\\s*(mensuel|annuel|total)$");
+
+        for (int i = 0; i < headers.size(); i++) {
+            if (!treatColumns.get(i)) {
+                types.add(null);  // Add a null entry for columns we don't treat.
+                statutsForTreatment.add(null);
+                continue;
+            }
+
+            String headerName = headers.get(i);
+            String subheader = (i < subheaders.size()) ? subheaders.get(i) : "";
+
+            if (!subheader.trim().isEmpty()) {
+                lastNonEmptySubheader = subheader;
+            }
+
+            // Extract statut
+            String statut = lastNonEmptySubheader;
+            Matcher startMatcher = startPattern.matcher(statut);
+            Matcher endMatcher = endPattern.matcher(statut);
+            statut = startMatcher.replaceFirst("");
+            statut = endMatcher.replaceFirst("");
+            statut = statut.trim();
+            statutsForTreatment.add(statut);
+
+            SummaryType.Frequency freq = SummaryType.Frequency.TOTAL;
+            if (headerName.matches("\\d{2}-\\d{4}")) {
+                freq = SummaryType.Frequency.MONTHLY;
+            } else if (headerName.matches("\\d{4}")) {
+                freq = SummaryType.Frequency.YEARLY;
+            }
+
+            SummaryType.Calculation calc = SummaryType.Calculation.CHARGE;
+            if (lastNonEmptySubheader.startsWith("Nombre")) {
+                calc = SummaryType.Calculation.FREQ;
+            }
+
+            types.add(new SummaryType(freq, calc));
+        }
+
+        return types;  // You might also want to return the statutsForTreatment or make it an instance variable.
+    }
+    public void addRowsByStatut() {
+        insertEmptyRowsAndMarkColumns();
+
+        ArrayList<String> contratColumn = getColumn("Contrat");
+        ArrayList<Boolean> treatColumns = getTreatColumnsList();
+
+        List<SummaryType> types = determineSummaryTypes();
+
+        String contratValue = null;
+        Base currentBase = null;
+        Set<String> basesAbsentes = new HashSet<>();
+
+        for (int rowIndex = 0; rowIndex < contratColumn.size(); rowIndex++) {
+            System.out.println("TREATING ROW: " + rowIndex);
+            contratValue = contratColumn.get(rowIndex);
+            if(contratValue != null) continue;
+            contratValue = contratColumn.get(rowIndex-1);
+            currentBase = baseMap.get(contratValue);
+
+            if (currentBase == null) {
+                basesAbsentes.add(contratValue);
+                continue;
+            }
+            for (int colIndex = 0; colIndex < headers.size(); colIndex++) {
+                if (!treatColumns.get(colIndex)) {
+                    continue; // skip columns that don't require treatment
+                }
+
+                String headerName = headers.get(colIndex);
+                SummaryType currentType = types.get(colIndex);
+
+                double calculatedValue = 0;
+                int calculatedFreqValue = 0;
+
+                if (currentType.getCalculation() == SummaryType.Calculation.CHARGE) {
+                    calculatedValue = currentBase.filterAndSumByCharge(statutsForTreatment.get(colIndex), headerName, currentType.getFrequency());
+                    setCellValue(rowIndex, colIndex, calculatedValue);
+                } else {
+                    calculatedFreqValue = currentBase.filterAndSumByFreq(statutsForTreatment.get(colIndex), headerName, currentType.getFrequency());
+                    setCellValue(rowIndex, colIndex, calculatedFreqValue);
+                }
+            }
+        }
+        for (String s : basesAbsentes) {
+            System.out.println(s + " BASE ABSENTE");
+        }
+    }
+    public void setCellValue(int rowIndex, int colIndex, Object value) {
+        this.getColumnByIndex(colIndex).set(rowIndex, value);
+    }
 
 }

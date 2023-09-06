@@ -1149,24 +1149,25 @@ public class Estimate extends DF {
         populateTotalSinAllStatuts(bases);
 
         for (String statutEs : uniqueStatutsEstimate) {
+            if (statutEs.isEmpty()) continue;
             begin = ncol;
             tableName_ind = header.length;
             addMois();
-            subheader[tableName_ind] = statutEs + " mensuel";
+            subheader[tableName_ind] = "Statut " + statutEs + " mensuel";
             appendUpdate(begin);
             populateMonthSin(bases, statutEs);
 
             begin = ncol;
             tableName_ind = header.length;
             addAnnees();
-            subheader[tableName_ind] = statutEs + " annuel";
+            subheader[tableName_ind] = "Statut " + statutEs + " annuel";
             appendUpdate(begin);
             populateYearSin(bases, statutEs);
 
             begin = ncol;
             tableName_ind = header.length;
             addTotal();
-            subheader[tableName_ind] = statutEs + " total";
+            subheader[tableName_ind] = "Statut " + statutEs + " total";
             appendUpdate(begin);
             populateTotalSin(bases, statutEs);
         }
@@ -1195,6 +1196,8 @@ public class Estimate extends DF {
         populateTotalSinAllStatutsN(bases);
 
         for (String statutEs : uniqueStatutsEstimate) {
+            if (statutEs.isEmpty()) continue;
+
             begin = ncol;
             tableName_ind = header.length;
             addMois();
@@ -1444,9 +1447,9 @@ public class Estimate extends DF {
         int triangleComptaIndex = find_in_arr_first_index(subheader, "Comptable mensuel");
         int cmEncours = find_in_arr_first_index(subheader, "Cout Moyen: En cours");
         int cmEncoursAcc = find_in_arr_first_index(subheader, "Cout Moyen: En cours - accepté");
-        int nEnCours = find_in_arr_first_index(subheader, "en cours mensuel");
-        int nEnAttente = find_in_arr_first_index(subheader, "en attente de prescription mensuel");
-        int nEnCoursAcc = find_in_arr_first_index(subheader, "en cours - accepté mensuel");
+        int nEnCours = find_in_arr_first_index(subheader, "Statut en cours mensuel");
+        int nEnAttente = find_in_arr_first_index(subheader, "Statut en attente de prescription mensuel");
+        int nEnCoursAcc = find_in_arr_first_index(subheader, "Statut en cours - accepté mensuel");
         int regulIndex = find_in_arr_first_index(header, "Régularisation");
 
         int[] indexes = {trianglePAindex,triangleComptaIndex,cmEncours,cmEncoursAcc,nEnCours,nEnAttente,nEnCoursAcc,regulIndex};

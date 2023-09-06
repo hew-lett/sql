@@ -47,7 +47,7 @@ public class Base extends DF {
         calendar.set(Calendar.DAY_OF_MONTH, 31);
         MAX_PREVI_DATE = calendar.getTime();
     }
-    String numPolice = "";
+    public String numPolice = "";
     protected Set<String> uniqueStatuts = new HashSet<>();
     protected Set<String> uniqueNumPoliceValues = new HashSet<>();
     protected Map<String, List<Date>> statutDateRangeMap = new HashMap<>();
@@ -1452,10 +1452,13 @@ public class Base extends DF {
 
         // Iterate through each value in the column and replace big dashes with little dashes
         for (int i = 0; i < statuts.length; i++) {
-            String currentStatut = (String) statuts[i];
-            statuts[i] = currentStatut.replace("–", "-");
+            String currentStatut = ((String) statuts[i]).replace("–", "-");
             if ("en cours - en attente de prescription".equals(currentStatut)) {
                 statuts[i] = "en attente de prescription";
+            }
+            if (statutMap.containsKey(currentStatut)) {
+                // Replace the value in the statut column with the value from the map
+                statuts[i] = statutMap.get(currentStatut);
             }
         }
     }
@@ -1941,5 +1944,153 @@ public class Base extends DF {
             }
         }
         return true;
+    }
+    public double filterAndSumByCharge(String valueA, String dateB, SummaryType.Frequency freqType) {
+        Object[] statuts = c("statut");
+        Object[] dateSurv = c("date_surv");
+        Object[] montantIPs = c("montant_IP");
+
+        switch (freqType) {
+            case MONTHLY -> {
+                SimpleDateFormat sdf = new SimpleDateFormat("MM-yyyy");
+                Date targetDate;
+                try {
+                    targetDate = sdf.parse(dateB);
+                } catch (ParseException e) {
+                    throw new RuntimeException("Invalid date format.", e);
+                }
+                double sum = 0;
+                for (int i = 0; i < nrow; i++) {
+                    // Ensure proper typecasting
+                    String statut = (String) statuts[i];
+                    Date date = (Date) dateSurv[i];
+                    double montant = (double) montantIPs[i];
+
+                    // Filtering
+                    if (statut.equals(valueA) && date.equals(targetDate)) {
+                        sum += montant;
+                    }
+                }
+                return sum;
+            }
+            case YEARLY -> {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy");
+                Date targetDate;
+                try {
+                    targetDate = sdf.parse(dateB);
+                } catch (ParseException e) {
+                    throw new RuntimeException("Invalid date format.", e);
+                }
+
+                Calendar targetCalendar = Calendar.getInstance();
+                targetCalendar.setTime(targetDate);
+
+                double sum = 0;
+                for (int i = 0; i < nrow; i++) {
+                    String statut = (String) statuts[i];
+                    Date date = (Date) dateSurv[i];
+                    double montant = (double) montantIPs[i];
+
+                    Calendar dateCalendar = Calendar.getInstance();
+                    dateCalendar.setTime(date);
+
+                    // Filtering
+                    if (statut.equals(valueA) &&
+                            dateCalendar.get(Calendar.YEAR) == targetCalendar.get(Calendar.YEAR)) {
+                        sum += montant;
+                    }
+                }
+                return sum;
+            }
+            case TOTAL -> {
+                double sum = 0;
+                for (int i = 0; i < nrow; i++) {
+                    // Ensure proper typecasting
+                    String statut = (String) statuts[i];
+                    double montant = (double) montantIPs[i];
+
+                    // Filtering
+                    if (statut.equals(valueA)) {
+                        sum += montant;
+                    }
+                }
+                return sum;
+            }
+            default -> {
+            }
+        }
+        return 0d;
+    }
+    public int filterAndSumByFreq(String valueA, String dateB,  SummaryType.Frequency freqType) {
+        Object[] statuts = c("statut");
+        Object[] dateSurv = c("date_surv");
+
+        switch (freqType) {
+            case MONTHLY -> {
+                SimpleDateFormat sdf = new SimpleDateFormat("MM-yyyy");
+                Date targetDate;
+                try {
+                    targetDate = sdf.parse(dateB);
+                } catch (ParseException e) {
+                    throw new RuntimeException("Invalid date format.", e);
+                }
+                int sum = 0;
+                for (int i = 0; i < nrow; i++) {
+                    // Ensure proper typecasting
+                    String statut = (String) statuts[i];
+                    Date date = (Date) dateSurv[i];
+
+                    // Filtering
+                    if (statut.equals(valueA) && date.equals(targetDate)) {
+                        sum ++;
+                    }
+                }
+                return sum;
+            }
+            case YEARLY -> {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy");
+                Date targetDate;
+                try {
+                    targetDate = sdf.parse(dateB);
+                } catch (ParseException e) {
+                    throw new RuntimeException("Invalid date format.", e);
+                }
+
+                Calendar targetCalendar = Calendar.getInstance();
+                targetCalendar.setTime(targetDate);
+
+                int sum = 0;
+                for (int i = 0; i < nrow; i++) {
+                    String statut = (String) statuts[i];
+                    Date date = (Date) dateSurv[i];
+
+                    Calendar dateCalendar = Calendar.getInstance();
+                    dateCalendar.setTime(date);
+
+                    // Filtering
+                    if (statut.equals(valueA) &&
+                            dateCalendar.get(Calendar.YEAR) == targetCalendar.get(Calendar.YEAR)) {
+                        sum++;
+                    }
+                }
+                return sum;
+            }
+            case TOTAL -> {
+                int sum = 0;
+                for (int i = 0; i < nrow; i++) {
+                    // Ensure proper typecasting
+                    String statut = (String) statuts[i];
+
+                    // Filtering
+                    if (statut.equals(valueA)) {
+                        sum++;
+                    }
+                }
+                return sum;
+            }
+            default -> {
+            }
+        }
+        return 0;
     }
 }

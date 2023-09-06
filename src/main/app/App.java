@@ -19,8 +19,8 @@ import static java.util.Arrays.fill;
 
 public class App {
 
-//    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
-    public static final String wd = "E:/202305/wd/";
+    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
+//    public static final String wd = "E:/202305/wd/";
     public static final String outputFolder = wd + "output/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
@@ -72,13 +72,17 @@ public class App {
     private static final LocalDate TODAY = LocalDate.now();
     public static char delim = ';';
     public static Synthese syntAncien;
-
+//    public static List<Base> basesSin = new ArrayList<>();
+    public static Map<String, String> statutMap = new HashMap<>();
+    public static Map<String, Base> baseMap = new HashMap<>();
+    public static List<String> statutsForTreatment;
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
 
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
-
+        Synthese mapStatut = new Synthese(wd + "map_statuts.csv",delim,true,false,false);
+        mapStatut.populateStatutMap();
         ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
         ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
         ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
@@ -92,54 +96,6 @@ public class App {
 //        syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
 
         stopwatch.printElapsedTime("refs");
-        for (int i = 0; i < ref_source.nrow; i++) {
-            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
-            if (!a_faire) continue;
-            stopwatch.start();
-            Base.currentHeaderRef = null;
-            String folder = (String) ref_source.c("path")[i];
-            String pays = (String) ref_source.c("pays_filekey")[i];
-            String mapcol = (String) ref_source.c("mapping")[i];
-            String estim = (String) ref_source.c("estimate")[i];
-            String path_fic = (String) ref_source.c("path_fic")[i];
-            String map_fic = (String) ref_source.c("map_fic")[i];
-
-            Synthese wf = new Synthese(outputFolder + estim +"_fichier_de_travail.csv",delim,false,true,true);
-
-            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-            List<Base> basesSin = new ArrayList<>();
-
-            for (File file : fileList) {
-                if (!file.toPath().toString().contains("MWTL")) continue;
-                Base base = new Base(file,pays,mapcol);
-                basesSin.add(base);
-            }
-//            if (pays.equals("Italie")) {
-//                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
-//                for (File file : fileListGS) {
-////                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
-//                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
-//                    basesSin.add(base);
-//                }
-//                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
-//                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
-//            }
-//
-//            for (Base base : basesSin) {
-//                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-//                updateStatutDates(base); //global
-//            }
-//
-//            Base baseFic = new Base(wd + path_fic,map_fic);
-
-            wf.calculateHeaderFrequencies();
-            wf.addComputedColumns();
-            wf.saveToCSV(outputFolder+ estim + "_fichier_de_travail_controle.csv");
-
-            stopwatch.printElapsedTime();
-        }
-
-
 //        for (int i = 0; i < ref_source.nrow; i++) {
 //            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
 //            if (!a_faire) continue;
@@ -152,49 +108,101 @@ public class App {
 //            String path_fic = (String) ref_source.c("path_fic")[i];
 //            String map_fic = (String) ref_source.c("map_fic")[i];
 //
-//            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+//            Synthese wf = new Synthese(outputFolder + estim +"_fichier_de_travail.csv",delim,false,true,true);
 //
 //            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-//            List<Base> basesSin = new ArrayList<>();
 //
 //            for (File file : fileList) {
+////                if (!file.toPath().toString().contains("EXDI")) continue;
 //                Base base = new Base(file,pays,mapcol);
-//                basesSin.add(base);
+////                basesSin.add(base);
+//                baseMap.put(base.numPolice, base);
 //            }
 //            if (pays.equals("Italie")) {
 //                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
 //                for (File file : fileListGS) {
 ////                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
 //                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
-//                    basesSin.add(base);
+//                    baseMap.put(base.numPolice, base);
 //                }
-//                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
-//                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
+//                Base baseGPTB = new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv"));
+//                Base baseMITL = new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv"));
+//                baseMap.put(baseGPTB.numPolice, baseGPTB);
+//                baseMap.put(baseMITL.numPolice, baseMITL);
 //            }
+////
+////            for (Base base : basesSin) {
+////                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+////                updateStatutDates(base); //global
+////            }
+////
+////            Base baseFic = new Base(wd + path_fic,map_fic);
 //
-//            for (Base base : basesSin) {
-//                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-//                updateStatutDates(base); //global
-//            }
-//            estimate.getUniqueStatutsFromMap();
-//            estimate.getUniqueNumPoliceEstimate();
-//            updateGlobalDatesFromStatutMap();
+//            wf.calculateHeaderFrequencies();
+//            wf.addComputedColumns();
+//            wf.addRowsByStatut();
+//            wf.saveToCSV(outputFolder+ estim + "_fichier_de_travail_controle.csv");
 //
-//            Base baseFic = new Base(wd + path_fic,map_fic);
-//            estimate.addFicMAT(baseFic);
-//
-//            stopwatch.printElapsedTime(pays + " integré");
-//
-//            estimate.addSinMAT(basesSin);
-//            estimate.addProvisions(basesSin);
-//            estimate.addPrimesAcquises();
-//            estimate.addSP();
-//
-//            stopwatch.printElapsedTime("calculé");
-//            estimate.saveToCSVFile(false);
-//
-//            stopwatch.start();
+//            stopwatch.printElapsedTime();
 //        }
+
+
+        for (int i = 0; i < ref_source.nrow; i++) {
+            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
+            if (!a_faire) continue;
+            stopwatch.start();
+            Base.currentHeaderRef = null;
+            String folder = (String) ref_source.c("path")[i];
+            String pays = (String) ref_source.c("pays_filekey")[i];
+            String mapcol = (String) ref_source.c("mapping")[i];
+            String estim = (String) ref_source.c("estimate")[i];
+            String path_fic = (String) ref_source.c("path_fic")[i];
+            String map_fic = (String) ref_source.c("map_fic")[i];
+
+            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+
+            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+            List<Base> basesSin = new ArrayList<>();
+
+            for (File file : fileList) {
+//                if (!file.toPath().toString().contains("EXDI")) continue;
+                Base base = new Base(file,pays,mapcol);
+                basesSin.add(base);
+            }
+            if (pays.equals("Italie")) {
+                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
+                for (File file : fileListGS) {
+//                if (!file.toPath().toString().contains("ICI GS EG16"))  continue;
+                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
+                    basesSin.add(base);
+                }
+                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
+                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
+            }
+
+            for (Base base : basesSin) {
+                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
+                updateStatutDates(base); //global
+            }
+            estimate.getUniqueStatutsFromMap();
+            estimate.getUniqueNumPoliceEstimate();
+            updateGlobalDatesFromStatutMap();
+
+            Base baseFic = new Base(wd + path_fic,map_fic);
+            estimate.addFicMAT(baseFic);
+
+            stopwatch.printElapsedTime(pays + " integré");
+
+            estimate.addSinMAT(basesSin);
+            estimate.addProvisions(basesSin);
+            estimate.addPrimesAcquises();
+            estimate.addSP();
+
+            stopwatch.printElapsedTime("calculé");
+            estimate.saveToCSVFile(false);
+
+            stopwatch.start();
+        }
 
 
 //            Synthese wf = new Synthese(outputFolder+estim + "_fichier_de_travail.csv",delim,false,true,true);
@@ -427,4 +435,5 @@ public class App {
         }
         return -1; // Return -1 if not found
     }
+
 }
