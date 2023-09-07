@@ -64,7 +64,7 @@ public class DF implements Serializable {
 //        tdb2.saveToCSVFile_filter("France",toCreateFR);
 //        tdb2.saveToCSVFile_filter("Hors France",toCreateHF);
 //        stopwatch.printElapsedTime("saved both");
-
+//
 //        DF tdb2src = new DF(wd + "TDB Hors France src.csv",';',0);
 //        boolean[] r2d = tdb2src.filterAgainstGrilleTarif();
 //        tdb2src.saveToCSVFile_filter("filtered",r2d);
@@ -72,7 +72,7 @@ public class DF implements Serializable {
 //        tdb2src = new DF(wd + "TDB France src.csv",';',0);
 //        r2d = tdb2src.filterAgainstGrilleTarif();
 //        tdb2src.saveToCSVFile_filter("filtered",r2d);
-
+//
 //        DF tdb2src = new DF(wd + "TDB Hors France src_filtered.csv", ';', 0);
 //        tdb2 = new DF(wd + "TDB Part 2_Hors France.csv",';',0);
 //        tdb2.populateFromGrilleTarif(tdb2src);
@@ -84,7 +84,7 @@ public class DF implements Serializable {
 //        tdb2.populateFromGrilleTarif(tdb2src);
 //        tdb2.checkSumOfColumns();
 //        tdb2.saveToCSVFile_simple("populated");
-
+//
 //        tdb2.addCoefficientColumns();
 //        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
 //        tdb2coef = new DF(tdb2, 0);
@@ -97,8 +97,8 @@ public class DF implements Serializable {
 //        tdb2coef.checkSumOfColumns();
 //        tdb2coef.saveToCSVFile_sortedCoef("coef");
 //        stopwatch.printElapsedTime("fr");
-//
-//        stopwatch.printElapsedTime();
+
+        stopwatch.printElapsedTime();
     }
     public DF(String path, char delim, Double sql) {
         fileName = path.substring(path.lastIndexOf("/") + 1);
@@ -2800,5 +2800,38 @@ public class DF implements Serializable {
             }
         }
         return sum;
+    }
+    public void deleteRows(ArrayList<Integer> rowsToDelete) {
+        if (rowsToDelete.isEmpty()) {
+            return;
+        }
+
+        // Sort in descending order to ensure that we're removing indices from the end first
+        rowsToDelete.sort((a, b) -> b - a);
+
+        // Iterate over columns in df
+        for (int colIndex = 0; colIndex < ncol; colIndex++) {
+            Object[] column = df.get(colIndex);
+            for (int rowIndex : rowsToDelete) {
+                if (rowIndex >= 0 && rowIndex < nrow) {
+                    column[rowIndex] = null; // Mark for deletion
+                }
+            }
+
+            // Create a new column without the null (deleted) values
+            Object[] newColumn = new Object[nrow - rowsToDelete.size()];
+            int newIndex = 0;
+            for (Object value : column) {
+                if (value != null) {
+                    newColumn[newIndex++] = value;
+                }
+            }
+
+            // Replace the old column with the new column in df
+            df.set(colIndex, newColumn);
+        }
+
+        // Update nrow since we've removed rows
+        nrow -= rowsToDelete.size();
     }
 }

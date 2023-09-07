@@ -1279,12 +1279,14 @@ public class Base extends DF {
         int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
         int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
         int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
+        int indexAQ = find_in_arr_first_index(ref_prog.header, "acquisition des primes");
 
-        Date dateDebut = null; Date dateFin = null; Date dateMaxaAttribuer = null;
+        Date dateDebut = null; Date dateFin = null; Date dateMaxaAttribuer = null; boolean mensu = false;
         for (int i = 0; i < ref_prog.nrow; i++) {
             if (this.numPolice.equalsIgnoreCase(ref_prog.c(indexContrat)[i].toString())) {
                 dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
                 dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
+                mensu =  ref_prog.c(indexAQ)[i].equals("mensuel");
                 if (dateFin.after(MAX_PREVI_DATE)) {
                     dateMaxaAttribuer = MAX_PREVI_DATE;
                 } else {
@@ -1293,12 +1295,12 @@ public class Base extends DF {
                 break;
             }
         }
-        if (dateDebut == null || dateFin == null) {
+        if (dateDebut == null) {
             throw new RuntimeException("ref_prog didn't find dates for " + numPolice);
         }
 
         for (int i = 0; i < nrow; i++) {
-            if(c(indexDateSurv)[i].toString().contains("2323")) {
+            if (i == 35) {
                 System.out.println("here");
             }
             Date dateSurv = (Date) c(indexDateSurv)[i];
@@ -1313,28 +1315,22 @@ public class Base extends DF {
                     dateSurv = dateDebut;
                 }
             }
-            if (dateSous.equals(NA_DAT)) {
-                if(!dateSurv.equals(NA_DAT)){
-                    dateSous = dateSurv;
-                } else {
-                    dateSous = dateDebut;
-                }
-            }
-            if (dateSurv.after(dateFin) || dateSurv.before(dateDebut)) {
-                dateSurv = dateSous;
-            }
-            if (dateSous.after(dateFin) || dateSous.before(dateDebut)) {
+            if (dateSous.equals(NA_DAT) || mensu) {
                 dateSous = dateSurv;
             }
-            if (dateSous.after(dateFin) && dateSurv.after(dateFin)) {
-                dateSous = dateMaxaAttribuer;
-                dateSurv = dateMaxaAttribuer;
-            }
-            if (dateSous.before(dateDebut) && dateSurv.before(dateDebut)) {
+            if (dateSous.after(dateMaxaAttribuer) || dateSous.before(dateDebut)) {
                 dateSous = dateDebut;
+            }
+            if (dateSurv.before(dateDebut)) {
                 dateSurv = dateDebut;
             }
+            if (dateSurv.after(dateMaxaAttribuer)) {
+                dateSurv = dateMaxaAttribuer;
+            }
 
+            if (dateSurv.before(dateSous)) {
+                dateSurv = dateSous;
+            }
             date_transform(dateSurv, indexDateSurv, i);
             date_transform(dateSous, indexDateSous, i);
         }

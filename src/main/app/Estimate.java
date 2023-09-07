@@ -120,6 +120,10 @@ public class Estimate extends DF {
         }
         headerAndColtypesDropSKP();
         formatDP();
+        deleteRegul();
+        if (path.contains("France")) {
+            deleteDBP();
+        }
         baseNcol = ncol;
         mask_col = new boolean[ncol];
         Arrays.fill(mask_col, true);
@@ -911,6 +915,97 @@ public class Estimate extends DF {
         }
     }
 
+    public void deleteRegul() {
+        Object[] regul = this.c("Régularisation");
+        Object[] contrat = this.c("Contrat");
+        Object[] date = this.c("Date Periode");
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+        for (int i = 0; i < this.nrow; i++) {
+            if (regul[i].equals("OUI")) {
+                int origin = -1;
+                if (date[i].equals(date[i-1]) && contrat[i].equals(contrat[i-1])) {
+                    origin = i - 1;
+                } else {
+                    for (int j = 0; j < this.nrow; j++) {
+                        if (date[i].equals(date[j]) && contrat[i].equals(contrat[j])) {
+                            origin = j;
+                            break;
+                        }
+                    }
+                }
+                if(origin == -1) {
+                    System.out.println("REGUL ERROR");
+                }
+                for (int col = 0; col < this.ncol; col++) {
+                    if (header[col].startsWith("MONTANT") || header[col].startsWith("NOMBRE")) {
+                        this.c(col)[origin] = String.valueOf(Double.parseDouble(this.c(col)[i].toString()) + Double.parseDouble(this.c(col)[origin].toString()));
+                    }
+                }
+                rowsToDelete.add(i);
+            }
+        }
+        deleteRows(rowsToDelete);
+    }
+    public void deleteDBP() {
+        Object[] contrat = this.c("Contrat");
+        Object[] date = this.c("Date Periode");
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+        for (int i = 0; i < this.nrow; i++) {
+            if (contrat[i].equals("ICIDBP17-1") || contrat[i].equals("ICIDBP17-2")) {
+                int origin = -1;
+                for (int j = 0; j < this.nrow; j++) {
+                    if (date[i].equals(date[j]) && "ICIDBP17".equals(contrat[j])) {
+                        origin = j;
+                        break;
+                    }
+                }
+                if (origin == -1) {
+                    contrat[i] = "ICIDBP17";
+                    continue;
+                }
+                for (int col = 0; col < this.ncol; col++) {
+                    if (header[col].startsWith("MONTANT") || header[col].startsWith("NOMBRE")) {
+                        this.c(col)[origin] = String.valueOf(Double.parseDouble(this.c(col)[i].toString()) + Double.parseDouble(this.c(col)[origin].toString()));
+                    }
+                }
+                rowsToDelete.add(i);
+            }
+        }
+        deleteRows(rowsToDelete);
+    }
+    public void deleteRows(ArrayList<Integer> rowsToDelete) {
+        if (rowsToDelete.isEmpty()) {
+            return;
+        }
+
+        // Sort in descending order to ensure that we're removing indices from the end first
+        rowsToDelete.sort((a, b) -> b - a);
+
+        // Iterate over columns in df
+        for (int colIndex = 0; colIndex < ncol; colIndex++) {
+            Object[] column = df.get(colIndex);
+            for (int rowIndex : rowsToDelete) {
+                if (rowIndex >= 0 && rowIndex < nrow) {
+                    column[rowIndex] = null; // Mark for deletion
+                }
+            }
+
+            // Create a new column without the null (deleted) values
+            Object[] newColumn = new Object[nrow - rowsToDelete.size()];
+            int newIndex = 0;
+            for (Object value : column) {
+                if (value != null) {
+                    newColumn[newIndex++] = value;
+                }
+            }
+
+            // Replace the old column with the new column in df
+            df.set(colIndex, newColumn);
+        }
+
+        // Update nrow since we've removed rows
+        nrow -= rowsToDelete.size();
+    }
     public void formatDP() {
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
 
@@ -1123,7 +1218,7 @@ public class Estimate extends DF {
 
     }
     public void addSinMAT(List<Base> bases) throws ParseException {
-        String statut = "Sinistre total";
+        String statut = "Sinistre";
         int begin;
         int tableName_ind;
 

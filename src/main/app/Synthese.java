@@ -1,10 +1,8 @@
 package main.app;
 
-import com.monitorjbl.xlsx.StreamingReader;
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
@@ -14,10 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.logging.FileHandler;
-import java.util.logging.Logger;
-import java.util.logging.SimpleFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -35,6 +32,8 @@ public class Synthese {
     private final ArrayList<String> headers;
     private ArrayList<String> subheaders;
     public static SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy");
+    private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");  // For example: 20230907_125959
+
     public static char delim = ';';
     public static Synthese refProg = new Synthese(wd+"Référentiel programmes.csv",delim,false,false,true);
     private List<Integer> refMapping;
@@ -53,6 +52,7 @@ public class Synthese {
     public static final String[] INTEGER_COLUMNS;
     public static final String[] DOUBLE_COLUMNS;
     public static final String[] PERCENTAGE_COLUMNS;
+
     // column formatting types initialization block
     static {
         INTEGER_COLUMNS = new String[] {
@@ -108,8 +108,6 @@ public class Synthese {
         };
     }
     protected Map<String, ArrayList<Integer>> frequencies = new LinkedHashMap<>();
-    private static int offset = 0;
-    private static final String LOG_FILE_PATH = outputFolder +"logfile.txt";
     private void writeToLogFile(String message) {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(LOG_FILE_PATH, true))) { //true means append mode
             writer.write(message);
@@ -335,7 +333,7 @@ public class Synthese {
         addDataFromSubheaderSummed(external, "Comptable total", "Total Sinistres Comptable", DBL,"Contrat");
 
         // Add "Total Sinistres Technique" from extern's subheader "Sinistre Nombre total"
-        addDataFromSubheaderSummed(external, "Sinistre total total", "Total Sinistres Technique", DBL,"Contrat");
+        addDataFromSubheaderSummed(external, "Sinistre total", "Total Sinistres Technique", DBL,"Contrat");
 
         calculateEcartSinistres();
 
@@ -418,7 +416,7 @@ public class Synthese {
         addDataFromSubheaderSummed(external, "Comptable total", "Total Sinistres Comptable", DBL,"Distributeur");
 
         // Add "Total Sinistres Technique" from extern's subheader "Sinistre Nombre total"
-        addDataFromSubheaderSummed(external, "Sinistre total total", "Total Sinistres Technique", DBL,"Distributeur");
+        addDataFromSubheaderSummed(external, "Sinistre total", "Total Sinistres Technique", DBL,"Distributeur");
 
         calculateEcartSinistres();
 
@@ -501,7 +499,7 @@ public class Synthese {
         addDataFromSubheaderSummed(external, "Comptable total", "Total Sinistres Comptable", DBL,"Gestionnaire");
 
         // Add "Total Sinistres Technique" from extern's subheader "Sinistre Nombre total"
-        addDataFromSubheaderSummed(external, "Sinistre total total", "Total Sinistres Technique", DBL,"Gestionnaire");
+        addDataFromSubheaderSummed(external, "Sinistre total", "Total Sinistres Technique", DBL,"Gestionnaire");
 
         calculateEcartSinistres();
 
@@ -1141,6 +1139,24 @@ public class Synthese {
 
     // ROWS AND COLS
     @SuppressWarnings("unchecked")
+    public <T> ArrayList<T> getColumn(String header) {
+        int index = headers.indexOf(header);
+        if (index != -1) {
+            return ((Column<T>) columns.get(index)).getData();
+        } else {
+            throw new IllegalArgumentException("Column with header: " + header + " not found.");
+        }
+    }
+    @SuppressWarnings("unchecked")
+    public <T> ArrayList<T> getColumnSubheader(String header) {
+        int index = subheaders.indexOf(header);
+        if (index != -1) {
+            return ((Column<T>) columns.get(index)).getData();
+        } else {
+            throw new IllegalArgumentException("Column with header: " + header + " not found.");
+        }
+    }
+    @SuppressWarnings("unchecked")
     public <T> ArrayList<T> getColumnByIndex(int index) {
         if (index < 0 || index >= columns.size()) {
             throw new IndexOutOfBoundsException("Invalid column index: " + index);
@@ -1279,15 +1295,7 @@ public class Synthese {
             col.getData().add(cell);
         }
     }
-    @SuppressWarnings("unchecked")
-    public <T> ArrayList<T> getColumn(String header) {
-        int index = headers.indexOf(header);
-        if (index != -1) {
-            return ((Column<T>) columns.get(index)).getData();
-        } else {
-            throw new IllegalArgumentException("Column with header: " + header + " not found.");
-        }
-    }
+
     @SuppressWarnings("unchecked")
     private <T> void addRowToColumns(Row row, boolean toLower) {
         for (Cell cell : row) {
@@ -1496,7 +1504,7 @@ public class Synthese {
     private double roundToFourDecimals(double value) {
         return new BigDecimal(value).setScale(4, RoundingMode.HALF_UP).doubleValue();
     }
-    private double roundToTwoDecimals(double value) {
+    private static double roundToTwoDecimals(double value) {
         return new BigDecimal(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
@@ -2382,7 +2390,8 @@ public class Synthese {
     }
 
     public void calculateHeaderFrequencies() {
-
+        Stopwatch stopwatch = new Stopwatch();
+        stopwatch.start();
         boolean foundFirst = false;
 
         for (int i = 0; i < headers.size(); i++) {
@@ -2411,28 +2420,137 @@ public class Synthese {
                 }
             }
         }
-
+        stopwatch.printElapsedTime("headerFreq");
 //        for (Map.Entry<String, ArrayList<Integer>> entry : frequencies.entrySet()) {
 //            String key = entry.getKey();
 //            ArrayList<Integer> values = entry.getValue();
 //            System.out.println(key + " => " + values);
 //        }
     }
-    public void addComputedColumns() {
+    public void computeMvAvTvB(Base baseFic) {
+        Stopwatch stopwatch = new Stopwatch();
+        stopwatch.start();
         for (Map.Entry<String, ArrayList<Integer>> entry : frequencies.entrySet()) {
             ArrayList<Integer> indices = entry.getValue();
             String key = entry.getKey();  // This is the string key you're interested in.
 
             if (indices.size() == 3) {
-                int x = indices.get(0) + offset;
-                int y = indices.get(1) + offset;
-                int z = indices.get(2) + offset;
+                int x = indices.get(0) ;
+                int y = indices.get(1);
+                int z = indices.get(2);
 
-                insertColumn(z + 1, computeSumSubtract(x, y - 1, y, z - 1, key), "Controle année - mois");  // Passing the key here
-                offset++;  // Increase offset after inserting a column
+                computeSumSubtract(x, y - 1, y, z - 1, key);
+                computeSumSubtract(y, z - 1, z, z, key);
+            }
+        }
+        computeSumVSBaseSin();
+        computeSumVSBaseFic(baseFic);
+        stopwatch.printElapsedTime("MATB");
+    }
+    private void computeSumVSBaseSin () {
+        ArrayList<String> contrats = getColumn("Contrat");
+        ArrayList<String> dates = getColumn("Date Periode");
+        ArrayList<String> totalsString = getColumnSubheader("Sinistre total");
+        ArrayList<String> totalsNString = getColumnSubheader("Sinistre Nombre total");
+        ArrayList<Double> totals = transformToDoublesRound2(totalsString);
+        ArrayList<Double> totalsN = transformToDoublesRound2(totalsNString);
 
-                insertColumn(z + 2, computeSumSubtract(y, z - 1, z, z, key),"Controle total - année");  // Passing the key here too
-                offset++;  // Increase offset again for the second column
+        String currentContrat = ""; Base currentBase = null;
+        SimpleDateFormat sdf = new SimpleDateFormat("MM-yyyy");
+
+        Set<String> basesAbsentes = new HashSet<>();
+        for (int i = 0; i < totals.size(); i++) {
+            String contrat = contrats.get(i);
+            if (!Objects.equals(contrat, currentContrat)) {
+//                System.out.println("contrat - "+ contrat);
+                currentContrat = contrat;
+                currentBase = baseMap.get(contrat);
+                if (currentBase == null) {
+                    basesAbsentes.add(contrat);
+                    continue;
+                }
+            }
+            if (currentBase == null) {
+                continue;
+            }
+            Date currentDate;
+            try {
+                currentDate = sdf.parse(dates.get(i));
+            } catch (ParseException e) {
+                throw new RuntimeException("Invalid date format.", e);
+            }
+            double sum = 0;
+            int sumN = 0;
+            Object[] datesSousBase = currentBase.c("date_sous");
+            Object[] montantsIP = currentBase.c("montant_IP");
+            for (int j = 0; j < currentBase.nrow; j++) {
+                // Ensure proper typecasting
+                double montant = (double) montantsIP[j];
+                Date date_sous = (Date) datesSousBase[j];
+
+                // Filtering
+                if (date_sous.equals(currentDate)) {
+                    sum += montant;
+                    sumN++;
+                }
+            }
+//            if (sum == 1178.93) {
+//                System.out.println("here");
+//            }
+            sum = roundToTwoDecimals(sum);
+            if (totals.get(i) != sum) {
+                writeToLogFile("l'écart de charge entre total et base: " + currentContrat + " " + totals.get(i) + " != " + sum);
+            }
+            if (totalsN.get(i) != sumN) {
+                writeToLogFile("l'écart de nombre entre total et base: " + currentContrat + " " + totalsN.get(i) + " != " + sumN);
+            }
+        }
+        for (String s : basesAbsentes) {
+            System.out.println(s + " BASE ABSENTE");
+        }
+    }
+    private void computeSumVSBaseFic (Base baseFic) {
+        ArrayList<String> contrats = getColumn("Contrat");
+        ArrayList<String> dates = getColumn("Date Periode");
+        ArrayList<String> totalsString = getColumnSubheader("Comptable total");
+        ArrayList<String> totalsNString = getColumnSubheader("Comptable total nombre");
+        ArrayList<Double> totals = transformToDoublesRound2(totalsString);
+        ArrayList<Double> totalsN = transformToDoublesRound2(totalsNString);
+
+        String currentContrat = "";
+        SimpleDateFormat sdf = new SimpleDateFormat("MM-yyyy");
+
+        for (int i = 0; i < totals.size(); i++) {
+            String contrat = contrats.get(i);
+            Date currentDate;
+            try {
+                currentDate = sdf.parse(dates.get(i));
+            } catch (ParseException e) {
+                throw new RuntimeException("Invalid date format.", e);
+            }
+            double sum = 0;
+            int sumN = 0;
+            Object[] datesSousBase = baseFic.c("date_sous");
+            Object[] contratsFic = baseFic.c("num_police");
+            Object[] montantsIP = baseFic.c("montant_IP");
+            for (int j = 0; j < baseFic.nrow; j++) {
+                // Ensure proper typecasting
+                double montant = (double) montantsIP[j];
+                Date date_sous = (Date) datesSousBase[j];
+                String contratFic = (String) contratsFic[j];
+                // Filtering
+                if (date_sous.equals(currentDate) && contratFic.equalsIgnoreCase(contrat)) {
+                    sum += montant;
+                    sumN++;
+                }
+            }
+            sum = roundToTwoDecimals(sum);
+
+            if (totals.get(i) != sum) {
+                writeToLogFile("l'écart entre charge total et baseFic: " + currentContrat + " " + totals.get(i) + " != " + sum);
+            }
+            if (totalsN.get(i) != sumN) {
+                writeToLogFile("l'écart entre nombre total et baseFic: " + currentContrat + " " + totalsN.get(i) + " != " + sumN);
             }
         }
     }
@@ -2442,7 +2560,7 @@ public class Synthese {
         headers.add(index, nom);
         subheaders.add(index, "");
     }
-    private ArrayList<Double> computeSumSubtract(int x1, int x2, int y1, int y2, String key) {
+    private void computeSumSubtract(int x1, int x2, int y1, int y2, String key) {
         ArrayList<Double> result = new ArrayList<>();
 
         int numRows = columns.get(0).getData().size();
@@ -2451,15 +2569,13 @@ public class Synthese {
             double sumY = sumRange(i, y1, y2);
             if (round(sumX - sumY) != 0) {
                 if (y1 == y2) {
-                    writeToLogFile("l'écart entre année et total: " + key);
+                    writeToLogFile("l'écart entre année et total: " + key + " " + sumX + " != " + sumY);
                 } else {
-                    writeToLogFile("l'écart entre mois et année: " + key);
+                    writeToLogFile("l'écart entre mois et année: " + key + " " + sumX + " != " + sumY);
                 }
             }
-            result.add(sumX - sumY);
         }
 
-        return result;
     }
     private double sumRange(int row, int startCol, int endCol) {
         double sum = 0;
@@ -2495,27 +2611,6 @@ public class Synthese {
         }
     }
 
-    public void insertEmptyRowsAndMarkColumns() {
-        ArrayList<String> contratColumn = getColumn("Contrat");
-        ArrayList<Boolean> treatColumns = getTreatColumnsList(); // Get the columns to treat
-
-        // We're using a reverse iteration since we're modifying the column, which would affect indices.
-        for (int i = contratColumn.size() - 1; i > 0; i--) {
-            if (!contratColumn.get(i).equals(contratColumn.get(i - 1))) {
-                insertEmptyRowAt(i, treatColumns);
-            }
-        }
-    }
-    private void insertEmptyRowAt(int index, ArrayList<Boolean> treatColumns) {
-        for (Column<?> col : columns) {
-            ArrayList<?> data = col.getData();
-            if (data.size() > index) {
-                data.add(index, null); // insert an empty/null value at the specified index
-            }
-        }
-        // Handle the treatColumns as needed
-        // For now, we've just prepared the boolean list, but you can utilize it later as per your requirements.
-    }
     private ArrayList<Boolean> getTreatColumnsList() {
         ArrayList<Boolean> treatColumns = new ArrayList<>(headers.size());
         Pattern pattern = Pattern.compile("(\\d{2}-\\d{4}|\\d{4}|Total)");
@@ -2544,9 +2639,6 @@ public class Synthese {
         String lastNonEmptySubheader = "";
         ArrayList<Boolean> treatColumns = getTreatColumnsList();
 
-        Pattern startPattern = Pattern.compile("^(Statut|Nombre)\\s*");
-        Pattern endPattern = Pattern.compile("\\s*(mensuel|annuel|total)$");
-
         for (int i = 0; i < headers.size(); i++) {
             if (!treatColumns.get(i)) {
                 types.add(null);  // Add a null entry for columns we don't treat.
@@ -2563,10 +2655,7 @@ public class Synthese {
 
             // Extract statut
             String statut = lastNonEmptySubheader;
-            Matcher startMatcher = startPattern.matcher(statut);
-            Matcher endMatcher = endPattern.matcher(statut);
-            statut = startMatcher.replaceFirst("");
-            statut = endMatcher.replaceFirst("");
+            statut = statut.replace("Statut","").replace("Nombre","").replace("mensuel","").replace("annuel","").replace("total","");
             statut = statut.trim();
             statutsForTreatment.add(statut);
 
@@ -2587,27 +2676,27 @@ public class Synthese {
 
         return types;  // You might also want to return the statutsForTreatment or make it an instance variable.
     }
-    public void addRowsByStatut() {
-        insertEmptyRowsAndMarkColumns();
-
+    public void computeSumByStatutEtDateSurv() {
+        Stopwatch stopwatch = new Stopwatch();
+        stopwatch.start();
         ArrayList<String> contratColumn = getColumn("Contrat");
         ArrayList<Boolean> treatColumns = getTreatColumnsList();
-
         List<SummaryType> types = determineSummaryTypes();
 
-        String contratValue = null;
-        Base currentBase = null;
+        String contrat;
+        Base currentBase;
         Set<String> basesAbsentes = new HashSet<>();
+        int beginIndex = 0;
 
         for (int rowIndex = 0; rowIndex < contratColumn.size(); rowIndex++) {
-            System.out.println("TREATING ROW: " + rowIndex);
-            contratValue = contratColumn.get(rowIndex);
-            if(contratValue != null) continue;
-            contratValue = contratColumn.get(rowIndex-1);
-            currentBase = baseMap.get(contratValue);
+//            System.out.println("TREATING ROW: " + rowIndex);
+            contrat = contratColumn.get(rowIndex);
+            if (rowIndex + 1 < contratColumn.size() && Objects.equals(contrat, contratColumn.get(rowIndex + 1))) continue;
+            currentBase = baseMap.get(contrat);
 
             if (currentBase == null) {
-                basesAbsentes.add(contratValue);
+                basesAbsentes.add(contrat);
+                beginIndex = rowIndex + 1;
                 continue;
             }
             for (int colIndex = 0; colIndex < headers.size(); colIndex++) {
@@ -2618,24 +2707,55 @@ public class Synthese {
                 String headerName = headers.get(colIndex);
                 SummaryType currentType = types.get(colIndex);
 
-                double calculatedValue = 0;
-                int calculatedFreqValue = 0;
+
+                ArrayList<String> calcColumnString = getColumnByIndex(colIndex);
+                ArrayList<Double> calcColumn = transformToDoublesRound2(calcColumnString);
+                double sum = 0d;
+                for (int calcIndex = beginIndex; calcIndex <= rowIndex; calcIndex++) {
+                    sum += calcColumn.get(calcIndex);
+                }
+                sum = roundToTwoDecimals(sum);
+                double refValue = 0;
 
                 if (currentType.getCalculation() == SummaryType.Calculation.CHARGE) {
-                    calculatedValue = currentBase.filterAndSumByCharge(statutsForTreatment.get(colIndex), headerName, currentType.getFrequency());
-                    setCellValue(rowIndex, colIndex, calculatedValue);
+                    if (Objects.equals(headerName, "12-2015") && statutsForTreatment.get(colIndex).equalsIgnoreCase("terminé - accepté")) {
+                        System.out.println("here");
+                    }
+                    refValue = roundToTwoDecimals(currentBase.filterAndSumByCharge(statutsForTreatment.get(colIndex), headerName, currentType.getFrequency()));
+                    if (sum != refValue) {
+                        writeToLogFile("l'écart de charge entre total par statut et base: " + contrat + " " + sum + " != " +
+                                refValue + " pour le mois surv: " + headerName + " du statut: " + statutsForTreatment.get(colIndex));
+                    }
                 } else {
-                    calculatedFreqValue = currentBase.filterAndSumByFreq(statutsForTreatment.get(colIndex), headerName, currentType.getFrequency());
-                    setCellValue(rowIndex, colIndex, calculatedFreqValue);
+                    refValue = roundToTwoDecimals(currentBase.filterAndSumByFreq(statutsForTreatment.get(colIndex), headerName, currentType.getFrequency()));
+                    if (sum != refValue) {
+                        writeToLogFile("l'écart de nombre entre total par statut et base: " + contrat + " " + sum + " != " +
+                                refValue + " pour le mois surv: " + headerName + " du statut: " + statutsForTreatment.get(colIndex));
+                    }
                 }
             }
+            beginIndex = rowIndex + 1;
         }
         for (String s : basesAbsentes) {
             System.out.println(s + " BASE ABSENTE");
         }
+        stopwatch.printElapsedTime("parStatut");
     }
     public void setCellValue(int rowIndex, int colIndex, Object value) {
         this.getColumnByIndex(colIndex).set(rowIndex, value);
     }
-
+    public static ArrayList<Double> transformToDoublesRound2(ArrayList<String> totals) {
+        ArrayList<Double> doubleTotals = new ArrayList<>();
+        for (String value : totals) {
+            try {
+                doubleTotals.add(roundToTwoDecimals(Double.parseDouble(value.replace(',','.'))));
+            } catch (NumberFormatException e) {
+                doubleTotals.add(0d); // default value for empty or invalid numbers
+            }
+        }
+        return doubleTotals;
+    }
+    public static String getCurrentDateTime() {
+        return LocalDateTime.now().format(formatter);
+    }
 }
