@@ -24,6 +24,7 @@ import static java.lang.Math.min;
 import static java.lang.Math.round;
 import static main.app.App.*;
 import static main.app.App.NA_DAT;
+import static main.app.Estimate.parseObjectToDouble;
 import static main.app.Synthese.ColTypes.*;
 
 
@@ -297,7 +298,7 @@ public class Synthese {
         cleanAnnees();
         dropSKPColumns();
     }
-    public Synthese(Synthese external, String pourPolice) {
+    public Synthese(Synthese external, String parMois, Synthese syntAncien) {
         headers = new ArrayList<>();
         columns = new ArrayList<>();
         refMapping = new ArrayList<>();
@@ -316,8 +317,8 @@ public class Synthese {
         swapColumns("Date Periode", "Année");
         cleanDistributeur();
 
-        List<String> sortOrder = Arrays.asList("Assureur", "Gestionnaire", "Distributeur", "Contrat", "Année", "Date Periode");
-        generalSort(sortOrder);
+//        List<String> sortOrder = Arrays.asList("Assureur", "Gestionnaire", "Distributeur", "Contrat", "Année", "Date Periode");
+//        generalSort(sortOrder);
         insertSummaryRows();
 
         addMappedColumnSummed(external, "NOMBRE TOTAL ADHESIONS", "Nombre Adhésions", DBL, "Contrat");
@@ -380,7 +381,7 @@ public class Synthese {
         compareColumns(syntAncien, "S/P Comptable à l'ultime yc ICI","S/P Comptable à l'ultime\n" + "yc ICI", "Variation S/P Comptable à l'ultime\n" + "yc ICI", true);
 
     }
-    public Synthese(Synthese external, int pourDistrib) {
+    public Synthese(Synthese external, int pourDistrib, Synthese syntAncien) {
         headers = new ArrayList<>();
         columns = new ArrayList<>();
         refMapping = new ArrayList<>();
@@ -463,7 +464,7 @@ public class Synthese {
         compareColumns(syntAncien, "S/P Comptable à l'ultime yc ICI","S/P Comptable à l'ultime\n" + "yc ICI", "Variation S/P Comptable à l'ultime\n" + "yc ICI", true);
 
     }
-    public Synthese(Synthese external, double pourGest) {
+    public Synthese(Synthese external, double pourGest, Synthese syntAncien) {
         headers = new ArrayList<>();
         columns = new ArrayList<>();
         refMapping = new ArrayList<>();
@@ -547,7 +548,7 @@ public class Synthese {
 
     }
     @SuppressWarnings("unchecked")
-    public Synthese(Synthese other, String synthesePolice, boolean agreg) {
+    public Synthese(Synthese other, String synthesePolice, boolean agreg, Synthese syntAncien) {
         // Deep copy headers, subheaders
         this.headers = new ArrayList<>(other.headers);
         this.columns = new ArrayList<>();
@@ -861,7 +862,7 @@ public class Synthese {
     public void insertSummaryRows() {
         int i = 0;
         while (i < getColumn("Année").size() - 1) { // Using size() - 1 as we'll compare with the next element
-            if (!getColumn("Année").get(i).equals(getColumn("Année").get(i + 1))) {
+            if (!getColumn("Année").get(i).equals(getColumn("Année").get(i + 1)) || !getColumn("Contrat").get(i).equals(getColumn("Contrat").get(i + 1))) {
                 duplicateRowWithTwoEmptyColumns(i, "Année", "Date Periode", null, "Total ");
                 bu.add(i + 1, true); // Insert true at the correct position in bu
                 i++; // Increase to skip the row we just added
@@ -1501,10 +1502,10 @@ public class Synthese {
         return result;
     }
     // Helper to round values to 4 decimal places
-    private double roundToFourDecimals(double value) {
+    static double roundToFourDecimals(double value) {
         return new BigDecimal(value).setScale(4, RoundingMode.HALF_UP).doubleValue();
     }
-    private static double roundToTwoDecimals(double value) {
+    static double roundToTwoDecimals(double value) {
         return new BigDecimal(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
@@ -1876,7 +1877,7 @@ public class Synthese {
         double sumOfSums = 0.0;
 
         for (int i = 0, j = 0; i < anneeCol.size(); i++) {
-            Double currentValue = (j < sourceData.size()) ? sourceData.get(j) : 0.0; // Protect against index out of bounds
+            Double currentValue = (j < sourceData.size()) ? parseObjectToDouble(sourceData.get(j)) : 0.0; // Protect against index out of bounds
 
             // Check for the "Total" prefix and reset values as needed
             if (anneeCol.get(i).startsWith("Total")) {
@@ -1942,7 +1943,7 @@ public class Synthese {
             if (type == DBL && externalColumnType == ColTypes.STR) {
                 String value = (String) rawData.get(j);
                 try {
-                    currentValue = Double.parseDouble(value);
+                    currentValue = Double.parseDouble(value.replace(',','.'));
                 } catch (NumberFormatException e) {
                     currentValue = 0.0;  // Default to 0 for non-numeric or empty values
                 }
@@ -2119,7 +2120,7 @@ public class Synthese {
         double sumOfSums = 0.0;
 
         for (int i = 0, j = 0; i < anneeCol.size(); i++) {
-            Double currentValue = (j < montantTotalPrimeAssureurData.size() && bu.get(j)) ? montantTotalPrimeAssureurData.get(j) : 0.0;
+            Double currentValue = (j < montantTotalPrimeAssureurData.size() && bu.get(j)) ? parseObjectToDouble(montantTotalPrimeAssureurData.get(j)) : 0.0;
 
             if (anneeCol.get(i).startsWith("Total")) {
                 primeEmiseReelleData.add(roundToTwoDecimals(currentSum));
@@ -2547,10 +2548,10 @@ public class Synthese {
             sum = roundToTwoDecimals(sum);
 
             if (totals.get(i) != sum) {
-                writeToLogFile("l'écart entre charge total et baseFic: " + currentContrat + " " + totals.get(i) + " != " + sum);
+                writeToLogFile("l'écart entre charge total et baseFic: " + currentContrat + " " + totals.get(i) + " != " + sum + " " + currentDate);
             }
             if (totalsN.get(i) != sumN) {
-                writeToLogFile("l'écart entre nombre total et baseFic: " + currentContrat + " " + totalsN.get(i) + " != " + sumN);
+                writeToLogFile("l'écart entre nombre total et baseFic: " + currentContrat + " " + totalsN.get(i) + " != " + sumN + " " + currentDate);
             }
         }
     }
@@ -2718,15 +2719,16 @@ public class Synthese {
                 double refValue = 0;
 
                 if (currentType.getCalculation() == SummaryType.Calculation.CHARGE) {
-                    if (Objects.equals(headerName, "12-2015") && statutsForTreatment.get(colIndex).equalsIgnoreCase("terminé - accepté")) {
-                        System.out.println("here");
-                    }
+
                     refValue = roundToTwoDecimals(currentBase.filterAndSumByCharge(statutsForTreatment.get(colIndex), headerName, currentType.getFrequency()));
                     if (sum != refValue) {
                         writeToLogFile("l'écart de charge entre total par statut et base: " + contrat + " " + sum + " != " +
                                 refValue + " pour le mois surv: " + headerName + " du statut: " + statutsForTreatment.get(colIndex));
                     }
                 } else {
+//                    if (Objects.equals(headerName, "04-2019") && statutsForTreatment.get(colIndex).equalsIgnoreCase("terminé sans suite")) {
+//                        System.out.println("here");
+//                    }
                     refValue = roundToTwoDecimals(currentBase.filterAndSumByFreq(statutsForTreatment.get(colIndex), headerName, currentType.getFrequency()));
                     if (sum != refValue) {
                         writeToLogFile("l'écart de nombre entre total par statut et base: " + contrat + " " + sum + " != " +

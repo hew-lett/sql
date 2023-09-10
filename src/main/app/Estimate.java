@@ -11,6 +11,8 @@ import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import java.util.Date;
@@ -36,6 +38,8 @@ public class Estimate extends DF {
     protected Stopwatch stopwatch = new Stopwatch();
     public Set<String> uniqueStatutsEstimate;
     public Set<String> uniqueNumPoliceEstimate = new HashSet<>();
+    public static Map<String, Map<String, Date>> minMaxDateMapEstimate = new HashMap<>();
+
     public static final HashMap<String, Integer> monthMap = new HashMap<String, Integer>() {{
         put("jan.", Calendar.JANUARY);
         put("feb.", Calendar.FEBRUARY);
@@ -119,6 +123,7 @@ public class Estimate extends DF {
             row_number++;
         }
         headerAndColtypesDropSKP();
+        generateMinMaxDateMap();
         formatDP();
         deleteRegul();
         if (path.contains("France")) {
@@ -938,7 +943,9 @@ public class Estimate extends DF {
                 }
                 for (int col = 0; col < this.ncol; col++) {
                     if (header[col].startsWith("MONTANT") || header[col].startsWith("NOMBRE")) {
-                        this.c(col)[origin] = String.valueOf(Double.parseDouble(this.c(col)[i].toString()) + Double.parseDouble(this.c(col)[origin].toString()));
+                        double valueI = safeParseDouble(this.c(col)[i].toString());
+                        double valueOrigin = safeParseDouble(this.c(col)[origin].toString());
+                        this.c(col)[origin] = String.valueOf(valueI + valueOrigin);
                     }
                 }
                 rowsToDelete.add(i);
@@ -965,14 +972,26 @@ public class Estimate extends DF {
                 }
                 for (int col = 0; col < this.ncol; col++) {
                     if (header[col].startsWith("MONTANT") || header[col].startsWith("NOMBRE")) {
-                        this.c(col)[origin] = String.valueOf(Double.parseDouble(this.c(col)[i].toString()) + Double.parseDouble(this.c(col)[origin].toString()));
-                    }
+                        double valueI = safeParseDouble(this.c(col)[i].toString());
+                        double valueOrigin = safeParseDouble(this.c(col)[origin].toString());
+                        this.c(col)[origin] = String.valueOf(valueI + valueOrigin);                    }
                 }
                 rowsToDelete.add(i);
             }
         }
         deleteRows(rowsToDelete);
     }
+    private double safeParseDouble(String s) {
+        if (s == null || s.isEmpty()) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
     public void deleteRows(ArrayList<Integer> rowsToDelete) {
         if (rowsToDelete.isEmpty()) {
             return;
@@ -1021,6 +1040,40 @@ public class Estimate extends DF {
         int index = find_in_arr_first_index(header, "Date Periode");
         df.set(index, datePeriodeColumnOutput);
     }
+
+    public void generateMinMaxDateMap() {
+        // Get "Date Periode" and "Contrat" columns
+        Object[] datePeriodes = c("Date Periode");
+        Object[] contrats = c("Contrat");
+
+        for (int i = 0; i < nrow; i++) {
+            Date date = (Date) datePeriodes[i];
+            String contrat = (String) contrats[i];
+
+            // Update the map for the "Contrat" value
+            minMaxDateMapEstimate.putIfAbsent(contrat, new HashMap<>());
+            Map<String, Date> currentDateMap = minMaxDateMapEstimate.get(contrat);
+
+            // Update min and max dates
+            Date currentMinDate = currentDateMap.getOrDefault("min", date);
+            Date currentMaxDate = currentDateMap.getOrDefault("max", date);
+
+            if (!currentDateMap.containsKey("min")) {
+                currentDateMap.put("min", date);
+            }
+            if (!currentDateMap.containsKey("max")) {
+                currentDateMap.put("max", date);
+            }
+            if (date.before(currentMinDate)) {
+                currentDateMap.put("min", date);
+            }
+
+            if (date.after(currentMaxDate)) {
+                currentDateMap.put("max", date);
+            }
+        }
+    }
+
     public String getSum(Map<String, Map<String, Double>> pivotTable, String date_sous, String date_surv) {
 
         // Check for date_sous existence
@@ -1400,6 +1453,7 @@ public class Estimate extends DF {
             if (values == null) {
                 // Update the count for the contractKey in the warning map.
                 warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
+                System.out.println("didnt find coef acquis for " + combinedKey);
                 continue;
             }
 
@@ -1513,7 +1567,7 @@ public class Estimate extends DF {
 
         // Print out the warning messages after iterating through all rows.
         for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
-            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " mois.");
+            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " annees");
         }
     }
 /*    S/P previ hors PB
@@ -1938,7 +1992,7 @@ public class Estimate extends DF {
         }
         return result;
     }
-    private double parseObjectToDouble(Object value) {
+    public static double parseObjectToDouble(Object value) {
         if (value == null) {
             return 0.0;
         }

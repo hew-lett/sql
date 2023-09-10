@@ -29,6 +29,8 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import static java.lang.Math.*;
 import static main.app.App.*;
 import static main.app.DF.Col_types.*;
+import static main.app.Synthese.roundToFourDecimals;
+import static main.app.Synthese.roundToTwoDecimals;
 
 public class DF implements Serializable {
 //    public static final String wd = "C:/Users/ozhukov/Downloads/wd/";
@@ -49,56 +51,54 @@ public class DF implements Serializable {
     public static void main(String[] args) throws Exception {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
-        DF test = new DF(wd+"TDB estimate par gestionnaire/SPB Italie_extended.csv",';');
-        stopwatch.printElapsedTime();
+        DF tdb2src;
+        Set<String> contratFR = getUniqueContratValues(true);
+        Set<String> contratHF = getUniqueContratValues(false);
+        stopwatch.printElapsedTime("populated contracts");
+        tdb2 = new DF(wd + "TDB Part 2.csv",';',0);
+        tdb2.addCoefficientColumns();
+        stopwatch.printElapsedTime("read + added coef");
+        boolean[] toCreateFR = tdb2.markRowsForDeletion(contratFR);
+        boolean[] toCreateHF = tdb2.markRowsForDeletion(contratHF);
+        stopwatch.printElapsedTime("classified");
+        tdb2.saveToCSVFile_filter("France",toCreateFR);
+        tdb2.saveToCSVFile_filter("Hors France",toCreateHF);
+        stopwatch.printElapsedTime("saved both");
 
-//        Set<String> contratFR = getUniqueContratValues(true);
-//        Set<String> contratHF = getUniqueContratValues(false);
-//        stopwatch.printElapsedTime("populated contracts");
-//        tdb2 = new DF(wd + "TDB Part 2.csv",';',0);
-//        tdb2.addCoefficientColumns();
-//        stopwatch.printElapsedTime("read + added coef");
-//        boolean[] toCreateFR = tdb2.markRowsForDeletion(contratFR);
-//        boolean[] toCreateHF = tdb2.markRowsForDeletion(contratHF);
-//        stopwatch.printElapsedTime("classified");
-//        tdb2.saveToCSVFile_filter("France",toCreateFR);
-//        tdb2.saveToCSVFile_filter("Hors France",toCreateHF);
-//        stopwatch.printElapsedTime("saved both");
-//
-//        DF tdb2src = new DF(wd + "TDB Hors France src.csv",';',0);
-//        boolean[] r2d = tdb2src.filterAgainstGrilleTarif();
-//        tdb2src.saveToCSVFile_filter("filtered",r2d);
-//
-//        tdb2src = new DF(wd + "TDB France src.csv",';',0);
-//        r2d = tdb2src.filterAgainstGrilleTarif();
-//        tdb2src.saveToCSVFile_filter("filtered",r2d);
-//
-//        DF tdb2src = new DF(wd + "TDB Hors France src_filtered.csv", ';', 0);
-//        tdb2 = new DF(wd + "TDB Part 2_Hors France.csv",';',0);
-//        tdb2.populateFromGrilleTarif(tdb2src);
-//        tdb2.checkSumOfColumns();
-//        tdb2.saveToCSVFile_simple("populated");
-//
-//        tdb2src = new DF(wd + "TDB France src_filtered.csv", ';', 0);
-//        tdb2 = new DF(wd + "TDB Part 2_France.csv",';',0);
-//        tdb2.populateFromGrilleTarif(tdb2src);
-//        tdb2.checkSumOfColumns();
-//        tdb2.saveToCSVFile_simple("populated");
-//
-//        tdb2.addCoefficientColumns();
-//        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
-//        tdb2coef = new DF(tdb2, 0);
-//        tdb2coef.checkSumOfColumns();
-//        tdb2coef.saveToCSVFile_sortedCoef("coef");
-//        stopwatch.printElapsedTime("hf");
-//
-//        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
-//        tdb2coef = new DF(tdb2, 0);
-//        tdb2coef.checkSumOfColumns();
-//        tdb2coef.saveToCSVFile_sortedCoef("coef");
-//        stopwatch.printElapsedTime("fr");
+        tdb2src = new DF(wd + "TDB Hors France src.csv",';',0);
+        boolean[] r2d = tdb2src.filterAgainstGrilleTarif();
+        tdb2src.saveToCSVFile_filter("filtered",r2d);
 
-        stopwatch.printElapsedTime();
+        tdb2src = new DF(wd + "TDB France src.csv",';',0);
+        r2d = tdb2src.filterAgainstGrilleTarif();
+        tdb2src.saveToCSVFile_filter("filtered",r2d);
+        stopwatch.printElapsedTime("filter src");
+
+        tdb2src = new DF(wd + "TDB Hors France src_filtered.csv", ';', 0);
+        tdb2 = new DF(wd + "TDB Part 2_Hors France.csv",';',0);
+        tdb2.populateFromGrilleTarif(tdb2src);
+        tdb2.checkSumOfColumns();
+        tdb2.saveToCSVFile_simple("populated");
+
+        tdb2src = new DF(wd + "TDB France src_filtered.csv", ';', 0);
+        tdb2 = new DF(wd + "TDB Part 2_France.csv",';',0);
+        tdb2.populateFromGrilleTarif(tdb2src);
+        tdb2.checkSumOfColumns();
+        tdb2.saveToCSVFile_simple("populated");
+
+        stopwatch.printElapsedTime("populated");
+
+        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated.csv",';',0);
+        tdb2coef = new DF(tdb2, 0);
+        tdb2coef.checkSumOfColumns();
+        tdb2coef.saveToCSVFile_sortedCoef("coef");
+
+        tdb2 = new DF(wd + "TDB Part 2_France_populated.csv",';',0);
+        tdb2coef = new DF(tdb2, 0);
+        tdb2coef.checkSumOfColumns();
+        tdb2coef.saveToCSVFile_sortedCoef("coef");
+
+        stopwatch.printElapsedTime("transform coef");
     }
     public DF(String path, char delim, Double sql) {
         fileName = path.substring(path.lastIndexOf("/") + 1);
@@ -268,7 +268,7 @@ public class DF implements Serializable {
 
             // Predefined array for string columns
             String[] stringColumns = {"identifiant_contrat", "reference"};
-            String[] doubleColumns = {"montant_prime_assureur", "nombre_adhesions"};
+            String[] doubleColumns = {"montant_net_compagnie", "nombre_adhesions"};
             String[] dateColumns = {"date_debut_periode_souscription"};
 
             coltypes = new Col_types[header.length];
@@ -406,7 +406,7 @@ public class DF implements Serializable {
                         }
                         if (this.header[i].equals("nombre_adhesions")) {
                             sum = Math.round(sum);  // round to 0 decimal places
-                        } else if (this.header[i].equals("montant_prime_assureur")) {
+                        } else if (this.header[i].equals("montant_net_compagnie")) {
                             sum = Math.round(sum * 100.0) / 100.0;  // round to 2 decimal places
                         }
                         this.df.get(i)[newRowIdx] = sum;
@@ -456,7 +456,7 @@ public class DF implements Serializable {
 
         int mIndex = find_in_arr_first_index(header, "m");  // Find index of column "m"
         int contractIndex = find_in_arr_first_index(header, "identifiant_contrat");
-        int montantPrimeIndex = find_in_arr_first_index(header, "montant_prime_assureur");
+        int montantPrimeIndex = find_in_arr_first_index(header, "montant_net_compagnie");
         int dateIndex = find_in_arr_first_index(header, "date_debut_periode_souscription");
         int nAdheIndex = find_in_arr_first_index(header, "nombre_adhesions");
 
@@ -1280,9 +1280,16 @@ public class DF implements Serializable {
         for (int i = 0; i < grille_tarif.nrow; i++) {
             String contract = (String) grille_tarif.c("identifiant_contrat")[i];
             String reference = (String) grille_tarif.c("reference")[i];
-
             String contractRefKey = contract + "_" + reference;
             contractRefRowIndexMap.computeIfAbsent(contractRefKey, k -> new ArrayList<>()).add(i);
+            if(contract.equals("icimwtv19")) {
+                contractRefKey = contract + "_" + reference.replace("_2","");
+                contractRefRowIndexMap.computeIfAbsent(contractRefKey, k -> new ArrayList<>()).add(i);
+            }
+            if(reference.equals("114773") || reference.equals("114777")) {
+                contractRefKey = contract + "_" + "114771";
+                contractRefRowIndexMap.computeIfAbsent(contractRefKey, k -> new ArrayList<>()).add(i);
+            }
         }
         stopwatch.printElapsedTime("mapped");
 
@@ -1346,6 +1353,8 @@ public class DF implements Serializable {
                     for (int col = 0; col <= 200; col++) {
                         this.c(startIndexTdb + col)[i] = src.c(startIndexSrc + col)[srcRow];
                     }
+                } else {
+                    System.out.println("pas trouvé un coef pour " + key);
                 }
                 // Uncomment the following if you want default values for unmatched rows
                 // else {
@@ -1432,7 +1441,7 @@ public class DF implements Serializable {
 
     public void checkSumOfColumns() throws Exception {
         // Find starting column of "m"
-        int startIndex = find_in_arr_first_index(this.header,"m");
+        int startIndex = find_in_arr_first_index(this.header, "m");
 
         if (startIndex == -1) {
             throw new Exception("col m not found");
@@ -1446,20 +1455,29 @@ public class DF implements Serializable {
             for (int col = 0; col <= 200 && (startIndex + col) < this.header.length; col++) {
                 sum += (float) this.df.get(startIndex + col)[i]; // Assuming they are all floats.
             }
-//            if(i==90717) {
-//                System.out.println("here");
-//            }
-            // Round the sum to 3 decimal places
-            sum = (float) (Math.round(sum * 100.0) / 100.0);
+            sum = (float) roundToFourDecimals(sum);
+            // Rounded sum to 2 decimal places
+            float roundedSum = (float) (Math.round(sum * 100.0) / 100.0);
 
-            // Check if the sum is different from 1
-            if (sum != 1.0) {
-//                this.c(startIndex)[i] = 1f;
-//                System.out.println(sum + "Row " + (i + 1) + ": " + this.df.get(0)[i] + ", " + this.df.get(1)[i] + ", " + this.df.get(2)[i]);
-                System.out.println(this.df.get(0)[i] + ", " + this.df.get(2)[i] + ", " + dateDefault.format((Date) this.df.get(1)[i]));
+            // Check if the rounded sum is 1, but the actual sum is not 1
+            if (roundedSum == 1.0 && sum != 1.0) {
+                float proportionCoefficient = 1.0f / sum;
+
+                // Adjust each coefficient in the current row
+                for (int col = 0; col <= 200 && (startIndex + col) < this.header.length; col++) {
+                    float currentCoeff = (float) this.df.get(startIndex + col)[i];
+                    this.df.get(startIndex + col)[i] = currentCoeff * proportionCoefficient;
+                }
+            } else if (roundedSum != 1.0) {
+                try {
+                    System.out.println("coef =! 1: " + this.c("identifiant_contrat")[i] + ", " + this.c("reference")[i] + ", " + dateDefault.format((Date) this.c("date_debut_periode_souscription")[i]));
+                } catch (Exception exception) {
+                    System.out.println("coef =! 1: " + this.c("identifiant_contrat")[i] + ", " + dateDefault.format((Date) this.c("date_debut_periode_souscription")[i]));
+                }
             }
         }
     }
+
     public void filterUnmatchedRows() {
         // Step 1: Populate the HashMap with keys from grille_tarif
         Set<String> grilleKeys = new HashSet<>();
@@ -2043,7 +2061,7 @@ public class DF implements Serializable {
             case DBL -> {
                 if (cell == null) return 0d;
                 try {
-                    return Double.parseDouble(cell.replace(",", ".").replace(" €", ""));
+                    return roundToTwoDecimals(Double.parseDouble(cell.replace(",", ".").replace(" €", "")));
                 } catch (NumberFormatException ignored) {
                     return 0d;
                 }
@@ -2641,7 +2659,7 @@ public class DF implements Serializable {
                         if (value instanceof Date) {
                             writer.write(sdf.format((Date) value));
                         } else if (value instanceof Float) {
-                            writer.write(String.format("%.4f", value));  // Explicit formatting for floats
+                            writer.write(String.format("%.6f", value));  // Explicit formatting for floats
                         } else {
                             writer.write(value.toString());
                         }

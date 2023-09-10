@@ -12,7 +12,7 @@ public class TableCoefAcquisition {
         int identContratIndex = find_in_arr_first_index(dataframe.header, "identifiant_contrat");
         int dateSousIndex = find_in_arr_first_index(dataframe.header, "date_debut_periode_souscription");
         int numAdheIndex = find_in_arr_first_index(dataframe.header, "nombre_adhesions");
-        int primeAssureurIndex = find_in_arr_first_index(dataframe.header, "montant_prime_assureur");
+        int primeAssureurIndex = find_in_arr_first_index(dataframe.header, "montant_net_compagnie");
         int mIndex = find_in_arr_first_index(dataframe.header, "m");
         for (int i = 0; i < dataframe.nrow; i++) {
             Object[] row = dataframe.r(i);

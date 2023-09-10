@@ -6,6 +6,7 @@ import com.univocity.parsers.csv.CsvParserSettings;
 import java.io.*;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -19,6 +20,7 @@ import static main.app.App.*;
 import static main.app.App.ref_prog;
 import static main.app.DF.Col_types.*;
 import static main.app.DF.Col_types.DBL;
+import static main.app.Estimate.minMaxDateMapEstimate;
 
 public class Base extends DF {
     Object[] refProgrammesRow;
@@ -32,6 +34,7 @@ public class Base extends DF {
     public static final char DEFAULT_DELIMITER = ';';
     public static final char TAB_DELIMITER = '\t';
     public static final Date MAX_PREVI_DATE;
+    public static final Date MIN_PREVI_DATE;
     static final String CURRENT_MONTH;
     static final String PREVIOUS_MONTH;
     static {
@@ -44,8 +47,24 @@ public class Base extends DF {
         Calendar calendar = Calendar.getInstance();
         calendar.set(Calendar.YEAR, 2026);
         calendar.set(Calendar.MONTH, Calendar.DECEMBER);
-        calendar.set(Calendar.DAY_OF_MONTH, 31);
+        calendar.set(Calendar.DAY_OF_MONTH, 1);
+        calendar.set(Calendar.HOUR_OF_DAY, 0);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+
         MAX_PREVI_DATE = calendar.getTime();
+
+        Calendar calendar2 = Calendar.getInstance();
+        calendar2.set(Calendar.YEAR, 2013);
+        calendar2.set(Calendar.MONTH, Calendar.NOVEMBER);
+        calendar2.set(Calendar.DAY_OF_MONTH, 1);
+        calendar2.set(Calendar.HOUR_OF_DAY, 0);
+        calendar2.set(Calendar.MINUTE, 0);
+        calendar2.set(Calendar.SECOND, 0);
+        calendar2.set(Calendar.MILLISECOND, 0);
+
+        MIN_PREVI_DATE = calendar2.getTime();
     }
     public String numPolice = "";
     protected Set<String> uniqueStatuts = new HashSet<>();
@@ -83,6 +102,18 @@ public class Base extends DF {
     public Map<String, List<Integer>> nEnCoursAccepte;
 
     public static void main(String[] args) throws Exception {
+        ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
+        ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
+        ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
+        mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
+//        Estimate estimateAdv = new Estimate(wd+"TDB estimate par gestionnaire/ADVISE.xlsx");
+//        Base adv = new Base (wd+"AUX SIN/Advise.csv",true);
+//        Estimate estimateGuy = new Estimate(wd+"TDB estimate par gestionnaire/Guy Demarle.xlsx");
+//        Base guy = new Base (wd+"AUX SIN/Guy Demarle.csv",true);
+//        guy.print();
+        Estimate estimateGP = new Estimate(wd+"TDB estimate par gestionnaire/Garantie Privée.xlsx");
+        Base gp = new Base (wd+"AUX SIN/Garantie Privée.csv",true);
+        gp.print();
     }
     public Base(File path, String pays, String mappingColDefault) throws IOException {
         this.source = true;
@@ -283,6 +314,114 @@ public class Base extends DF {
                 this.transformNumPoliceValues();
             }
             this.date_autofill();
+            this.createPivotTable();
+            this.createYearlyPivotTable();
+            this.createTotalPivotTable();
+            this.createPivotAllStatuts();
+            this.createYearlyPivotAllStatuts();
+            this.createTotalPivotAllStatuts();
+            this.createPivotTableN();
+            this.createYearlyPivotTableN();
+            this.createTotalPivotTableN();
+            this.createPivotAllStatutsN();
+            this.createYearlyPivotAllStatutsN();
+            this.createTotalPivotAllStatutsN();
+            this.populateUniqueStatuts();
+            this.populateStatutDateRangeMap();
+            ArrayList<String> statutsOrder = new ArrayList<>(Arrays.asList("en attente de prescription", "en cours", "en cours - accepté"));
+            ArrayList<String> firstAndSecondExclude = new ArrayList<>(statutsOrder.subList(0, 2));
+            this.coutMoyenEnCours = calculateMeanExcludingStatuses(firstAndSecondExclude);
+            this.coutMoyenEnCoursAccepte = calculateMeanExcludingStatuses(statutsOrder);
+            this.nEnCours = countAppearancesByYear("en cours");
+            this.nEnCoursAccepte = countAppearancesByYear("en cours - accepté");
+        }
+    } //Sin_aux
+    public Base(String path, boolean last) throws Exception {
+        System.out.println(path);
+        this.source = false;
+        String filename = getFilenameWithoutExtension(path);
+        if (filename.equals("Advise")) {
+            numPolice = "ICICDAV17";
+        }
+        if (filename.equals("Guy Demarle")) {
+            numPolice = "ICIGDEG14";
+        }
+        if (filename.equals("Garantie Privée")) {
+            numPolice = "ICICEDV16";
+        }
+
+//        numPolice = extractKeyFromFileName(path.getName(),"aux");
+        this.referentialRow = getRefRowByGest(filename);
+        SimpleDateFormat dateDefault = getDateFormatter((String) referentialRow[referentialRow.length-1]);
+
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+
+        try (Reader inputReader = Files.newBufferedReader(Path.of(path), Charset.forName(encoding))) {
+            CsvParser parser = new CsvParser(settings);
+            List<String[]> parsedRows = parser.parseAll(inputReader);
+            Iterator<String[]> rows = parsedRows.iterator();
+
+            nrow = csv_get_nrows(path, delim);
+
+            header = rows.next();
+            header = Arrays.stream(header)
+                    .filter(h -> h != null && !h.trim().isEmpty())
+                    .toArray(String[]::new);
+
+            boolean[] cols_kept = header_unify_cols_kept();
+            coltypes_populate(cols_kept);
+
+            if (currentHeaderRef == null) {
+                currentHeaderRef = this.header;
+            }
+
+            ncol = get_len(coltypes);
+            df = new ArrayList<>(ncol);
+            this.df_populate(coltypes);
+
+            if (validateHeader(currentHeaderRef,header,numPolice)) {
+                int i = 0;
+                while (rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != SKP) {
+                            df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            } else {
+                int[] headerIndexes = matchHeaders(currentHeaderRef,header);
+                this.header = copyArray(currentHeaderRef);
+                int i = 0;
+                while (rows.hasNext()) {
+                    int j = 0;
+                    int k = 0;
+                    String[] parsedRow = rows.next();
+                    for (String s : parsedRow) {
+                        if (coltypes[k] != SKP) {
+                            df.get(headerIndexes[j])[i] = get_lowercase_cell_of_type(s, coltypes[k], dateDefault);
+                            j++;
+                        }
+                        k++;
+                    }
+                    i++;
+                }
+            }
+
+            if (numPolice.equals("ICIGPTB15") || numPolice.equals("ICIMITL16")) {
+                this.transformNumPoliceValues();
+            }
+            this.date_autofill();
+            if (find_in_arr_first_index(header,"statut") == -1) {
+                addStatutFictifSin();
+            }
             this.createPivotTable();
             this.createYearlyPivotTable();
             this.createTotalPivotTable();
@@ -585,6 +724,21 @@ public class Base extends DF {
         enlargedHeader[this.header.length] = "statut";
         this.header = enlargedHeader;
         this.uniqueStatuts.add(STATUT_FICTIF_FIC);
+        ncol++;
+    }
+    public void addStatutFictifSin() {
+        // Create and fill the new column
+        Object[] statut_fictif = new Object[this.nrow];
+        Arrays.fill(statut_fictif, "total");
+        this.df.add(statut_fictif);
+
+        // Enlarge and update the header
+        String[] enlargedHeader = new String[this.header.length + 1];
+        System.arraycopy(this.header, 0, enlargedHeader, 0, this.header.length);
+        enlargedHeader[this.header.length] = "statut";
+        this.header = enlargedHeader;
+        this.uniqueStatuts.add("total");
+        ncol++;
     }
     public String extractKeyFromFileName(String fileName, String pays) {
         int start = -1;
@@ -1269,6 +1423,7 @@ public class Base extends DF {
         }
     }
 
+
     void date_autofill() {
         // Indices for required columns in the current DF
         int indexDateSurv = find_in_arr_first_index(header, "date_surv");
@@ -1281,28 +1436,42 @@ public class Base extends DF {
         int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
         int indexAQ = find_in_arr_first_index(ref_prog.header, "acquisition des primes");
 
-        Date dateDebut = null; Date dateFin = null; Date dateMaxaAttribuer = null; boolean mensu = false;
+        Date dateDebut = null; Date dateFin = null; boolean mensu = false;
         for (int i = 0; i < ref_prog.nrow; i++) {
             if (this.numPolice.equalsIgnoreCase(ref_prog.c(indexContrat)[i].toString())) {
                 dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
                 dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
                 mensu =  ref_prog.c(indexAQ)[i].equals("mensuel");
-                if (dateFin.after(MAX_PREVI_DATE)) {
-                    dateMaxaAttribuer = MAX_PREVI_DATE;
-                } else {
-                    dateMaxaAttribuer = dateFin;
-                }
                 break;
             }
         }
         if (dateDebut == null) {
             throw new RuntimeException("ref_prog didn't find dates for " + numPolice);
         }
+        Date minTDB = minMaxDateMapEstimate.get(numPolice).get("min");
+        Date maxTDB = minMaxDateMapEstimate.get(numPolice).get("max");
+
+        List<Date> dates = Arrays.asList(MAX_PREVI_DATE, dateFin, maxTDB);
+        Date dateMaxSous = dates.stream().min(Date::compareTo).orElse(null);
+        dates = Arrays.asList(MIN_PREVI_DATE, dateDebut, minTDB);
+        Date dateMinSous = dates.stream().max(Date::compareTo).orElse(null);
+        Date dateMaxSurv;
+        if (MAX_PREVI_DATE.after(dateFin)) {
+            dateMaxSurv = dateFin;
+        } else {
+            dateMaxSurv = MAX_PREVI_DATE;
+        }
+        Date dateMinSurv;
+        if (MIN_PREVI_DATE.before(dateDebut)) {
+            dateMinSurv = dateDebut;
+        } else {
+            dateMinSurv = MIN_PREVI_DATE;
+        }
 
         for (int i = 0; i < nrow; i++) {
-            if (i == 35) {
-                System.out.println("here");
-            }
+//            if (i == 9 || i == 12 || i == 29 || i == 569) {
+//                System.out.println("here");
+//            }
             Date dateSurv = (Date) c(indexDateSurv)[i];
             Date dateSous = (Date) c(indexDateSous)[i];
 
@@ -1318,14 +1487,17 @@ public class Base extends DF {
             if (dateSous.equals(NA_DAT) || mensu) {
                 dateSous = dateSurv;
             }
-            if (dateSous.after(dateMaxaAttribuer) || dateSous.before(dateDebut)) {
-                dateSous = dateDebut;
+            if (dateSous.after(dateMaxSous)) {
+                dateSous = dateMaxSous;
             }
-            if (dateSurv.before(dateDebut)) {
-                dateSurv = dateDebut;
+            if (dateSous.before(dateMinSous)) {
+                dateSous = dateMinSous;
             }
-            if (dateSurv.after(dateMaxaAttribuer)) {
-                dateSurv = dateMaxaAttribuer;
+            if (dateSurv.after(dateMaxSurv)) {
+                dateSurv = dateMaxSurv;
+            }
+            if (dateSurv.before(dateMinSurv)) {
+                dateSurv = dateMinSurv;
             }
 
             if (dateSurv.before(dateSous)) {
@@ -1346,6 +1518,7 @@ public class Base extends DF {
         int indexContrat = find_in_arr_first_index(ref_prog.header, "n°contrat");
         int indexDateDebutRef = find_in_arr_first_index(ref_prog.header, "date_debut");
         int indexDateFinRef = find_in_arr_first_index(ref_prog.header, "date_fin");
+        int indexAQ = find_in_arr_first_index(ref_prog.header, "acquisition des primes");
 
         // Return early if the num_police column doesn't exist
         if (indexNumPolice == -1) return;
@@ -1370,19 +1543,58 @@ public class Base extends DF {
 
         // Cache for quick lookup of ref_prog data based on num_police/n°contrat
         Map<String, Date[]> refprogLookup = new HashMap<>();
+        Map<String, Boolean> mensuMap = new HashMap<>();
         for (int i = 0; i < ref_prog.nrow; i++) {
             String contrat = ref_prog.c(indexContrat)[i].toString();
             Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
             Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
-            Date dateMaxaAttribuer = MAX_PREVI_DATE;
-            if (dateFin.before(MAX_PREVI_DATE)) {
-                dateMaxaAttribuer = dateFin;
+            Map<String, Date> contratMap = minMaxDateMapEstimate.get(contrat.toUpperCase());
+            if (contratMap == null) continue;
+            Date minTDB = contratMap.get("min");
+            Date maxTDB = contratMap.get("max");
+            if (dateDebut == null) {
+                Date dateMaxSous;
+                if (MAX_PREVI_DATE.after(maxTDB)) {
+                    dateMaxSous = maxTDB;
+                } else {
+                    dateMaxSous = MAX_PREVI_DATE;
+                }
+                Date dateMinSous;
+                if (MIN_PREVI_DATE.before(minTDB)) {
+                    dateMinSous = minTDB;
+                } else {
+                    dateMinSous = MIN_PREVI_DATE;
+                }
+                Date dateMaxSurv = MAX_PREVI_DATE;
+                Date dateMinSurv = MIN_PREVI_DATE;
+
+                refprogLookup.put(contrat, new Date[]{null, dateFin, dateMinSous,dateMaxSous,dateMinSurv,dateMaxSurv});
+            } else {
+                List<Date> dates = Arrays.asList(MAX_PREVI_DATE, dateFin, maxTDB);
+                Date dateMaxSous = dates.stream().min(Date::compareTo).orElse(null);
+                dates = Arrays.asList(MIN_PREVI_DATE, dateDebut, minTDB);
+                Date dateMinSous = dates.stream().max(Date::compareTo).orElse(null);
+                Date dateMaxSurv;
+                if (MAX_PREVI_DATE.after(dateFin)) {
+                    dateMaxSurv = dateFin;
+                } else {
+                    dateMaxSurv = MAX_PREVI_DATE;
+                }
+                Date dateMinSurv;
+                if (MIN_PREVI_DATE.before(dateDebut)) {
+                    dateMinSurv = dateDebut;
+                } else {
+                    dateMinSurv = MIN_PREVI_DATE;
+                }
+                refprogLookup.put(contrat, new Date[]{dateDebut, dateFin, dateMinSous,dateMaxSous,dateMinSurv,dateMaxSurv});
             }
-            refprogLookup.put(contrat, new Date[]{dateDebut, dateFin, dateMaxaAttribuer});
+            mensuMap.putIfAbsent(contrat,ref_prog.c(indexAQ)[i].equals("mensuel"));
+
         }
 
         Set<String> missing_refprog = new HashSet<>();
         for (int i = 0; i < nrow; i++) {
+
 //            System.out.println("Processing row " + i + " of " + nrow + c(indexNumPolice)[i]);
             String currentNumPolice = c(indexNumPolice)[i].toString();
             Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
@@ -1394,45 +1606,45 @@ public class Base extends DF {
                 continue;
             }
 
-            Date dateDebutRef = refDates[0];
-            Date dateFinRef = refDates[1];
-            Date dateMaxaAttribuer = refDates[2];
+            Date dateDebut = refDates[0];
+            Date dateFin = refDates[1];
+            Date dateMinSous = refDates[2];
+            Date dateMaxSous = refDates[3];
+            Date dateMinSurv = refDates[4];
+            Date dateMaxSurv = refDates[5];
+            boolean mensu = mensuMap.get(currentNumPolice);
 
             Date dateSurv = (Date) c(indexDateSurv)[i];
             Date dateSous = (Date) c(indexDateSous)[i];
 
-            // Date filling logic...
             if (dateSurv.equals(NA_DAT)) {
-                if (indexDateDecla != -1 && !c(indexDateDecla)[i].equals(NA_DAT)) {
+                if (!c(indexDateDecla)[i].equals(NA_DAT)) {
                     dateSurv = (Date) c(indexDateDecla)[i];
                 } else if (!dateSous.equals(NA_DAT)) {
                     dateSurv = dateSous;
                 } else {
-                    dateSurv = dateDebutRef;
+                    dateSurv = dateDebut;
                 }
             }
-            if (dateSous.equals(NA_DAT)) {
-                if(!dateSurv.equals(NA_DAT)){
-                    dateSous = dateSurv;
-                } else {
-                    dateSous = dateDebutRef;
-                }
-            }
-            if (dateSurv.after(dateFinRef) || dateSurv.before(dateDebutRef)) {
-                dateSurv = dateSous;
-            }
-            if (dateSous.after(dateFinRef) || dateSous.before(dateDebutRef)) {
+            if (dateSous.equals(NA_DAT) || mensu) {
                 dateSous = dateSurv;
             }
-            if (dateSous.after(dateFinRef) && dateSurv.after(dateFinRef)) {
-                dateSous = dateMaxaAttribuer;
-                dateSurv = dateMaxaAttribuer;
+            if (dateSous.after(dateMaxSous)) {
+                dateSous = dateMaxSous;
             }
-            if (dateSous.before(dateDebutRef) && dateSurv.before(dateDebutRef)) {
-                dateSous = dateDebutRef;
-                dateSurv = dateDebutRef;
+            if (dateSous.before(dateMinSous)) {
+                dateSous = dateMinSous;
             }
-            // Apply transformations...
+            if (dateSurv.after(dateMaxSurv)) {
+                dateSurv = dateMaxSurv;
+            }
+            if (dateSurv.before(dateMinSurv)) {
+                dateSurv = dateMinSurv;
+            }
+
+            if (dateSurv.before(dateSous)) {
+                dateSurv = dateSous;
+            }
             date_transform(dateSurv, indexDateSurv, i);
             date_transform(dateSous, indexDateSous, i);
         }
@@ -1622,7 +1834,7 @@ public class Base extends DF {
             }
         }
         for (int colIndex = 0; colIndex < header.length; colIndex++) {
-            if (header[colIndex].startsWith("date")) {
+            if (header[colIndex].startsWith("date_")) {
                 coltypes[colIndex] = DAT;
             } else if (header[colIndex].startsWith("montant")) {
                 coltypes[colIndex] = DBL;
@@ -1714,6 +1926,15 @@ public class Base extends DF {
         }
         throw new Exception("cant find ref row by key: " + key);
     }
+    Object[] getRefRowByGest(String key) throws Exception {
+        for (int rowIndex = 0; rowIndex < ref_cols.nrow; rowIndex++) {
+            Object[] row = ref_cols.r(rowIndex);
+            if (row[0].equals(key.toLowerCase())) {
+                return row;
+            }
+        }
+        throw new Exception("cant find ref row by key: " + key);
+    }
     void header_unify() {
         for (int i = 0; i < header.length; i++) {
             int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
@@ -1729,6 +1950,7 @@ public class Base extends DF {
         for (int i = 0; i < header.length; i++) {
             int ind = find_in_arr_first_index(this.referentialRow, header[i].toLowerCase());
             if (ind != -1) {
+                System.out.println(ref_cols.header[ind]);
                 header[i] = ref_cols.header[ind];
                 output[i] = true;
             }
@@ -2038,6 +2260,7 @@ public class Base extends DF {
 
                     // Filtering
                     if (statut.equals(valueA) && date.equals(targetDate)) {
+//                        System.out.println(i);
                         sum ++;
                     }
                 }
@@ -2088,5 +2311,12 @@ public class Base extends DF {
             }
         }
         return 0;
+    }
+    public static String getFilenameWithoutExtension(String fullPath) {
+        String filename = new java.io.File(fullPath).getName();
+        if (filename.endsWith(".csv")) {
+            return filename.substring(0, filename.length() - 4); // 4 because ".csv" has 4 characters
+        }
+        return filename;
     }
 }
