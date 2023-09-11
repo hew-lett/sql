@@ -1164,6 +1164,23 @@ public class Synthese {
         }
         return ((Column<T>) columns.get(index)).getData();
     }
+    public ArrayList<Object> getRow(int rowIndex) {
+        if (rowIndex < 0) {
+            throw new IndexOutOfBoundsException("Invalid row index: " + rowIndex);
+        }
+
+        ArrayList<Object> row = new ArrayList<>();
+
+        for (Column<?> column : columns) {
+            ArrayList<?> data = column.getData();
+            if (rowIndex >= data.size()) {
+                throw new IndexOutOfBoundsException("Row index: " + rowIndex + " is out of bounds for column with size: " + data.size());
+            }
+            row.add(data.get(rowIndex));
+        }
+
+        return row;
+    }
     public enum ColTypes {
         STR,
         DAT,

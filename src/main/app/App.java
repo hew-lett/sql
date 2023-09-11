@@ -29,7 +29,7 @@ public class App {
     public static final String regex_letters = ".*[a-zA-Z].*";
     public static final Double NA_DBL = 9999099d;
     public static final String NA_STR = "n.a.";
-    public static final SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
+    public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
     public static final Date NA_DAT;
     static {
         try {

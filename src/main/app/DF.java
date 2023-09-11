@@ -41,7 +41,6 @@ public class DF implements Serializable {
     public String[] header;
     public int ncol;
     public int nrow;
-    public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
     public String fileName;
     public String fullPath;
     public String tableName;
@@ -100,110 +99,6 @@ public class DF implements Serializable {
 
         stopwatch.printElapsedTime("transform coef");
     }
-    public DF(String path, char delim, Double sql) {
-        fileName = path.substring(path.lastIndexOf("/") + 1);
-        CsvParserSettings settings = new CsvParserSettings();
-        settings.setDelimiterDetectionEnabled(true, delim);
-        settings.trimValues(true);
-
-        this.tableName = "ref_prog";  // or derive it from filename, e.g., filename.replace(".csv", "")
-        try (Reader inputReader = new InputStreamReader(Files.newInputStream(
-                new File(path).toPath()), encoding)) {
-            CsvParser parser = new CsvParser(settings);
-            List<String[]> parsedRows = parser.parseAll(inputReader);
-            Iterator<String[]> rows = parsedRows.iterator();
-            header = rows.next();
-            for (int i = 0; i < header.length; i++) {
-                header[i] = header[i].toLowerCase();
-            }
-
-            coltypes = new Col_types[header.length];
-            String[] strColumns = {
-                    "pays", "gestionnaire_1", "n°contrat", "acquisition des primes", "fait generateur", "produit eligible"
-            };
-
-            String[] dateColumns = {
-                    "date_debut", "date_fin"
-            };
-
-            for (int i = 0; i < header.length; i++) {
-                if (Arrays.asList(strColumns).contains(header[i])) {
-                    coltypes[i] = Col_types.STR;
-                } else if (Arrays.asList(dateColumns).contains(header[i])) {
-                    coltypes[i] = DAT; // Assuming you have a DAT enum value for date type columns
-                } else {
-                    coltypes[i] = SKP;
-                }
-            }
-            nrow = parsedRows.size() - 1;
-            ncol = get_len(coltypes);
-            this.headerDropSKP();
-            try {
-                // Initialize database connection
-                initializeConnection();
-
-                // Create table in MySQL
-                createTable(tableName, header, coltypes);
-
-                // Populate table
-                insertData(tableName, parsedRows, header, coltypes, dateDefault);
-
-                this.coltypesDropSKP();
-            } catch (SQLException | ParseException ex) {
-                ex.printStackTrace();
-            } finally {
-                try {
-                    closeConnection();
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
-            }
-        } catch (IOException ignored) {
-        }
-    } //ref prog sql
-    public DF(String path, char delim) {
-        String filename = path.substring(path.lastIndexOf("/") + 1);
-        CsvParserSettings settings = new CsvParserSettings();
-        settings.setDelimiterDetectionEnabled(true, delim);
-        settings.setMaxColumns(6000);
-        settings.setMaxCharsPerColumn(256);
-        settings.trimValues(true);
-        try (Reader inputReader = new InputStreamReader(Files.newInputStream(
-                new File(path).toPath()), encoding)) {
-            CsvParser parser = new CsvParser(settings);
-            List<String[]> parsedRows = parser.parseAll(inputReader);
-            Iterator<String[]> rows = parsedRows.iterator();
-            header = rows.next();
-//            for (int i = 0; i < header.length; i++) {
-//                header[i] = header[i].toLowerCase();
-//            }
-
-            coltypes = new Col_types[header.length];
-            Arrays.fill(coltypes,STR);
-
-            nrow = parsedRows.size() - 1;
-            ncol = get_len(coltypes);
-            df = new ArrayList<>(get_len(coltypes));
-            this.df_populate(coltypes);
-
-            int i = 0;
-            while (rows.hasNext()) {
-                int j = 0;
-                int k = 0;
-                String[] parsedRow = rows.next();
-                for (String s : parsedRow) {
-                    if (coltypes[k] != Col_types.SKP) {
-                        df.get(j)[i] = get_lowercase_cell_of_type(s, coltypes[k],dateDefault);
-                        j++;
-                    }
-                    k++;
-                }
-                i++;
-            }
-        } catch (IOException ignored) {
-        }
-        this.headerAndColtypesDropSKP();
-    } //ref_prog
     public DF(String path, char delim, char PB) {
         String filename = path.substring(path.lastIndexOf("/") + 1);
         CsvParserSettings settings = new CsvParserSettings();
@@ -308,45 +203,6 @@ public class DF implements Serializable {
         } catch (IOException ignored) {
         }
         this.headerAndColtypesDropSKP();
-    }
-    public DF(String path, char delim, float contrats) {
-        this.fullPath = path;
-        CsvParserSettings settings = new CsvParserSettings();
-        settings.setDelimiterDetectionEnabled(true, delim);
-        settings.trimValues(true);
-        try (Reader inputReader = new InputStreamReader(Files.newInputStream(
-                new File(path).toPath()), encoding)) {
-            CsvParser parser = new CsvParser(settings);
-            List<String[]> parsedRows = parser.parseAll(inputReader);
-            Iterator<String[]> rows = parsedRows.iterator();
-
-            header = Arrays.stream(rows.next())
-                    .map(s -> s == null ? "" : s.toLowerCase())
-                    .toArray(String[]::new);
-
-            // Predefined array for string columns
-            String[] stringColumns = {"identifiant_contrat"};
-
-            coltypes = new Col_types[header.length];
-            Arrays.fill(coltypes, STR);
-
-            nrow = parsedRows.size() - 1;
-            ncol = get_len(coltypes);
-            df = new ArrayList<>(get_len(coltypes));
-            this.df_populate(coltypes);
-
-            int i = 0;
-            while (rows.hasNext()) {
-                int k = 0;
-                String[] parsedRow = rows.next();
-                for (String s : parsedRow) {
-                    df.get(k)[i] = get_lowercase_cell_of_type(s, coltypes[k],dateDefault,0);
-                    k++;
-                }
-                i++;
-            }
-        } catch (IOException ignored) {
-        }
     }
     public DF(DF originalDF, int tdbToCoef) throws ParseException {
         // Group the originalDF by 'identifiant_contrat' and 'date_debut_periode_souscription'
