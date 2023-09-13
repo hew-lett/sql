@@ -86,10 +86,10 @@ public class App {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
         Synthese mapStatut = new Synthese(wd + "map_statuts.csv",delim,true,false,false);
-        mapStatut.populateStatutMap();
+//        mapStatut.populateStatutMap();
         ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
-        ref_cols = new DF(wd + "ref_triangle.xlsx","ref_cols");
-        ref_source = new DF(wd + "ref_triangle.xlsx","source",true);
+        ref_cols = new DF(wd + "refRenta.xlsx","ref_cols");
+        ref_source = new DF(wd + "refRenta.xlsx","source",true);
         mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
         PB = new DF(wd + "PB Micromania.csv",';','!');
         PB.mapPoliceToPB();

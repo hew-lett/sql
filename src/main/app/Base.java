@@ -7,7 +7,6 @@ import java.io.*;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
@@ -903,6 +902,23 @@ public class Base extends DF {
                 throw new IllegalArgumentException("Unsupported date format: " + format);
         }
     }
+    private void roundValuesPivot(Map<String, Map<String, Map<String, Double>>> pivotTable) {
+        for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : pivotTable.entrySet()) {
+            Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
+
+            roundValuesPivotInner(middleMap);
+        }
+    }
+    private void roundValuesPivotInner(Map<String, Map<String, Double>> middleMap) {
+        for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
+            Map<String, Double> innerMap = middleEntry.getValue();
+
+            for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
+                double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
+                innerEntry.setValue(roundedValue);
+            }
+        }
+    }
     public void createPivotTable() {
         // define the format to capture only the month and year of a date
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
@@ -926,18 +942,7 @@ public class Base extends DF {
                     .merge(date_surv, montant_IP, Double::sum);
         }
 
-        for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : pivotTable.entrySet()) {
-            Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
-
-            for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
-                Map<String, Double> innerMap = middleEntry.getValue();
-
-                for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
-                    double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
-                    innerEntry.setValue(roundedValue);
-                }
-            }
-        }
+        roundValuesPivot(pivotTable);
     }
     public void createYearlyPivotTable() {
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
@@ -1015,14 +1020,7 @@ public class Base extends DF {
         }
 
         // Round off values in the pivotTableTotal
-        for (Map.Entry<String, Map<String, Double>> middleEntry : pivotTableAllStatuts.entrySet()) {
-            Map<String, Double> innerMap = middleEntry.getValue();
-
-            for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
-                double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
-                innerEntry.setValue(roundedValue);
-            }
-        }
+        roundValuesPivotInner(pivotTableAllStatuts);
     }
     public void createYearlyPivotAllStatuts() {
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
@@ -1234,18 +1232,7 @@ public class Base extends DF {
         for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableFic.entrySet()) {
             Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
 
-            for (Map.Entry<String, Map<String, Map<String, Double>>> outerEntry : outerMap.entrySet()) {
-                Map<String, Map<String, Double>> middleMap = outerEntry.getValue();
-
-                for (Map.Entry<String, Map<String, Double>> middleEntry : middleMap.entrySet()) {
-                    Map<String, Double> innerMap = middleEntry.getValue();
-
-                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
-                        double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
-                        innerEntry.setValue(roundedValue);
-                    }
-                }
-            }
+            roundValuesPivot(outerMap);
         }
     }
     public void createYearlyPivotTableFic() {
@@ -1288,18 +1275,7 @@ public class Base extends DF {
         for (Map.Entry<String, Map<String, Map<String, Map<String, Double>>>> outermostEntry : pivotTableYearlyFic.entrySet()) {
             Map<String, Map<String, Map<String, Double>>> outerMap = outermostEntry.getValue();
 
-            for (Map.Entry<String, Map<String, Map<String, Double>>> secondEntry : outerMap.entrySet()) {
-                Map<String, Map<String, Double>> middleMap = secondEntry.getValue();
-
-                for (Map.Entry<String, Map<String, Double>> thirdEntry : middleMap.entrySet()) {
-                    Map<String, Double> innerMap = thirdEntry.getValue();
-
-                    for (Map.Entry<String, Double> innerEntry : innerMap.entrySet()) {
-                        double roundedValue = Math.round(innerEntry.getValue() * 100.0) / 100.0; // Round to 2 decimal places
-                        innerEntry.setValue(roundedValue);
-                    }
-                }
-            }
+            roundValuesPivot(outerMap);
         }
 
         // You can now replace pivotTableFic with pivotTableYearlyFic or keep both as needed.
@@ -1469,9 +1445,6 @@ public class Base extends DF {
         }
 
         for (int i = 0; i < nrow; i++) {
-//            if (i == 9 || i == 12 || i == 29 || i == 569) {
-//                System.out.println("here");
-//            }
             Date dateSurv = (Date) c(indexDateSurv)[i];
             Date dateSous = (Date) c(indexDateSous)[i];
 
@@ -1565,10 +1538,8 @@ public class Base extends DF {
                 } else {
                     dateMinSous = MIN_PREVI_DATE;
                 }
-                Date dateMaxSurv = MAX_PREVI_DATE;
-                Date dateMinSurv = MIN_PREVI_DATE;
 
-                refprogLookup.put(contrat, new Date[]{null, dateFin, dateMinSous,dateMaxSous,dateMinSurv,dateMaxSurv});
+                refprogLookup.put(contrat, new Date[]{null, dateFin, dateMinSous,dateMaxSous, MIN_PREVI_DATE, MAX_PREVI_DATE});
             } else {
                 List<Date> dates = Arrays.asList(MAX_PREVI_DATE, dateFin, maxTDB);
                 Date dateMaxSous = dates.stream().min(Date::compareTo).orElse(null);
@@ -2015,7 +1986,7 @@ public class Base extends DF {
 
                 if (Objects.equals(formatICI, "") || desiredFormat.equals("")) continue;
 
-                if (normalize(header[i]).equalsIgnoreCase(normalize(desiredFormat))) {
+                if (deleteEaccent(header[i]).equalsIgnoreCase(deleteEaccent(desiredFormat))) {
                     if (Arrays.asList(referentialRow).contains(formatICI)) {
                         header[i] = formatICI;
                         columnsKept[i] = true;
@@ -2119,7 +2090,7 @@ public class Base extends DF {
                 // If either value is null, continue to next iteration
                 if (Objects.equals(formatICI, "") || desiredFormat.equals("")) continue;
 
-                if (normalize(localHeader[i]).equalsIgnoreCase(normalize(desiredFormat))) {
+                if (deleteEaccent(localHeader[i]).equalsIgnoreCase(deleteEaccent(desiredFormat))) {
                     if (Arrays.asList(referentialRow).contains(formatICI)) {
                         localHeader[i] = formatICI;
                         columnsKept[i] = true;

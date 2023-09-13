@@ -1,6 +1,5 @@
 package main.app;
 
-import com.monitorjbl.xlsx.StreamingReader;
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
 
@@ -21,7 +20,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -1690,7 +1688,7 @@ public class DF implements Serializable {
                 String mappingName = (String) mapping.df.get(1)[j];
                 String referenceName = (String) mapping.df.get(0)[j];
 
-                if (normalize(currentColumnName).equalsIgnoreCase(normalize(mappingName))) {
+                if (deleteEaccent(currentColumnName).equalsIgnoreCase(deleteEaccent(mappingName))) {
                     this.header[i] = referenceName;
                     break;
                 }
@@ -1745,7 +1743,7 @@ public class DF implements Serializable {
         System.arraycopy(source, 0, target, 0, source.length);
         return target;
     }
-    String normalize(String input) {
+    String deleteEaccent(String input) {
         return input.replace("é", "e").toLowerCase();
     }
     public void checkMissingMontantIP() {

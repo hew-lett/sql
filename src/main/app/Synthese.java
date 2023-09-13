@@ -2616,18 +2616,7 @@ public class Synthese {
         }
         return sum;
     }
-    public void populateStatutMap() {
-        ArrayList<String> statuts = getColumn("statut");
-        ArrayList<String> statutsReferentiel = getColumn("statut referentiel");
 
-        for (int i = 0; i < statuts.size(); i++) {
-            String statut = statuts.get(i);
-            String referentiel = statutsReferentiel.get(i);
-
-            // Populate the map. If the key already exists, it won't overwrite the value.
-            statutMap.putIfAbsent(statut, referentiel);
-        }
-    }
 
     private ArrayList<Boolean> getTreatColumnsList() {
         ArrayList<Boolean> treatColumns = new ArrayList<>(headers.size());

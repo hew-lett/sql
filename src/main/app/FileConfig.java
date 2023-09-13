@@ -99,16 +99,29 @@ public class FileConfig {
     }
 
     // Getters
+    // Getters
     public ArrayList<String> getColumnNamesToRead(String refFichier) {
-        return new ArrayList<>(columnNamesToRead.getOrDefault(refFichier, new HashMap<>()).values());
+        Map<Integer, String> columnData = columnNamesToRead.get(refFichier);
+        if (columnData == null || columnData.isEmpty()) {
+            return null;
+        }
+        return new ArrayList<>(columnData.values());
     }
 
     public ArrayList<DFnew.ColTypes> getColumnTypes(String refFichier) {
-        Map<Integer, DFnew.ColTypes> colTypes = columnTypes.getOrDefault(refFichier, new HashMap<>());
+        Map<Integer, DFnew.ColTypes> colTypes = columnTypes.get(refFichier);
+        if (colTypes == null || colTypes.isEmpty()) {
+            return null;
+        }
         return new ArrayList<>(colTypes.values());
     }
 
     public ArrayList<String> getColumnNamesAttributed(String refFichier) {
-        return new ArrayList<>(columnNamesAttributed.getOrDefault(refFichier, new HashMap<>()).values());
+        Map<Integer, String> columnData = columnNamesAttributed.get(refFichier);
+        if (columnData == null || columnData.isEmpty()) {
+            return null;
+        }
+        return new ArrayList<>(columnData.values());
     }
+
 }
