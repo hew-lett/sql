@@ -164,7 +164,7 @@ public class DFnew {
         if (sheet == null) {
             throw new IllegalArgumentException("Sheet " + sheetName + " not found in the XLSX file!");
         }
-        nrow = sheet.getLastRowNum() - 1;
+        nrow = sheet.getLastRowNum();
 
         Row headerRowPOI = sheet.getRow(0);
         if (headerRowPOI == null) {
@@ -172,7 +172,7 @@ public class DFnew {
         }
 
         List<String> headerList = new ArrayList<>();
-        headerRowPOI.forEach(cell -> headerList.add(cell.toString()));
+        headerRowPOI.forEach(cell -> headerList.add(cell.toString().trim()));
 
         if (toLower) {
             headerList.replaceAll(String::toLowerCase);
@@ -246,16 +246,28 @@ public class DFnew {
         }
         return formatCell(cell.toLowerCase(), type);
     }
-    private Object formatCell(String cell, ColTypes type) throws ParseException {
-        return switch (type) {
-            case STR -> cell;
-            case DAT -> dateFormat.parse(cell);
-            case DBL -> Double.parseDouble(cell.replace(',', '.'));
-            case FLT -> Float.parseFloat(cell.replace(',', '.'));
-            case INT -> (int) Double.parseDouble(cell);
-            default -> null;
-        };
+    private Object formatCell(String cell, ColTypes type) {
+        try {
+            return switch (type) {
+                case STR -> cell;
+                case DAT -> {
+                    try {
+                        yield dateFormat.parse(cell);
+                    } catch (ParseException e) {
+                        yield null;  // Return null if the date is unparsable
+                    }
+                }
+                case DBL -> Double.parseDouble(cell.replace(',', '.'));
+                case FLT -> Float.parseFloat(cell.replace(',', '.'));
+                case INT -> (int) Double.parseDouble(cell);
+                default -> null;
+            };
+        } catch (NumberFormatException e) {
+            // Handle other potential parse errors for numerical types
+            return null;
+        }
     }
+
 
     // COLUMNS
     @SuppressWarnings("unchecked")
@@ -330,6 +342,10 @@ public class DFnew {
     }
     public void setHeaders(ArrayList<String> headers) {
         this.headers = headers;
+    }
+    public <T> void addColumn(String header, ArrayList<T> columnData, ColTypes type) {
+        columns.add(new Column<T>(columnData, type));
+        headers.add(header);
     }
 
     // PRINTING

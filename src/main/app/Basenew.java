@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -20,6 +21,7 @@ import static main.app.App.*;
 import static main.app.Baser.MAX_ANNEE;
 import static main.app.Baser.MIN_ANNEE;
 import static main.app.DF.Col_types.SKP;
+import static main.app.DFnew.ColTypes.STR;
 import static main.app.Estimate.minMaxDateMapEstimate;
 
 public class Basenew extends DFnew {
@@ -101,15 +103,28 @@ public class Basenew extends DFnew {
 
     public static void main(String[] args) throws IOException, ParseException {
         Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/SPB France.xlsx");
-        File file = new File(wd + "Source SIN/SPB France/Sinistre_Historique_ICICDDV15-1_785_20230803.txt");
-        Basenew base = new Basenew(file,"France","SPB France / Wakam",false);
-        base.print();
-        System.out.println(base.getRow(730));
+        Stopwatch stopwatch = new Stopwatch();
+        stopwatch.start();
+//        File file = new File(wd + "Source SIN/SPB France/Sinistre_Historique_ICICDDV15-1_785_20230803.txt");
+//        Basenew base = new Basenew(file,"France","SPB France / Wakam",false);
+//        base.print();
+//        System.out.println(base.getRow(730));
+        Basenew base = new Basenew(wd + "Source FIC/SPB France/","FIC France",false);
+        Basenew base1 = new Basenew(wd + "Source FIC/SPB Pologne/","FIC Pologne",false);
+        Basenew base2 = new Basenew(wd + "Source FIC/SPB Espagne/","FIC Espagne",false);
+        Basenew base3 = new Basenew(wd + "Source FIC/SPB Italie/","FIC Italie",false);
+        stopwatch.printElapsedTime();
     }
     public Basenew(File path, String pays, String mappingColDefault, boolean toLower) throws IOException, ParseException {
         this.pays = pays;
         this.referentialRow = getReferentialRow("Source");
+
         String refFichier = "base";
+        FileConfig config = FileConfig.getInstance();
+        columnNamesToRead = config.getColumnNamesToRead(refFichier);
+        columnTypes = config.getColumnTypes(refFichier);
+        columnNamesAttributed = config.getColumnNamesAttributed(refFichier);
+        validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
 
         if (pays.equals("Pologne")) {
             delim = '\t';
@@ -129,14 +144,9 @@ public class Basenew extends DFnew {
             mapping_col = mappingColDefault;
         }
 
-        FileConfig config = FileConfig.getInstance();
-        columnNamesToRead = config.getColumnNamesToRead(refFichier);
-        columnTypes = config.getColumnTypes(refFichier);
-        columnNamesAttributed = config.getColumnNamesAttributed(refFichier);
-        validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
-
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
         CsvParser parser = new CsvParser(settings);
 
         List<String[]> allRows = parser.parseAll(new FileReader(path, encodingDefault));
@@ -153,20 +163,7 @@ public class Basenew extends DFnew {
         if (pays.equals("Gamestop")) {
             dateFormat = new SimpleDateFormat("#yyyy-MM-dd#");
             headerRow = Arrays.stream(headerRow)
-                    .map(h -> {
-                        if (h != null) {
-                            String trimmedHeader = h.trim();
-                            if ("Date_Declaration".equals(trimmedHeader)) {
-                                return "Date_Déclaration";
-                            }
-                            return trimmedHeader;
-                        }
-                        return "";
-                    })
-                    .toArray(String[]::new);
-        } else {
-            headerRow = Arrays.stream(headerRow)
-                    .map(h -> h != null ? h.trim() : "")
+                    .map(h -> h.equals("Date_Declaration") ? "Date_Déclaration" : h)
                     .toArray(String[]::new);
         }
 
@@ -179,7 +176,7 @@ public class Basenew extends DFnew {
                 headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
 
                 ArrayList<Object> colData = new ArrayList<>();
-                ColTypes colType = (columnTypes == null) ? ColTypes.STR : columnTypes.get(i);
+                ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
 
                 for (int j = 1; j < allRows.size(); j++) {
                     String cell = allRows.get(j)[actualIndex];
@@ -198,10 +195,255 @@ public class Basenew extends DFnew {
             }
         }
 
-        this.cleanStatut();
         if(pays.equals("Gamestop")) {
             this.cleanNumPoliceGS();
         }
+        dataTraitementSin();
+    } //Sin
+    public Basenew(File path, boolean toLower) throws Exception {
+        System.out.println(path);
+        String fileName = path.getName();
+        numPolice = extractKeyFromFileName(fileName,"aux");
+        this.referentialRow = getReferentialRowByPolice(numPolice);
+
+        String refFichier = "base";
+        FileConfig config = FileConfig.getInstance();
+        columnNamesToRead = config.getColumnNamesToRead(refFichier);
+        columnTypes = config.getColumnTypes(refFichier);
+        columnNamesAttributed = config.getColumnNamesAttributed(refFichier);
+        validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
+
+        dateFormat = new SimpleDateFormat((String) referentialRow.get(referentialRow.size() - 1));
+
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+        CsvParser parser = new CsvParser(settings);
+
+        List<String[]> allRows = parser.parseAll(new FileReader(path, encodingDefault));
+        if (allRows.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is empty!");
+        }
+        nrow = allRows.size() - 1;
+
+        columns = new ArrayList<>();
+        headers = new ArrayList<>();
+
+        String[] headerRow = unifyColnames(allRows.get(0));
+        for (int i = 0; i < columnNamesToRead.size(); i++) { // Iterate over the configuration list
+            String expectedHeader = columnNamesToRead.get(i);
+            int actualIndex = Arrays.asList(headerRow).indexOf(expectedHeader);
+
+            if (actualIndex != -1) { // If the header exists in the actual data
+                String header = headerRow[actualIndex];
+                headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
+
+                ArrayList<Object> colData = new ArrayList<>();
+                ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
+
+                for (int j = 1; j < allRows.size(); j++) {
+                    String cell = allRows.get(j)[actualIndex];
+//                    System.out.println(headers.get(i) + " " + j + " " + cell);
+                    Object formattedCell;
+                    if (toLower) {
+                        formattedCell = getLowerCell(cell, colType);
+                    } else {
+                        formattedCell = getCell(cell, colType);
+                    }
+                    colData.add(formattedCell);
+                }
+                columns.add(new Column<>(colData, colType));
+            } else {
+                throw new RuntimeException("column " + expectedHeader + " not found for base: " + fileName);
+            }
+        }
+
+        dataTraitementSin();
+    } //Sin_aux
+    public Basenew(String path, boolean toLower) throws Exception {
+        System.out.println(path);
+        String fileName = getFilenameWithoutExtension(path);
+        if (fileName.equals("Advise")) {
+            numPolice = "ICICDAV17";
+        }
+        if (fileName.equals("Guy Demarle")) {
+            numPolice = "ICIGDEG14";
+        }
+        if (fileName.equals("Garantie Privée")) {
+            numPolice = "ICICEDV16";
+        }
+        this.referentialRow = getReferentialRow(numPolice);
+
+        String refFichier = "base";
+        FileConfig config = FileConfig.getInstance();
+        columnNamesToRead = config.getColumnNamesToRead(refFichier);
+        columnTypes = config.getColumnTypes(refFichier);
+        columnNamesAttributed = config.getColumnNamesAttributed(refFichier);
+        validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
+
+        dateFormat = new SimpleDateFormat((String) referentialRow.get(referentialRow.size() - 1));
+
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        settings.trimValues(true);
+        CsvParser parser = new CsvParser(settings);
+
+        List<String[]> allRows = parser.parseAll(new FileReader(path, encodingDefault));
+        if (allRows.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is empty!");
+        }
+        nrow = allRows.size() - 1;
+
+        columns = new ArrayList<>();
+        headers = new ArrayList<>();
+
+        String[] headerRow = unifyColnames(allRows.get(0));
+        for (int i = 0; i < columnNamesToRead.size(); i++) { // Iterate over the configuration list
+            String expectedHeader = columnNamesToRead.get(i);
+            int actualIndex = Arrays.asList(headerRow).indexOf(expectedHeader);
+
+            if (actualIndex != -1) { // If the header exists in the actual data
+                String header = headerRow[actualIndex];
+                headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
+
+                ArrayList<Object> colData = new ArrayList<>();
+                ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
+
+                for (int j = 1; j < allRows.size(); j++) {
+                    String cell = allRows.get(j)[actualIndex];
+                    Object formattedCell;
+                    if (toLower) {
+                        formattedCell = getLowerCell(cell, colType);
+                    } else {
+                        formattedCell = getCell(cell, colType);
+                    }
+                    colData.add(formattedCell);
+                }
+                columns.add(new Column<>(colData, colType));
+            } else {
+                throw new RuntimeException("column " + expectedHeader + " not found for base: " + fileName);
+            }
+        }
+
+        this.addStatutFictifSin();
+        dataTraitementSin();
+    } //Sin_aux
+    public Basenew(String folder, String refCol, boolean toLower) throws IOException, ParseException {
+        List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(folder).listFiles()));
+        if (fileList.isEmpty()) {
+            throw new IllegalArgumentException("FIC folder is empty!");
+        }
+
+        String refFichier = "baseFic";
+        FileConfig config = FileConfig.getInstance();
+        columnNamesToRead = config.getColumnNamesToRead(refFichier);
+        columnTypes = config.getColumnTypes(refFichier);
+        columnNamesAttributed = config.getColumnNamesAttributed(refFichier);
+        validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
+
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.trimValues(true);
+
+        referentialRow = getReferentialRow(refCol);
+
+        if (columns == null) columns = new ArrayList<>();
+        if (headers == null) headers = new ArrayList<>();
+
+        for (File file : fileList) {
+            String fileName = file.getName();
+            System.out.println(fileName);
+
+            switch (refCol) {
+                case "FIC France" -> settings.setDelimiterDetectionEnabled(true, file.getName().contains(LAPARISIENNE) ? ';' : '\t');
+                case "FIC Pologne" -> settings.setDelimiterDetectionEnabled(true, '\t');
+                default -> settings.setDelimiterDetectionEnabled(true, delim);
+            }
+            CsvParser parser = new CsvParser(settings);
+
+            List<String[]> allRows = parser.parseAll(new FileReader(file, encodingDefault));
+
+            if (allRows.isEmpty()) {
+                throw new IllegalArgumentException("CSV file is empty!");
+            }
+
+            nrow += allRows.size() - 1;
+            String[] headerRow = allRows.get(0);
+            if (fileName.contains("GS DB")) {
+                headerRow = Arrays.stream(headerRow)
+                        .map(h -> h.equals("Montant_reglement") ? "Montant_reglement (frais transport inclus)" :
+                                  h.equals("Date_declaration") ? "Date_Déclaration" : h)
+                        .toArray(String[]::new);
+            }
+            unifyColnames(headerRow);
+
+            if (columns.isEmpty()) {  // If it's the first file, initialize the columns
+                for (int i = 0; i < columnNamesToRead.size(); i++) {
+                    String expectedHeader = columnNamesToRead.get(i);
+                    int actualIndex = Arrays.asList(headerRow).indexOf(expectedHeader);
+
+                    if (actualIndex != -1) {
+                        String header = headerRow[actualIndex];
+                        headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
+
+                        ArrayList<Object> colData = new ArrayList<>();
+                        ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
+
+                        for (int j = 1; j < allRows.size(); j++) {
+                            String cell = allRows.get(j)[actualIndex];
+                            Object formattedCell;
+                            if (toLower) {
+                                formattedCell = getLowerCell(cell, colType);
+                            } else {
+                                formattedCell = getCell(cell, colType);
+                            }
+                            colData.add(formattedCell);
+                        }
+                        columns.add(new Column<>(colData, colType));
+                    } else {
+                        throw new RuntimeException("column " + expectedHeader + " not found for base: " + fileName);
+                    }
+                }
+            } else {  // If columns are already initialized, append data from this file
+                for (int i = 0; i < columnNamesToRead.size(); i++) {
+                    String expectedHeader = columnNamesToRead.get(i);
+                    int actualIndex = Arrays.asList(headerRow).indexOf(expectedHeader);
+
+                    if (actualIndex != -1) {
+                        ArrayList<Object> existingColData = getColumnByIndex(i);
+                        ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
+
+                        for (int j = 1; j < allRows.size(); j++) {
+                            String cell = allRows.get(j)[actualIndex];
+                            Object formattedCell;
+                            if (toLower) {
+                                formattedCell = getLowerCell(cell, colType);
+                            } else {
+                                formattedCell = getCell(cell, colType);
+                            }
+                            existingColData.add(formattedCell);
+                        }
+                    } else {
+                        throw new RuntimeException("column " + expectedHeader + " not found for base: " + fileName);
+                    }
+                }
+            }
+        }
+
+
+//        coltypesDropSKP();
+//        date_autofill_agg();
+//        addStatutFictif();
+//        populateUniqueNumPoliceValues();
+//        createPivotTableFic();
+//        createYearlyPivotTableFic();
+//        createTotalPivotTableFic();
+//        createPivotTableFicN();
+//        createYearlyPivotTableFicN();
+//        createTotalPivotTableFicN();
+//        populateNumPoliceDateRangeMap();
+    } //Fic
+    private void dataTraitementSin() {
+        this.cleanStatut();
         this.date_autofill();
         this.createPivotsSin();
         this.populateUniqueStatuts();
@@ -210,12 +452,36 @@ public class Basenew extends DFnew {
         this.coutMoyenEnCoursAccepte = calculateCMencoursAccepte();
         this.nEnCours = countAppearancesByYear("En cours");
         this.nEnCoursAccepte = countAppearancesByYear("En cours - accepté");
-    } //Sin
+    }
+    public void createPivotsSin() {
+        this.createPivotTable();
+        this.createYearlyPivotTable();
+        this.createTotalPivotTable();
+        this.createPivotAllStatuts();
+        this.createYearlyPivotAllStatuts();
+        this.createTotalPivotAllStatuts();
+        this.createPivotTableN();
+        this.createYearlyPivotTableN();
+        this.createTotalPivotTableN();
+        this.createPivotAllStatutsN();
+        this.createYearlyPivotAllStatutsN();
+        this.createTotalPivotAllStatutsN();
+    }
 
     private ArrayList<Object> getReferentialRow(String key) {
         for (int rowIndex = 0; rowIndex < refCols.nrow; rowIndex++) {
             ArrayList<Object> row = refCols.getRow(rowIndex);
             if (row.get(0).equals(key)) {
+                return row;
+            }
+        }
+
+        throw new RuntimeException("Referential row not found for key: " + key);
+    }
+    private ArrayList<Object> getReferentialRowByPolice(String key) {
+        for (int rowIndex = 0; rowIndex < refCols.nrow; rowIndex++) {
+            ArrayList<Object> row = refCols.getRow(rowIndex);
+            if (row.get(1).equals(key)) {
                 return row;
             }
         }
@@ -261,17 +527,14 @@ public class Basenew extends DFnew {
         }
     }
     private String[] mapAndUnifyColnames(String mapping_col, String[] headerRow) {
-        DFnew map_filtered = mapping.mappingFiltre(mapping_col);
+        DFnew mapFiltered = mapping.mappingFiltre(mapping_col);
 
         // Iterate over all headers
         for (int i = 0; i < headerRow.length; i++) {
 
-            // Iterate over rows in map_filtered
-            int nrow = map_filtered.getColumnByIndex(0).size();
-
-            for (int j = 0; j < nrow; j++) {
-                String formatICI = (String) map_filtered.getColumn("Format ICI").get(j);
-                String formatGestionnaire = (String) map_filtered.getColumnByIndex(1).get(j);
+            for (int j = 0; j < mapFiltered.nrow; j++) {
+                String formatICI = (String) mapFiltered.getColumn("Format ICI").get(j);
+                String formatGestionnaire = (String) mapFiltered.getColumnByIndex(1).get(j);
 
                 if (formatICI.isEmpty() || formatGestionnaire.isEmpty()) continue;
 
@@ -286,21 +549,27 @@ public class Basenew extends DFnew {
         }
         return headerRow;
     }
+    private String[] unifyColnames(String[] headerRow) {
+        for (int i = 0; i < headerRow.length; i++) {
+            if (headerRow[i] == null) continue;
+//            if (headerRow[i].equals("Montant_reglement (frais transport inclus)")) {
+//                System.out.println("here");
+//            }
+            int index = referentialRow.indexOf(headerRow[i]);
+            if (index!= -1) {
+                headerRow[i] = refCols.headers.get(index);
+            }
+        }
+        return headerRow;
+    }
     private String deleteEaccent(String input) {
-        return input.replace("é", "e").toLowerCase();
+        return input.replace("é", "e");
     }
     public void cleanStatut() {
-        // Get the "statut" column
         ArrayList<String> statuts = this.getColumn("statut");
-
-        // Iterate through each value in the column and replace big dashes with little dashes
         for (int i = 0; i < statuts.size(); i++) {
             String currentStatut = statuts.get(i).replace("–", "-");
-            if ("en cours - en attente de prescription".equals(currentStatut)) {
-                statuts.set(i, "en attente de prescription");
-            }
             if (statutMap.containsKey(currentStatut)) {
-                // Replace the value in the statut column with the value from the map
                 statuts.set(i, statutMap.get(currentStatut));
             }
         }
@@ -543,20 +812,6 @@ public class Basenew extends DFnew {
 
         // Update the dates in the DF
         getColumnByIndex(columnIndex).set(rowIndex,date);
-    }
-    public void createPivotsSin() {
-        this.createPivotTable();
-        this.createYearlyPivotTable();
-        this.createTotalPivotTable();
-        this.createPivotAllStatuts();
-        this.createYearlyPivotAllStatuts();
-        this.createTotalPivotAllStatuts();
-        this.createPivotTableN();
-        this.createYearlyPivotTableN();
-        this.createTotalPivotTableN();
-        this.createPivotAllStatutsN();
-        this.createYearlyPivotAllStatutsN();
-        this.createTotalPivotAllStatutsN();
     }
     public void createPivotTable() {
         // define the format to capture only the month and year of a date
@@ -1196,5 +1451,18 @@ public class Basenew extends DFnew {
 
         return finalCount;
     }
-
+    public void addStatutFictifSin() {
+        int indStatut = headers.indexOf("statut");
+        if (indStatut == -1) {
+            ArrayList<String> totalValues = new ArrayList<>(Collections.nCopies(nrow, "Total"));
+            addColumn("statut", totalValues, STR);
+        }
+    }
+    public static String getFilenameWithoutExtension(String fullPath) {
+        String filename = new java.io.File(fullPath).getName();
+        if (filename.endsWith(".csv")) {
+            return filename.substring(0, filename.length() - 4); // 4 because ".csv" has 4 characters
+        }
+        return filename;
+    }
 }
