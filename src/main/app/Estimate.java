@@ -11,8 +11,6 @@ import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import java.util.Date;
@@ -38,9 +36,9 @@ public class Estimate extends DF {
     protected Stopwatch stopwatch = new Stopwatch();
     public Set<String> uniqueStatutsEstimate;
     public Set<String> uniqueNumPoliceEstimate = new HashSet<>();
-    public static Map<String, Map<String, Date>> minMaxDateMapEstimate = new HashMap<>();
+    public static Map<String, Map<String, Date>> minMaxDateSousMapEstimate = new HashMap<>();
 
-    public static final HashMap<String, Integer> monthMap = new HashMap<String, Integer>() {{
+    public static final HashMap<String, Integer> monthMap = new HashMap<>() {{
         put("jan.", Calendar.JANUARY);
         put("feb.", Calendar.FEBRUARY);
         put("mar.", Calendar.MARCH);
@@ -123,7 +121,7 @@ public class Estimate extends DF {
             row_number++;
         }
         headerAndColtypesDropSKP();
-        generateMinMaxDateMap();
+        generateMinMaxDateSousMap();
         formatDP();
         deleteRegul();
         if (path.contains("France")) {
@@ -1041,7 +1039,7 @@ public class Estimate extends DF {
         df.set(index, datePeriodeColumnOutput);
     }
 
-    public void generateMinMaxDateMap() {
+    public void generateMinMaxDateSousMap() {
         // Get "Date Periode" and "Contrat" columns
         Object[] datePeriodes = c("Date Periode");
         Object[] contrats = c("Contrat");
@@ -1051,8 +1049,8 @@ public class Estimate extends DF {
             String contrat = (String) contrats[i];
 
             // Update the map for the "Contrat" value
-            minMaxDateMapEstimate.putIfAbsent(contrat, new HashMap<>());
-            Map<String, Date> currentDateMap = minMaxDateMapEstimate.get(contrat);
+            minMaxDateSousMapEstimate.putIfAbsent(contrat, new HashMap<>());
+            Map<String, Date> currentDateMap = minMaxDateSousMapEstimate.get(contrat);
 
             // Update min and max dates
             Date currentMinDate = currentDateMap.getOrDefault("min", date);
@@ -1067,7 +1065,6 @@ public class Estimate extends DF {
             if (date.before(currentMinDate)) {
                 currentDateMap.put("min", date);
             }
-
             if (date.after(currentMaxDate)) {
                 currentDateMap.put("max", date);
             }

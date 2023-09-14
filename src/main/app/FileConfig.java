@@ -17,7 +17,7 @@ import java.util.Map;
 import static main.app.App.wd;
 
 public class FileConfig {
-    private static final String CONFIG_FILE_PATH = wd + "ref_fichiers.xlsx";
+    private static final String CONFIG_FILE_PATH = wd + "ref_Fichiers.xlsx";
 
     private final Map<String, Map<Integer, String>> columnNamesToRead = new HashMap<>();
     private final Map<String, Map<Integer, DFnew.ColTypes>> columnTypes = new HashMap<>();

@@ -5,7 +5,6 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
-import java.lang.reflect.InvocationTargetException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
@@ -54,7 +53,7 @@ public class App {
     public static DF tdb2_ref;
     public static DF SPprevi;
     public static DF PB;
-    public static Map<String,Map<Double, Double>> mapSPprevi = new HashMap<>();
+    public static Map<String,Map<Integer, Double>> mapSPprevi = new HashMap<>();
     public static Map<String,Map<String, Double>> mapPB = new HashMap<>();
     public static SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
     public static Map<String, Map<String, List<Date>>> policeStatutDateRangeMap = new HashMap<>();
@@ -77,16 +76,17 @@ public class App {
     public static char delim = ';';
     public static Synthese syntAncien;
 //    public static List<Base> basesSin = new ArrayList<>();
-    public static Map<String, String> statutMap = new HashMap<>();
     public static Map<String, Base> baseMap = new HashMap<>();
+    public static Map<String, Basenew> baseMapNew = new HashMap<>();
     public static List<String> statutsForTreatment;
+    public static Map<String, String> globalStatutMap = new HashMap<>();
+    public static Map<String, String> globalStatutCollect = new HashMap<>();
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
 
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
         Synthese mapStatut = new Synthese(wd + "map_statuts.csv",delim,true,false,false);
-//        mapStatut.populateStatutMap();
         ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
         ref_cols = new DF(wd + "refRenta.xlsx","ref_cols");
         ref_source = new DF(wd + "refRenta.xlsx","source",true);

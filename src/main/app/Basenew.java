@@ -6,23 +6,22 @@ import com.univocity.parsers.csv.CsvParserSettings;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.Reader;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.FileOutputStream;
+import java.util.Map;
 
 import static main.app.App.*;
 import static main.app.Baser.MAX_ANNEE;
 import static main.app.Baser.MIN_ANNEE;
-import static main.app.DF.Col_types.SKP;
 import static main.app.DFnew.ColTypes.STR;
-import static main.app.Estimate.minMaxDateMapEstimate;
+import static main.app.Estimate.minMaxDateSousMapEstimate;
 
 public class Basenew extends DFnew {
     public static String[] currentHeaderRef = null;
@@ -45,7 +44,7 @@ public class Basenew extends DFnew {
         PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
 
         Calendar calendar = Calendar.getInstance();
-        calendar.set(Calendar.YEAR, 2026);
+        calendar.set(Calendar.YEAR, MAX_ANNEE);
         calendar.set(Calendar.MONTH, Calendar.DECEMBER);
         calendar.set(Calendar.DAY_OF_MONTH, 1);
         calendar.set(Calendar.HOUR_OF_DAY, 0);
@@ -56,7 +55,7 @@ public class Basenew extends DFnew {
         MAX_PREVI_DATE = calendar.getTime();
 
         Calendar calendar2 = Calendar.getInstance();
-        calendar2.set(Calendar.YEAR, 2013);
+        calendar2.set(Calendar.YEAR, MIN_ANNEE);
         calendar2.set(Calendar.MONTH, Calendar.NOVEMBER);
         calendar2.set(Calendar.DAY_OF_MONTH, 1);
         calendar2.set(Calendar.HOUR_OF_DAY, 0);
@@ -101,18 +100,57 @@ public class Basenew extends DFnew {
     public Map<String, List<Integer>> nEnCours;
     public Map<String, List<Integer>> nEnCoursAccepte;
 
-    public static void main(String[] args) throws IOException, ParseException {
-        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/SPB France.xlsx");
+    public static void main(String[] args) throws Exception {
+//        Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/SPB France.xlsx");
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
-//        File file = new File(wd + "Source SIN/SPB France/Sinistre_Historique_ICICDDV15-1_785_20230803.txt");
-//        Basenew base = new Basenew(file,"France","SPB France / Wakam",false);
-//        base.print();
-//        System.out.println(base.getRow(730));
-        Basenew base = new Basenew(wd + "Source FIC/SPB France/","FIC France",false);
-        Basenew base1 = new Basenew(wd + "Source FIC/SPB Pologne/","FIC Pologne",false);
-        Basenew base2 = new Basenew(wd + "Source FIC/SPB Espagne/","FIC Espagne",false);
-        Basenew base3 = new Basenew(wd + "Source FIC/SPB Italie/","FIC Italie",false);
+
+        for (int i = 0; i < refSource.nrow; i++) {
+            boolean a_faire = (refSource.getColumn("a faire").get(i)).equals("oui");
+            if (!a_faire) continue;
+            String folder = (String) refSource.getColumn("path").get(i);
+            String pays = (String) refSource.getColumn("pays_filekey").get(i);
+            String mapcol = (String) refSource.getColumn("mapping").get(i);
+            String estim = (String) refSource.getColumn("estimate").get(i);
+            String path_fic = (String) refSource.getColumn("path_fic").get(i);
+            String map_fic = (String) refSource.getColumn("map_fic").get(i);
+
+            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+
+            for (File file : fileList) {
+//                if (!file.toPath().toString().contains("EXTR")) continue;
+                Basenew base = new Basenew(file,pays,mapcol,false);
+                baseMapNew.put(base.numPolice, base);
+                for (String statut : base.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, base.numPolice);
+                }
+
+            }
+            if (pays.equals("Italie")) {
+                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
+                for (File file : fileListGS) {
+//                if (!file.toPath().toString().contains("SMIC"))  continue;
+                    Basenew base = new Basenew(file,"Gamestop","SPB Italie Gamestop v1",false);
+                    baseMapNew.put(base.numPolice, base);
+                    for (String statut : base.uniqueStatuts) {
+                        globalStatutCollect.putIfAbsent(statut, base.numPolice);
+                    }
+                }
+                Basenew baseGPTB = new Basenew(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv"),false);
+                Basenew baseMITL = new Basenew(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv"),false);
+                baseMapNew.put(baseGPTB.numPolice, baseGPTB);
+                baseMapNew.put(baseMITL.numPolice, baseMITL);
+                for (String statut : baseGPTB.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, baseGPTB.numPolice);
+                }
+                for (String statut : baseMITL.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, baseMITL.numPolice);
+                }
+            }
+
+        }
+        saveMapToExcel(globalStatutCollect, wd + "statuts.xlsx");
         stopwatch.printElapsedTime();
     }
     public Basenew(File path, String pays, String mappingColDefault, boolean toLower) throws IOException, ParseException {
@@ -429,19 +467,23 @@ public class Basenew extends DFnew {
             }
         }
 
+        if (refCol.equals("FIC France")) {
+            cleanNumPoliceDBP();
+        }
+        date_autofill_agg();
+        addStatutFictifFic();
+        populateUniqueNumPoliceValues();
 
-//        coltypesDropSKP();
-//        date_autofill_agg();
-//        addStatutFictif();
-//        populateUniqueNumPoliceValues();
-//        createPivotTableFic();
-//        createYearlyPivotTableFic();
-//        createTotalPivotTableFic();
-//        createPivotTableFicN();
-//        createYearlyPivotTableFicN();
-//        createTotalPivotTableFicN();
-//        populateNumPoliceDateRangeMap();
+        createPivotTableFic();
+        createYearlyPivotTableFic();
+        createTotalPivotTableFic();
+        createPivotTableFicN();
+        createYearlyPivotTableFicN();
+        createTotalPivotTableFicN();
+
+        populateNumPoliceDateRangeMap();
     } //Fic
+
     private void dataTraitementSin() {
         this.cleanStatut();
         this.date_autofill();
@@ -568,51 +610,63 @@ public class Basenew extends DFnew {
     public void cleanStatut() {
         ArrayList<String> statuts = this.getColumn("statut");
         for (int i = 0; i < statuts.size(); i++) {
-            String currentStatut = statuts.get(i).replace("–", "-");
-            if (statutMap.containsKey(currentStatut)) {
-                statuts.set(i, statutMap.get(currentStatut));
+            if(statuts.get(i) != null) {
+                String currentStatut = statuts.get(i).replace("–", "-");
+                if (globalStatutMap.containsKey(currentStatut)) {
+                    statuts.set(i, globalStatutMap.get(currentStatut));
+                }
+            } else {
+                statuts.set(i, "");
             }
         }
     }
     public void cleanNumPoliceGS() {
-        // Get the "num_police" column
         ArrayList<String> polices = this.getColumn("num_police");
-
-        // Iterate through each value in the column and replace spaces
         polices.replaceAll(value -> value.replace(" ", ""));
     }
+    private void cleanNumPoliceDBP() {
+        ArrayList<String> polices = getColumn("num_police");
+        for (int i = 0; i < nrow; i++) {
+            if (polices.get(i).equals("ICICDBP17")) {
+                polices.set(i, "ICIDBP17");
+            }
+        }
+    }
+
     void date_autofill() {
         // Indices for required columns in the current DF
         int indexDateSurv = headers.indexOf("date_surv");
         int indexDateSous = headers.indexOf("date_sous");
-        int indexDateDecla = headers.indexOf("date_decla");
+        ArrayList<Date> colDateSurv = getColumn("date_surv");
+        ArrayList<Date> colDateSous = getColumn("date_sous");
+        ArrayList<Date> colDateDecla = getColumn("date_decla");
 
         // Indices for required columns in the refProg DF
-        int indexContrat = refProg.headers.indexOf("Contrat");
-        int indexDateDebutRef = refProg.headers.indexOf("Date Debut");
-        int indexDateFinRef = refProg.headers.indexOf("Date Fin");
-        int indexAQ = refProg.headers.indexOf("Acquisition des Primes");
+        ArrayList<String> colContrat = refProg.getColumn("Contrat");
+        ArrayList<Date> colDateDebutRef = refProg.getColumn("Date Debut");
+        ArrayList<Date> colDateFinRef = refProg.getColumn("Date Fin");
+        ArrayList<String> colAQ = refProg.getColumn("Acquisition des Primes");
 
         Date dateDebut = null;
         Date dateFin = null;
         boolean mensu = false;
         for (int i = 0; i < refProg.nrow; i++) {
-            if (this.numPolice.equalsIgnoreCase(refProg.getColumnByIndex(indexContrat).get(i).toString())) {
-                dateDebut = (Date) refProg.getColumnByIndex(indexDateDebutRef).get(i);
-                dateFin = (Date) refProg.getColumnByIndex(indexDateFinRef).get(i);
-                mensu =  refProg.getColumnByIndex(indexAQ).get(i).equals("Mensuel");
+            if (this.numPolice.equalsIgnoreCase(colContrat.get(i))) {
+                dateDebut = colDateDebutRef.get(i);
+                dateFin = colDateFinRef.get(i);
+                mensu =  colAQ.get(i).equals("Mensuel");
                 break;
             }
         }
         if (dateDebut == null) {
             throw new RuntimeException("refProg didn't find dates for " + numPolice);
         }
-        Date minTDB = minMaxDateMapEstimate.get(numPolice).get("min");
-        Date maxTDB = minMaxDateMapEstimate.get(numPolice).get("max");
+        Date minDateSousTDB = minMaxDateSousMapEstimate.get(numPolice).get("min");
+        Date maxDateSousTDB = minMaxDateSousMapEstimate.get(numPolice).get("max");
 
-        List<Date> dates = Arrays.asList(MAX_PREVI_DATE, dateFin, maxTDB);
+        List<Date> dates = Arrays.asList(MAX_PREVI_DATE, dateFin, maxDateSousTDB);
         Date dateMaxSous = dates.stream().min(Date::compareTo).orElse(null);
-        dates = Arrays.asList(MIN_PREVI_DATE, dateDebut, minTDB);
+        dates = Arrays.asList(MIN_PREVI_DATE, dateDebut, minDateSousTDB);
         Date dateMinSous = dates.stream().max(Date::compareTo).orElse(null);
         Date dateMaxSurv;
         if (MAX_PREVI_DATE.after(dateFin)) {
@@ -628,181 +682,135 @@ public class Basenew extends DFnew {
         }
 
         for (int i = 0; i < nrow; i++) {
-            Date dateSurv = (Date) getColumnByIndex(indexDateSurv).get(i);
-            Date dateSous = (Date) getColumnByIndex(indexDateSous).get(i);
-
-            if (dateSurv == null) {
-                if (!(getColumnByIndex(indexDateDecla).get(i) == null)) {
-                    dateSurv = (Date) getColumnByIndex(indexDateDecla).get(i);
-                } else if (!(dateSous == null)) {
-                    dateSurv = dateSous;
-                } else {
-                    dateSurv = dateDebut;
-                }
-            }
-            if (dateSous == null || mensu) {
-                dateSous = dateSurv;
-            }
-            if (dateSous.after(dateMaxSous)) {
-                dateSous = dateMaxSous;
-            }
-            if (dateSous.before(dateMinSous)) {
-                dateSous = dateMinSous;
-            }
-            if (dateSurv.after(dateMaxSurv)) {
-                dateSurv = dateMaxSurv;
-            }
-            if (dateSurv.before(dateMinSurv)) {
-                dateSurv = dateMinSurv;
-            }
-
-            if (dateSurv.before(dateSous)) {
-                dateSurv = dateSous;
-            }
-            date_transform(dateSurv, indexDateSurv, i);
-            date_transform(dateSous, indexDateSous, i);
+            repairDates(indexDateSurv, indexDateSous, colDateSurv, colDateSous, colDateDecla, i, dateMinSous, dateMaxSous, dateMinSurv, dateMaxSurv, mensu);
         }
     }
-//    void date_autofill_agg() {
-//        // Indices for required columns in the current DF
-//        int indexDateSurv = find_in_arr_first_index(header, "date_surv");
-//        int indexDateSous = find_in_arr_first_index(header, "date_sous");
-//        int indexDateDecla = find_in_arr_first_index(header, "date_decla");
-//        int indexNumPolice = find_in_arr_first_index(header, "num_police");
-//
-//        // Indices for required columns in the refProg DF
-//        int indexContrat = find_in_arr_first_index(refProg.header, "n°contrat");
-//        int indexDateDebutRef = find_in_arr_first_index(refProg.header, "date_debut");
-//        int indexDateFinRef = find_in_arr_first_index(refProg.header, "date_fin");
-//        int indexAQ = find_in_arr_first_index(refProg.header, "acquisition des primes");
-//
-//        // Return early if the num_police column doesn't exist
-//        if (indexNumPolice == -1) return;
-//
-//        // If date_surv column doesn't exist, create it
-//        if (indexDateSurv == -1) {
-//            indexDateSurv = ncol;
-//            Object[] newColumn = new Object[nrow];
-//            Arrays.fill(newColumn, NA_DAT);
-//            df.add(newColumn);
-//            ncol++;
-//        }
-//
-//        // If date_sous column doesn't exist, create it
-//        if (indexDateSous == -1) {
-//            indexDateSous = ncol;
-//            Object[] newColumn = new Object[nrow];
-//            Arrays.fill(newColumn, NA_DAT);
-//            df.add(newColumn);
-//            ncol++;
-//        }
-//
-//        // Cache for quick lookup of refProg data based on num_police/n°contrat
-//        Map<String, Date[]> refprogLookup = new HashMap<>();
-//        Map<String, Boolean> mensuMap = new HashMap<>();
-//        for (int i = 0; i < refProg.nrow; i++) {
-//            String contrat = refProg.getColumnByIndex(indexContrat).get(i).toString();
-//            Date dateDebut = (Date) refProg.getColumnByIndex(indexDateDebutRef).get(i);
-//            Date dateFin = (Date) refProg.getColumnByIndex(indexDateFinRef).get(i);
-//            Map<String, Date> contratMap = minMaxDateMapEstimate.get(contrat.toUpperCase());
-//            if (contratMap == null) continue;
-//            Date minTDB = contratMap.get("min");
-//            Date maxTDB = contratMap.get("max");
-//            if (dateDebut == null) {
-//                Date dateMaxSous;
-//                if (MAX_PREVI_DATE.after(maxTDB)) {
-//                    dateMaxSous = maxTDB;
-//                } else {
-//                    dateMaxSous = MAX_PREVI_DATE;
-//                }
-//                Date dateMinSous;
-//                if (MIN_PREVI_DATE.before(minTDB)) {
-//                    dateMinSous = minTDB;
-//                } else {
-//                    dateMinSous = MIN_PREVI_DATE;
-//                }
-//
-//                refprogLookup.put(contrat, new Date[]{null, dateFin, dateMinSous,dateMaxSous, MIN_PREVI_DATE, MAX_PREVI_DATE});
-//            } else {
-//                List<Date> dates = Arrays.asList(MAX_PREVI_DATE, dateFin, maxTDB);
-//                Date dateMaxSous = dates.stream().min(Date::compareTo).orElse(null);
-//                dates = Arrays.asList(MIN_PREVI_DATE, dateDebut, minTDB);
-//                Date dateMinSous = dates.stream().max(Date::compareTo).orElse(null);
-//                Date dateMaxSurv;
-//                if (MAX_PREVI_DATE.after(dateFin)) {
-//                    dateMaxSurv = dateFin;
-//                } else {
-//                    dateMaxSurv = MAX_PREVI_DATE;
-//                }
-//                Date dateMinSurv;
-//                if (MIN_PREVI_DATE.before(dateDebut)) {
-//                    dateMinSurv = dateDebut;
-//                } else {
-//                    dateMinSurv = MIN_PREVI_DATE;
-//                }
-//                refprogLookup.put(contrat, new Date[]{dateDebut, dateFin, dateMinSous,dateMaxSous,dateMinSurv,dateMaxSurv});
-//            }
-//            mensuMap.putIfAbsent(contrat,refProg.getColumnByIndex(indexAQ).get(i).equals("mensuel"));
-//
-//        }
-//
-//        Set<String> missing_refprog = new HashSet<>();
-//        for (int i = 0; i < nrow; i++) {
-//
-////            System.out.println("Processing row " + i + " of " + nrow + getColumnByIndex(indexNumPolice).get(i));
-//            String currentNumPolice = getColumnByIndex(indexNumPolice).get(i).toString();
-//            Date[] refDates = refprogLookup.get(currentNumPolice.toLowerCase());
-//            if (refDates == null) {
-//                if (!missing_refprog.contains(currentNumPolice)) {
-//                    System.out.println("Warning: No refProg data found for num_police " + currentNumPolice);
-//                    missing_refprog.add(currentNumPolice);
-//                }
-//                continue;
-//            }
-//
-//            Date dateDebut = refDates[0];
-//            Date dateFin = refDates[1];
-//            Date dateMinSous = refDates[2];
-//            Date dateMaxSous = refDates[3];
-//            Date dateMinSurv = refDates[4];
-//            Date dateMaxSurv = refDates[5];
-//            boolean mensu = mensuMap.get(currentNumPolice);
-//
-//            Date dateSurv = (Date) getColumnByIndex(indexDateSurv).get(i);
-//            Date dateSous = (Date) getColumnByIndex(indexDateSous).get(i);
-//
-//            if (dateSurv == null) {
-//                if (!getColumnByIndex(indexDateDecla).get(i) == null) {
-//                    dateSurv = (Date) getColumnByIndex(indexDateDecla).get(i);
-//                } else if (!dateSous == null) {
-//                    dateSurv = dateSous;
-//                } else {
-//                    dateSurv = dateDebut;
-//                }
-//            }
-//            if (dateSous == null || mensu) {
-//                dateSous = dateSurv;
-//            }
-//            if (dateSous.after(dateMaxSous)) {
-//                dateSous = dateMaxSous;
-//            }
-//            if (dateSous.before(dateMinSous)) {
-//                dateSous = dateMinSous;
-//            }
-//            if (dateSurv.after(dateMaxSurv)) {
-//                dateSurv = dateMaxSurv;
-//            }
-//            if (dateSurv.before(dateMinSurv)) {
-//                dateSurv = dateMinSurv;
-//            }
-//
-//            if (dateSurv.before(dateSous)) {
-//                dateSurv = dateSous;
-//            }
-//            date_transform(dateSurv, indexDateSurv, i);
-//            date_transform(dateSous, indexDateSous, i);
-//        }
-//    }
+    void date_autofill_agg() {
+        int indexDateSurv = headers.indexOf("date_surv");
+        int indexDateSous = headers.indexOf("date_sous");
+        ArrayList<Date> colDateSurv = getColumn("date_surv");
+        ArrayList<Date> colDateSous = getColumn("date_sous");
+        ArrayList<Date> colDateDecla = getColumn("date_decla");
+        ArrayList<String> colPolice = getColumn("num_police");
+
+        // Indices for required columns in the refProg DF
+        ArrayList<String> colContrat = refProg.getColumn("Contrat");
+        ArrayList<Date> colDateDebutRef = refProg.getColumn("Date Debut");
+        ArrayList<Date> colDateFinRef = refProg.getColumn("Date Fin");
+        ArrayList<String> colAQ = refProg.getColumn("Acquisition des Primes");
+
+        // Cache for quick lookup of refProg data based on num_police/n°contrat
+        Map<String, Date[]> refprogLookup = new HashMap<>();
+        Map<String, Boolean> mensuMap = new HashMap<>();
+        for (int i = 0; i < refProg.nrow; i++) {
+            String contrat = colContrat.get(i);
+            Date dateDebut = colDateDebutRef.get(i);
+            Date dateFin = colDateFinRef.get(i);
+
+            Map<String, Date> contratMap = minMaxDateSousMapEstimate.get(contrat.toUpperCase());
+            if (contratMap == null) {
+                // contrat n'existe pas dans TDB mais existe dans le fic
+                refprogLookup.put(contrat, new Date[]{MIN_PREVI_DATE, MAX_PREVI_DATE, MIN_PREVI_DATE, MAX_PREVI_DATE});
+                continue;
+            }
+            Date minDateSousTDB = contratMap.get("min");
+            Date maxDateSousTDB = contratMap.get("max");
+            if (dateDebut == null) { // si absent dans ref programmes, on definit que les bornes de la date souscription
+                Date dateMaxSous;
+                if (MAX_PREVI_DATE.after(maxDateSousTDB)) {
+                    dateMaxSous = maxDateSousTDB;
+                } else {
+                    dateMaxSous = MAX_PREVI_DATE;
+                }
+                Date dateMinSous;
+                if (MIN_PREVI_DATE.before(minDateSousTDB)) {
+                    dateMinSous = minDateSousTDB;
+                } else {
+                    dateMinSous = MIN_PREVI_DATE;
+                }
+                // toute l'intervalle dispo pour la date survenance
+                refprogLookup.put(contrat, new Date[]{dateMinSous, dateMaxSous, MIN_PREVI_DATE, MAX_PREVI_DATE});
+            } else {
+                List<Date> dates = Arrays.asList(MAX_PREVI_DATE, dateFin, maxDateSousTDB);
+                Date dateMaxSous = dates.stream().min(Date::compareTo).orElse(null);
+                dates = Arrays.asList(MIN_PREVI_DATE, dateDebut, minDateSousTDB);
+                Date dateMinSous = dates.stream().max(Date::compareTo).orElse(null);
+                Date dateMaxSurv;
+                if (MAX_PREVI_DATE.after(dateFin)) {
+                    dateMaxSurv = dateFin;
+                } else {
+                    dateMaxSurv = MAX_PREVI_DATE;
+                }
+                Date dateMinSurv;
+                if (MIN_PREVI_DATE.before(dateDebut)) {
+                    dateMinSurv = dateDebut;
+                } else {
+                    dateMinSurv = MIN_PREVI_DATE;
+                }
+                refprogLookup.put(contrat, new Date[]{dateMinSous, dateMaxSous, dateMinSurv, dateMaxSurv});
+            }
+            mensuMap.putIfAbsent(contrat,colAQ.get(i).equals("Mensuel"));
+        }
+
+        Set<String> missing_refprog = new HashSet<>();
+        for (int i = 0; i < nrow; i++) {
+            String currentNumPolice = colPolice.get(i);
+            Date[] refDates = refprogLookup.get(currentNumPolice);
+            if (refDates == null) {
+                if (!missing_refprog.contains(currentNumPolice)) {
+                    System.out.println("Warning: No refProg data found for num_police " + currentNumPolice);
+                    missing_refprog.add(currentNumPolice);
+                }
+                continue;
+            }
+
+            Date dateMinSous = refDates[0];
+            Date dateMaxSous = refDates[1];
+            Date dateMinSurv = refDates[2];
+            Date dateMaxSurv = refDates[3];
+
+            System.out.println(currentNumPolice);
+            boolean mensu = mensuMap.get(currentNumPolice);
+            repairDates(indexDateSurv, indexDateSous, colDateSurv, colDateSous, colDateDecla, i, dateMinSous, dateMaxSous, dateMinSurv, dateMaxSurv, mensu);
+        }
+    }
+
+    private void repairDates(int indexDateSurv, int indexDateSous, ArrayList<Date> colDateSurv, ArrayList<Date> colDateSous, ArrayList<Date> colDateDecla, int i, Date dateMinSous, Date dateMaxSous, Date dateMinSurv, Date dateMaxSurv, boolean mensu) {
+        Date dateSurv = colDateSurv.get(i);
+        Date dateSous = colDateSous.get(i);
+
+        if (dateSurv == null) {
+            if (!(colDateDecla.get(i) == null)) {
+                dateSurv = colDateDecla.get(i);
+            } else if (!(dateSous == null)) {
+                dateSurv = dateSous;
+            } else {
+                dateSurv = dateMinSous;
+            }
+        }
+        if (dateSous == null || mensu) {
+            dateSous = dateSurv;
+        }
+        if (dateSous.after(dateMaxSous)) {
+            dateSous = dateMaxSous;
+        }
+        if (dateSous.before(dateMinSous)) {
+            dateSous = dateMinSous;
+        }
+        if (dateSurv.after(dateMaxSurv)) {
+            dateSurv = dateMaxSurv;
+        }
+        if (dateSurv.before(dateMinSurv)) {
+            dateSurv = dateMinSurv;
+        }
+
+        if (dateSurv.before(dateSous)) {
+            dateSurv = dateSous;
+        }
+        date_transform(dateSurv, indexDateSurv, i);
+        date_transform(dateSous, indexDateSous, i);
+    }
+
     void date_transform (Date date, int columnIndex, int rowIndex) {
         // Change the date to the 1st day of the month
         Calendar cal = Calendar.getInstance();
@@ -1310,6 +1318,9 @@ public class Basenew extends DFnew {
     public void populateUniqueStatuts() {
         uniqueStatuts.addAll(getColumn("statut"));
     }
+    public void populateUniqueNumPoliceValues() {
+        uniqueNumPoliceValues.addAll(getColumn("num_police"));
+    }
     public void populateStatutDateRangeMap() {
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
 
@@ -1458,11 +1469,94 @@ public class Basenew extends DFnew {
             addColumn("statut", totalValues, STR);
         }
     }
+    public void addStatutFictifFic() {
+        int indStatut = headers.indexOf("statut");
+        if (indStatut == -1) {
+            ArrayList<String> totalValues = new ArrayList<>(Collections.nCopies(nrow, STATUT_FICTIF_FIC));
+            addColumn("statut", totalValues, STR);
+        }
+    }
     public static String getFilenameWithoutExtension(String fullPath) {
         String filename = new java.io.File(fullPath).getName();
         if (filename.endsWith(".csv")) {
             return filename.substring(0, filename.length() - 4); // 4 because ".csv" has 4 characters
         }
         return filename;
+    }
+
+    public static void saveMapToExcel(Map<String, String> dataMap, String outputPath) throws IOException {
+        // Create a new workbook and sheet
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Statuts");
+
+        // Create a header row
+        Row headerRow = sheet.createRow(0);
+        Cell headerCell1 = headerRow.createCell(0);
+        headerCell1.setCellValue("Statut");
+        Cell headerCell2 = headerRow.createCell(1);
+        headerCell2.setCellValue("NumPolice");
+
+        // Populate data rows
+        int rowIndex = 1;
+        for (Map.Entry<String, String> entry : dataMap.entrySet()) {
+            Row row = sheet.createRow(rowIndex++);
+            row.createCell(0).setCellValue(entry.getKey());
+            row.createCell(1).setCellValue(entry.getValue());
+        }
+
+        // Resize columns to fit content
+        sheet.autoSizeColumn(0);
+        sheet.autoSizeColumn(1);
+
+        // Write the output to file
+        try (FileOutputStream fileOut = new FileOutputStream(outputPath)) {
+            workbook.write(fileOut);
+        }
+
+        workbook.close();
+    }
+    public static void createStatutMap() throws Exception {
+        for (int i = 0; i < refSource.nrow; i++) {
+            boolean a_faire = !(refSource.getColumn("a faire").get(i)).equals("non");
+            if (!a_faire) continue;
+            String folder = (String) refSource.getColumn("path").get(i);
+            String pays = (String) refSource.getColumn("pays_filekey").get(i);
+            String mapcol = (String) refSource.getColumn("mapping").get(i);
+            String estim = (String) refSource.getColumn("estimate").get(i);
+
+            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
+            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
+
+            for (File file : fileList) {
+                Basenew base = new Basenew(file,pays,mapcol,false);
+                baseMapNew.put(base.numPolice, base);
+                for (String statut : base.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, base.numPolice);
+                }
+
+            }
+            if (pays.equals("Italie")) {
+                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
+                for (File file : fileListGS) {
+                    Basenew base = new Basenew(file,"Gamestop","SPB Italie Gamestop v1",false);
+                    baseMapNew.put(base.numPolice, base);
+                    for (String statut : base.uniqueStatuts) {
+                        globalStatutCollect.putIfAbsent(statut, base.numPolice);
+                    }
+                }
+                Basenew baseGPTB = new Basenew(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv"),false);
+                Basenew baseMITL = new Basenew(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv"),false);
+                baseMapNew.put(baseGPTB.numPolice, baseGPTB);
+                baseMapNew.put(baseMITL.numPolice, baseMITL);
+                for (String statut : baseGPTB.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, baseGPTB.numPolice);
+                }
+                for (String statut : baseMITL.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, baseMITL.numPolice);
+                }
+            }
+
+        }
+        saveMapToExcel(globalStatutCollect, wd + "statuts.xlsx");
     }
 }

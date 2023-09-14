@@ -19,7 +19,7 @@ import static main.app.App.*;
 import static main.app.App.ref_prog;
 import static main.app.DF.Col_types.*;
 import static main.app.DF.Col_types.DBL;
-import static main.app.Estimate.minMaxDateMapEstimate;
+import static main.app.Estimate.minMaxDateSousMapEstimate;
 
 public class Base extends DF {
     Object[] refProgrammesRow;
@@ -1424,8 +1424,8 @@ public class Base extends DF {
         if (dateDebut == null) {
             throw new RuntimeException("ref_prog didn't find dates for " + numPolice);
         }
-        Date minTDB = minMaxDateMapEstimate.get(numPolice).get("min");
-        Date maxTDB = minMaxDateMapEstimate.get(numPolice).get("max");
+        Date minTDB = minMaxDateSousMapEstimate.get(numPolice).get("min");
+        Date maxTDB = minMaxDateSousMapEstimate.get(numPolice).get("max");
 
         List<Date> dates = Arrays.asList(MAX_PREVI_DATE, dateFin, maxTDB);
         Date dateMaxSous = dates.stream().min(Date::compareTo).orElse(null);
@@ -1521,7 +1521,7 @@ public class Base extends DF {
             String contrat = ref_prog.c(indexContrat)[i].toString();
             Date dateDebut = (Date) ref_prog.c(indexDateDebutRef)[i];
             Date dateFin = (Date) ref_prog.c(indexDateFinRef)[i];
-            Map<String, Date> contratMap = minMaxDateMapEstimate.get(contrat.toUpperCase());
+            Map<String, Date> contratMap = minMaxDateSousMapEstimate.get(contrat.toUpperCase());
             if (contratMap == null) continue;
             Date minTDB = contratMap.get("min");
             Date maxTDB = contratMap.get("max");

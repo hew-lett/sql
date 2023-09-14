@@ -33,7 +33,7 @@ import org.bouncycastle.util.encoders.UTF8;
 import static java.lang.Math.*;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static main.app.App.*;
-import static main.app.DF.Col_types.*;
+import static main.app.DFnew.ColTypes.*;
 import static main.app.Synthese.roundToFourDecimals;
 import static main.app.Synthese.roundToTwoDecimals;
 public class DFnew {
@@ -60,13 +60,16 @@ public class DFnew {
     static {
         try {
             PB = new DFnew(wd + "PB Micromania.csv",';',false,"PB");
-            refProg = new DFnew(wd + "Référentiel programmes.csv",';',false,"refProg");
-            refCols = new DFnew(wd + "refRenta.xlsx","ref_cols",false,"refCols");
-            refSource = new DFnew(wd + "refRenta.xlsx","source",false,"refSource");
+            refProg = new DFnew(wd + "ref_Programmes.csv",';',false,"refProg");
+            refCols = new DFnew(wd + "ref_Renta.xlsx","ref_cols",false,"refCols");
+            refSource = new DFnew(wd + "ref_Renta.xlsx","source",false,"refSource");
             mapping = new DFnew(wd + "mapping.xlsx","Mapping entrant sinistres",false,"mapping");
             SPprevi = new DFnew(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1",false,"SPprevi");
             coefsAQ = new DFnew(wd + "TDB Part 2_Hors France_populated_coef.csv",';',false,"coefsAQ");
-            mapStatuts = new DFnew(wd + "mapStatuts.csv",';',false,"mapStatuts");
+            mapStatuts = new DFnew(wd + "statuts.xlsx","Statuts",false,"mapStatuts");
+            populateGlobalStatutMap();
+            mapPoliceToPB();
+            mapPoliceToSPPrevi();
         } catch (IOException | ParseException e) {
             throw new RuntimeException(e);
         }
@@ -76,7 +79,7 @@ public class DFnew {
 
     }
 
-    public static void main(String[] args) throws IOException, ParseException {
+    public static void main(String[] args) throws IOException, ParseException, Exception {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
 
@@ -236,7 +239,11 @@ public class DFnew {
     }
     public Object getCell(String cell, ColTypes type) throws ParseException {
         if (cell == null) {
-            return null;
+            if (type == DBL || type == FLT || type == INT) {
+                return 0.0;
+            } else {
+                return null;
+            }
         }
         return formatCell(cell, type);
     }
@@ -264,7 +271,7 @@ public class DFnew {
             };
         } catch (NumberFormatException e) {
             // Handle other potential parse errors for numerical types
-            return null;
+            return 0.0;
         }
     }
 
@@ -394,55 +401,45 @@ public class DFnew {
     }
 
     // REF
-    public void populateStatutMap() {
-        ArrayList<String> statuts = getColumn("Statut");
-        ArrayList<String> statutsReferentiel = getColumn("Statut referentiel");
+    public static void populateGlobalStatutMap() {
+        ArrayList<String> statuts = mapStatuts.getColumn("Statut");
+        ArrayList<String> references = mapStatuts.getColumn("Reference");
+
+        if (statuts.size() != references.size()) {
+            throw new IllegalArgumentException("Statut and Reference columns have different sizes!");
+        }
 
         for (int i = 0; i < statuts.size(); i++) {
-            String statut = statuts.get(i);
-            String referentiel = statutsReferentiel.get(i);
-
-            // Populate the map. If the key already exists, it won't overwrite the value.
-            statutMap.putIfAbsent(statut, referentiel);
+            globalStatutMap.put(statuts.get(i), references.get(i));
         }
     }
-    public void mapPoliceToPB() {
-        int identifiantIndex = headers.indexOf("Contrat");
-        int indexPB = headers.indexOf("PB");
-        int dateIndex = headers.indexOf("Date");
-
-        // Error handling if columns are not found
-        if (identifiantIndex == -1 || indexPB == -1 || dateIndex == -1) {
-            throw new IllegalArgumentException("Required columns not found in header.");
-        }
+    public static void mapPoliceToPB() {
+        ArrayList<String> colContrat = PB.getColumn("Contrat");
+        ArrayList<Date> colDate = PB.getColumn("Date");
+        ArrayList<Double> colPB = PB.getColumn("PB");
 
         SimpleDateFormat sdfOutput = new SimpleDateFormat("MM-yyyy");
 
-        for (int i = 0; i < nrow; i++) {
-            String identifiant = (String) getColumnByIndex(identifiantIndex).get(i);
-            Date dateValue = (Date) getColumnByIndex(dateIndex).get(i);
+        for (int i = 0; i < PB.nrow; i++) {
+            String contrat = colContrat.get(i);
+            Date dateValue = colDate.get(i);
             String formattedDate = sdfOutput.format(dateValue);
-            Double PBv = Double.parseDouble((String) getColumnByIndex(indexPB).get(i));
+            Double PBv = colPB.get(i);
 
             mapPB
-                    .computeIfAbsent(identifiant, k -> new HashMap<>())
+                    .computeIfAbsent(contrat, k -> new HashMap<>())
                     .put(formattedDate, PBv);
         }
     }
-    public void mapPoliceToSPPrevi() {
-        int identifiantIndex = headers.indexOf("IDENTIFIANT CONTRAT");
-        int spPreviIndex = headers.indexOf("S/P PREVI SANS ICI");
-        int anneesIndex = headers.indexOf("ANNEES");
+    public static void mapPoliceToSPPrevi() {
+        ArrayList<String> colContrat = SPprevi.getColumn("IDENTIFIANT CONTRAT");
+        ArrayList<Integer> colAnnees = SPprevi.getColumn("ANNEES");
+        ArrayList<Double> colPrevi = SPprevi.getColumn("S/P PREVI SANS ICI");
 
-        // Error handling if columns are not found
-        if (identifiantIndex == -1 || spPreviIndex == -1 || anneesIndex == -1) {
-            throw new IllegalArgumentException("Required columns not found in header.");
-        }
-
-        for (int i = 0; i < nrow; i++) {
-            String identifiant = (String) getColumnByIndex(identifiantIndex).get(i);
-            Double annee = (Double) getColumnByIndex(anneesIndex).get(i);
-            Double spPrevi = (Double) getColumnByIndex(spPreviIndex).get(i);
+        for (int i = 0; i < SPprevi.nrow; i++) {
+            String identifiant = colContrat.get(i);
+            Integer annee = colAnnees.get(i);
+            Double spPrevi = colPrevi.get(i);
 
             mapSPprevi
                     .computeIfAbsent(identifiant, k -> new HashMap<>())
@@ -477,7 +474,7 @@ public class DFnew {
         DFnew result = new DFnew();
         result.setColumns(newColumns);
         result.setHeaders(newHeaders);
-
+        result.nrow = mapping.nrow;
         return result;
     }
 }
