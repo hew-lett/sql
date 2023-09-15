@@ -44,7 +44,7 @@ public class App {
     public static String yyyymm = "default";
     public static DF ref_cols;
     public static DF ref_source;
-    public static DF ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
+    public static DF ref_prog = new DF(wd+"ref_Programmes.csv", ';', true);
     public static DF mapping;
     public static DF grille_tarif = new DF(wd + "Grille_Tarifaire.csv",';',(Integer)0);
     public static DF tdb2;
@@ -78,9 +78,12 @@ public class App {
 //    public static List<Base> basesSin = new ArrayList<>();
     public static Map<String, Base> baseMap = new HashMap<>();
     public static Map<String, Basenew> baseMapNew = new HashMap<>();
+    public static Map<String, Basenew> ficMapNew = new HashMap<>();
     public static List<String> statutsForTreatment;
     public static Map<String, String> globalStatutMap = new HashMap<>();
     public static Map<String, String> globalStatutCollect = new HashMap<>();
+    public static Map<String, List<Object>> coefAQmap = new HashMap<>();
+
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
 
@@ -187,8 +190,9 @@ public class App {
                 policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
                 updateStatutDates(base); //global
             }
-            estimate.getUniqueStatutsFromMap();
-            estimate.getUniqueNumPoliceEstimate();
+
+            estimate.getUniqueStatutsFromMap(); // used for triangles
+            estimate.getUniqueNumPoliceEstimate(); // used for nothing (?)
             updateGlobalDatesFromStatutMap();
 
             Base baseFic = new Base(wd + path_fic,map_fic);
@@ -248,6 +252,16 @@ public class App {
         }
 
     }
+    public static void getCoefsAcquisition() throws IOException, ParseException {
+
+        coefAQmap.putAll(TableCoefAcquisition.processDF(new DFnew(wd + "TDB Part 2_Hors France_populated_coef.csv", ';', false, "coefsAQ")));
+        coefAQmap.putAll(TableCoefAcquisition.processDF(new DFnew(wd + "TDB Part 2_France_populated_coef.csv", ';', false, "coefsAQ")));
+
+        // The accumulator now has the combined map from both files
+        System.out.println(FloatArrayDictionary.getTotalArraysPassed() + " total coefs added");
+        System.out.println(FloatArrayDictionary.getUniqueArraysStored() + " unique coefs stored");
+    }
+
     public static boolean isMonthAfterOrEQCurrent(String monthYear) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-yyyy");
         YearMonth inputYearMonth = YearMonth.parse(monthYear, formatter);
@@ -314,14 +328,6 @@ public class App {
             }
         }
         return false;
-    }
-    public static void getCoefsAcquisition() {
-        tdb2 = new DF(wd + "TDB Part 2_Hors France_populated_coef.csv",';',0);
-        new TableCoefAcquisition(tdb2);
-        tdb2 = new DF(wd + "TDB Part 2_France_populated_coef.csv",';',0);
-        new TableCoefAcquisition(tdb2);
-        System.out.println(FloatArrayDictionary.getTotalArraysPassed() + " total coefs added");
-        System.out.println(FloatArrayDictionary.getUniqueArraysStored() + " unique coefs stored");
     }
     // VECTORS
     public static String[] keep_from_array(String[] arr, boolean[] which) {

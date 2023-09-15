@@ -1635,9 +1635,9 @@ public class Base extends DF {
             if ("en cours - en attente de prescription".equals(currentStatut)) {
                 statuts[i] = "en attente de prescription";
             }
-            if (statutMap.containsKey(currentStatut)) {
+            if (globalStatutMap.containsKey(currentStatut)) {
                 // Replace the value in the statut column with the value from the map
-                statuts[i] = statutMap.get(currentStatut);
+                statuts[i] = globalStatutMap.get(currentStatut);
             }
         }
     }

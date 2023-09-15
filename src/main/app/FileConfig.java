@@ -5,14 +5,13 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import static main.app.App.wd;
 
@@ -57,8 +56,9 @@ public class FileConfig {
         Map<Integer, String> data = new HashMap<>();
         for (int j = 2; j < row.getLastCellNum(); j++) {
             Cell cell = row.getCell(j);
+            String value;
             if (cell != null) {
-                String value = switch (cell.getCellType()) {
+                value = switch (cell.getCellType()) {
                     case STRING -> cell.getStringCellValue();
                     case NUMERIC -> {
                         double num = cell.getNumericCellValue();
@@ -68,18 +68,17 @@ public class FileConfig {
                             yield Double.toString(num);
                         }
                     }
-                    default -> null;
+                    default -> "";
                     // Add cases for other types if necessary
                 };
-                if (value != null && !value.isEmpty()) {
-                    data.put(j - 2, value);
-                }
+            } else {
+                value = "";
             }
 
+            data.put(j - 2, value);
         }
         return data;
     }
-
 
     private static final class InstanceHolder {
         private static final FileConfig instance;
@@ -101,11 +100,7 @@ public class FileConfig {
     // Getters
     // Getters
     public ArrayList<String> getColumnNamesToRead(String refFichier) {
-        Map<Integer, String> columnData = columnNamesToRead.get(refFichier);
-        if (columnData == null || columnData.isEmpty()) {
-            return null;
-        }
-        return new ArrayList<>(columnData.values());
+        return getValues(refFichier, columnNamesToRead);
     }
 
     public ArrayList<DFnew.ColTypes> getColumnTypes(String refFichier) {
@@ -113,15 +108,37 @@ public class FileConfig {
         if (colTypes == null || colTypes.isEmpty()) {
             return null;
         }
-        return new ArrayList<>(colTypes.values());
+
+        List<Integer> sortedKeys = new ArrayList<>(colTypes.keySet());
+        Collections.sort(sortedKeys);
+        ArrayList<DFnew.ColTypes> sortedValues = new ArrayList<>();
+        for(Integer key : sortedKeys) {
+            sortedValues.add(colTypes.get(key));
+        }
+
+        return sortedValues;
     }
 
     public ArrayList<String> getColumnNamesAttributed(String refFichier) {
-        Map<Integer, String> columnData = columnNamesAttributed.get(refFichier);
+        return getValues(refFichier, columnNamesAttributed);
+    }
+
+    @Nullable
+    private ArrayList<String> getValues(String refFichier, Map<String, Map<Integer, String>> mapValues) {
+        Map<Integer, String> columnData = mapValues.get(refFichier);
         if (columnData == null || columnData.isEmpty()) {
             return null;
         }
-        return new ArrayList<>(columnData.values());
+
+        List<Integer> sortedKeys = new ArrayList<>(columnData.keySet());
+        Collections.sort(sortedKeys);
+        ArrayList<String> sortedValues = new ArrayList<>();
+        for(Integer key : sortedKeys) {
+            sortedValues.add(columnData.get(key));
+        }
+
+        return sortedValues;
     }
+
 
 }

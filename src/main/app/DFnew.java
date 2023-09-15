@@ -1,12 +1,17 @@
 package main.app;
 
 import java.nio.charset.Charset;
+import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
-
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -38,6 +43,7 @@ import static main.app.Synthese.roundToFourDecimals;
 import static main.app.Synthese.roundToTwoDecimals;
 public class DFnew {
     public static final String wd = "E:/202305/wd/";
+    protected String path;
     protected int nrow = 0;
     protected ArrayList<Column<?>> columns;
     protected ArrayList<String> headers;
@@ -55,7 +61,6 @@ public class DFnew {
     public static DFnew refSource;
     public static DFnew mapping;
     public static DFnew SPprevi;
-    public static DFnew coefsAQ;
     public static DFnew mapStatuts;
     static {
         try {
@@ -65,8 +70,8 @@ public class DFnew {
             refSource = new DFnew(wd + "ref_Renta.xlsx","source",false,"refSource");
             mapping = new DFnew(wd + "mapping.xlsx","Mapping entrant sinistres",false,"mapping");
             SPprevi = new DFnew(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1",false,"SPprevi");
-            coefsAQ = new DFnew(wd + "TDB Part 2_Hors France_populated_coef.csv",';',false,"coefsAQ");
             mapStatuts = new DFnew(wd + "statuts.xlsx","Statuts",false,"mapStatuts");
+            mergeRowsOnContratRefProg();
             populateGlobalStatutMap();
             mapPoliceToPB();
             mapPoliceToSPPrevi();
@@ -74,7 +79,8 @@ public class DFnew {
             throw new RuntimeException(e);
         }
     }
-
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd/MM/yyyy");
+    private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.##"); // Adjust the number of # after the point for precision.
     public DFnew() {
 
     }
@@ -95,8 +101,8 @@ public class DFnew {
             columnNamesToRead = config.getColumnNamesToRead(refFichier);
             columnTypes = config.getColumnTypes(refFichier);
             columnNamesAttributed = config.getColumnNamesAttributed(refFichier);
+            validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
         }
-        validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
 
         columns = new ArrayList<>();
         headers = new ArrayList<>();
@@ -143,8 +149,7 @@ public class DFnew {
                 }
                 columns.add(new Column<>(colData, colType));
             } else {
-                // Handle the case where the expected header doesn't exist in the data.
-                // Either skip, log an error or throw an exception based on your requirements.
+               throw new RuntimeException("column " + expectedHeader + " not found for base: " + csvFilePath);
             }
         }
     }
@@ -275,7 +280,6 @@ public class DFnew {
         }
     }
 
-
     // COLUMNS
     @SuppressWarnings("unchecked")
     public <T> ArrayList<T> getColumn(String header) {
@@ -353,6 +357,36 @@ public class DFnew {
     public <T> void addColumn(String header, ArrayList<T> columnData, ColTypes type) {
         columns.add(new Column<T>(columnData, type));
         headers.add(header);
+    }
+    public void deleteRows(ArrayList<Integer> rowsToDelete) {
+        // Sort rowsToDelete in descending order to avoid shifting index issues
+        rowsToDelete.sort(Collections.reverseOrder());
+
+        // Iterate over every column and delete the rows
+        for (int col = 0; col < this.columns.size(); col++) {
+            ArrayList<Object> currentColumn = getColumnByIndex(col);
+
+            for (Integer rowIndex : rowsToDelete) {
+                if (rowIndex >= 0 && rowIndex < currentColumn.size()) {
+                    currentColumn.remove(rowIndex.intValue());
+                }
+            }
+        }
+        nrow = nrow - rowsToDelete.size();
+    }
+    void mergeRows(ArrayList<Integer> rowsToDelete, int i, int origin) {
+        for (int col = 0; col < this.columns.size(); col++) {
+            if(columns.get(col).getType().equals(DBL)) {
+                Double valueI = (Double) getColumnByIndex(col).get(i);
+                Double valueOrigin = (Double) getColumnByIndex(col).get(origin);
+                this.getColumnByIndex(col).set(origin, valueI + valueOrigin);
+            } else if(columns.get(col).getType().equals(INT)) {
+                Integer valueI = (Integer) getColumnByIndex(col).get(i);
+                Integer valueOrigin = (Integer) getColumnByIndex(col).get(origin);
+                this.getColumnByIndex(col).set(origin, valueI + valueOrigin);
+            }
+        }
+        rowsToDelete.add(i);
     }
 
     // PRINTING
@@ -476,5 +510,102 @@ public class DFnew {
         result.setHeaders(newHeaders);
         result.nrow = mapping.nrow;
         return result;
+    }
+    public static void mergeRowsOnContratRefProg() {
+        Map<String, Integer> contratToRowIndex = new HashMap<>();
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+
+        ArrayList<String> contratColumn = refProg.getColumn("Contrat");
+        ArrayList<Date> dateDebutColumn = refProg.getColumn("Date Debut");
+        ArrayList<Date> dateFinColumn = refProg.getColumn("Date Fin");
+
+        for (int i = 0; i < refProg.nrow; i++) {
+            String contrat = contratColumn.get(i);
+            Date dateDebut = dateDebutColumn.get(i);
+            Date dateFin = dateFinColumn.get(i);
+
+            // If contrat already processed before
+            if (contratToRowIndex.containsKey(contrat)) {
+                int existingRowIndex = contratToRowIndex.get(contrat);
+                Date existingDateDebut = dateDebutColumn.get(existingRowIndex);
+                Date existingDateFin = dateFinColumn.get(existingRowIndex);
+
+                // Update Date Debut and Date Fin if the current date is outside the existing range
+                if (dateDebut.before(existingDateDebut)) {
+                    dateDebutColumn.set(existingRowIndex, dateDebut);
+                }
+
+                if (dateFin.after(existingDateFin)) {
+                    dateFinColumn.set(existingRowIndex, dateFin);
+                }
+
+                // Mark the current row for deletion
+                rowsToDelete.add(i);
+            } else {
+                // If this contrat is seen for the first time, just store its row index
+                contratToRowIndex.put(contrat, i);
+            }
+        }
+
+        // Delete marked rows
+        refProg.deleteRows(rowsToDelete);
+    }
+
+
+    // CSV WRITER
+    protected void saveToCsvWithSuffix(String suffix) throws IOException {
+        Path originalPath = Paths.get(this.path);
+        String filenameWithoutExtension = originalPath.getFileName().toString().replaceFirst("[.][^.]+$", "");
+        String fileExtension = originalPath.toString().substring(originalPath.toString().lastIndexOf(".") + 1);
+        String newPath = originalPath.getParent() + "/" + filenameWithoutExtension + suffix + "." + fileExtension;
+
+        try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(newPath), StandardCharsets.UTF_8)) {
+            // Write BOM for UTF-8
+            writer.write('\ufeff');
+
+            // If there are subheaders, write them
+            if (subheaders != null && !subheaders.isEmpty()) {
+                writer.write(subheaders.stream().map(sh -> sh != null ? sh : "").collect(Collectors.joining(";")));
+                writer.newLine();
+            }
+
+            // Write headers
+            writer.write(String.join(";", headers));
+            writer.newLine();
+
+            // Write data
+            for (int i = 0; i < nrow; i++) {
+                List<String> row = getRow(i).stream().map(item -> {
+                    if (item instanceof Date) {
+                        return DATE_FORMAT.format((Date) item);
+                    } else if (item instanceof Double) {
+                        return DECIMAL_FORMAT.format(item).replace('.', ','); // Replace period with comma
+                    }
+                    return item != null ? item.toString() : "";
+                }).collect(Collectors.toList());
+
+                writer.write(String.join(";", row));
+                writer.newLine();
+            }
+        }
+    }
+    private void writeLine(BufferedWriter writer, List<?> values) throws IOException {
+        StringBuilder sb = new StringBuilder();
+
+        boolean firstValue = true;
+        for (Object value : values) {
+            if (!firstValue) {
+                sb.append(";");
+            }
+
+            if (value != null) {
+                sb.append(value);
+            }
+
+            firstValue = false;
+        }
+
+        writer.write(sb.toString());
+        writer.newLine();
     }
 }

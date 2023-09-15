@@ -2584,7 +2584,7 @@ public class DF implements Serializable {
 
         for (int i = 0; i < nrow; i++) {
             String identifiant = (String) SPprevi.c(identifiantIndex)[i];
-            Double annee = (Double) SPprevi.c(anneesIndex)[i];
+            Integer annee = (Integer) SPprevi.c(anneesIndex)[i];
             Double spPrevi = (Double) SPprevi.c(spPreviIndex)[i];
 
             mapSPprevi

@@ -21,8 +21,10 @@ import static main.app.Base.STATUT_FICTIF_FIC;
 
 public class Estimate extends DF {
     String key;
-    public String[] subheader;
     public List<Date> headerCalcul;
+
+    public String[] subheader;
+
     int baseNcol = 0;
     int lastAppendSize = 0;
     String[] totalPA;
@@ -990,39 +992,6 @@ public class Estimate extends DF {
         }
     }
 
-    public void deleteRows(ArrayList<Integer> rowsToDelete) {
-        if (rowsToDelete.isEmpty()) {
-            return;
-        }
-
-        // Sort in descending order to ensure that we're removing indices from the end first
-        rowsToDelete.sort((a, b) -> b - a);
-
-        // Iterate over columns in df
-        for (int colIndex = 0; colIndex < ncol; colIndex++) {
-            Object[] column = df.get(colIndex);
-            for (int rowIndex : rowsToDelete) {
-                if (rowIndex >= 0 && rowIndex < nrow) {
-                    column[rowIndex] = null; // Mark for deletion
-                }
-            }
-
-            // Create a new column without the null (deleted) values
-            Object[] newColumn = new Object[nrow - rowsToDelete.size()];
-            int newIndex = 0;
-            for (Object value : column) {
-                if (value != null) {
-                    newColumn[newIndex++] = value;
-                }
-            }
-
-            // Replace the old column with the new column in df
-            df.set(colIndex, newColumn);
-        }
-
-        // Update nrow since we've removed rows
-        nrow -= rowsToDelete.size();
-    }
     public void formatDP() {
         SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
 
@@ -1446,7 +1415,7 @@ public class Estimate extends DF {
             String dateKey = (String) this.c(ind_datePeriode)[i];
             String combinedKey = contractKey + "_" + dateKey;
 
-            List<Object> values = TableCoefAcquisition.getResultMap().get(combinedKey.toLowerCase());
+            List<Object> values = coefAQmap.get(combinedKey.toLowerCase());
             if (values == null) {
                 // Update the count for the contractKey in the warning map.
                 warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
@@ -1520,7 +1489,7 @@ public class Estimate extends DF {
             int month = Integer.parseInt(parts[0]);
             String yearKey = parts[1];
 
-            List<Object> values = TableCoefAcquisition.getResultMap().get(combinedKey.toLowerCase());
+            List<Object> values = coefAQmap.get(combinedKey.toLowerCase());
             if (values == null) {
                 // Update the count for the contractKey in the warning map.
                 warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
@@ -1706,9 +1675,9 @@ public class Estimate extends DF {
 
             // Extract year from the date
             String[] dateParts = date.split("-");
-            double year = Double.parseDouble(dateParts[1]);
+            double year = Integer.parseInt(dateParts[1]);
 
-            Map<Double, Double> spPreviMap = mapSPprevi.get(contrat);
+            Map<Integer, Double> spPreviMap = mapSPprevi.get(contrat);
             if (spPreviMap != null) {
                 colSPprevi[i] = spPreviMap.getOrDefault(year, 0.0);
             } else {

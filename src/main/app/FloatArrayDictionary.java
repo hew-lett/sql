@@ -1,19 +1,26 @@
 package main.app;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
+import java.util.stream.Collectors;
+
 public class FloatArrayDictionary {
-    private static final HashMap<String, float[]> uniqueArrays = new HashMap<>();
+    private static final HashMap<String, ArrayList<Float>> uniqueArrays = new HashMap<>();
     private static int totalArraysPassed = 0;
     private static int uniqueArraysStored = 0;
 
-    public static float[] getOrAdd(float[] array) {
+    public static ArrayList<Float> getOrAdd(ArrayList<Float> list) {
         totalArraysPassed++;
 
-        String key = Arrays.toString(array);  // This creates a string representation of the array
+        // Convert the list to a string representation
+        String key = list.stream()
+                .map(String::valueOf)
+                .collect(Collectors.joining(","));
+
         if (!uniqueArrays.containsKey(key)) {
-            uniqueArrays.put(key, array);
+            uniqueArrays.put(key, list);
             uniqueArraysStored++;
         }
         return uniqueArrays.get(key);
@@ -27,4 +34,5 @@ public class FloatArrayDictionary {
         return uniqueArraysStored;
     }
 }
+
 
