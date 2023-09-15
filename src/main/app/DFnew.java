@@ -357,7 +357,16 @@ public class DFnew {
     public <T> void addColumn(String header, ArrayList<T> columnData, ColTypes type) {
         columns.add(new Column<T>(columnData, type));
         headers.add(header);
+        if(subheaders != null) {
+            subheaders.add(null);  // Adding null for subheader only if it makes sense
+        }
     }
+    public <T> void addColumnWithSubheader(String header, String subheader, ArrayList<T> columnData, ColTypes type) {
+        columns.add(new Column<T>(columnData, type));
+        headers.add(header);
+        subheaders.add(subheader);  // Adding the provided subheader
+    }
+
     public void deleteRows(ArrayList<Integer> rowsToDelete) {
         // Sort rowsToDelete in descending order to avoid shifting index issues
         rowsToDelete.sort(Collections.reverseOrder());

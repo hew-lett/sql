@@ -11,11 +11,12 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 import static main.app.App.*;
-import static main.app.Base.STATUT_FICTIF_FIC;
+import static main.app.Basenew.STATUT_FICTIF_FIC;
 import static main.app.Basenew.MAX_PREVI_DATE;
 import static main.app.Basenew.MIN_PREVI_DATE;
-import static main.app.Baser.MAX_ANNEE;
-import static main.app.Baser.MIN_ANNEE;
+import static main.app.Basenew.MAX_ANNEE;
+import static main.app.Basenew.MIN_ANNEE;
+import static main.app.Basenew.yearN;
 import static main.app.DFnew.ColTypes.*;
 
 public class Estimatenew extends DFnew {
@@ -94,7 +95,7 @@ public class Estimatenew extends DFnew {
         estimate.appendAllPivotsSin();
         st.printElapsedTime();
 
-
+        estimate.addProvisions();
         estimate.saveToCsvWithSuffix("_FDT");
         st.printElapsedTime();
     }
@@ -773,6 +774,98 @@ public class Estimatenew extends DFnew {
             appendPivotTableYearlyFicN(baseFic, yearlyLabelN);
             appendPivotTableTotalFicN(baseFic, totalLabelN);
         }
+    }
+    private void populateColumnsFromMaps(String label, Map<String, Double> coutMoyenMap,Map<String, Map<Date, List<Integer>>> nMap,
+                                         ArrayList<String> contratColumn,ArrayList<Date> datePeriodeColumn,ArrayList<Double> totalProvisionColumn) {
+        // 1. Populate "Cout moyen" column
+        ArrayList<Double> coutMoyenColumn = new ArrayList<>();
+        for (int i = 0; i < nrow; i++) {
+            String contratValue = contratColumn.get(i);
+            Double coutMoyenValue = coutMoyenMap.getOrDefault(contratValue, null);
+            coutMoyenColumn.add(coutMoyenValue);
+        }
+        addColumn("Cout moyen " + label, coutMoyenColumn, ColTypes.DBL);
+
+        // 2. Populate the annual distribution columns
+        List<ArrayList<Double>> distributionColumns = new ArrayList<>();
+        for (int j = 0; j < yearN; j++) {
+            distributionColumns.add(new ArrayList<>());
+        }
+        for (int i = 0; i < nrow; i++) {
+            String contrat = contratColumn.get(i);
+            Date datePeriode = datePeriodeColumn.get(i);
+
+            // Check if contrat exists in the nMap
+            if(nMap.containsKey(contrat)) {
+                List<Integer> nForDate = nMap.get(contrat).get(datePeriode);
+
+                // Additionally, check if the datePeriode exists for that contrat
+                if (nForDate != null) {
+                    Double coutMoyen = coutMoyenColumn.get(i);
+                    for (int j = 0; j < yearN; j++) {
+                        distributionColumns.get(j).add(nForDate.get(j) * coutMoyen);
+                    }
+                } else {
+                    // Handle cases where datePeriode doesn't exist for a contrat
+                    for (int j = 0; j < yearN; j++) {
+                        distributionColumns.get(j).add(0.0); // or any default value you want
+                    }
+                }
+            } else {
+                // Handle cases where contrat doesn't exist in the map
+                for (int j = 0; j < yearN; j++) {
+                    distributionColumns.get(j).add(0.0); // or any default value you want
+                }
+            }
+        }
+
+        for (int j = 0; j < yearN; j++) {
+            int year = MIN_ANNEE + j;
+            if (j == 0) {
+                addColumnWithSubheader(String.valueOf(year), "Provision " + label, distributionColumns.get(j), ColTypes.DBL);
+            } else {
+                addColumn(String.valueOf(year), distributionColumns.get(j), ColTypes.DBL);
+            }
+        }
+
+        // 3. Add the "Total" column
+        ArrayList<Double> totalColumn = new ArrayList<>();
+        for (int i = 0; i < nrow; i++) {
+            double total = 0;
+            for (ArrayList<Double> yearly : distributionColumns) {
+                total += yearly.get(i);
+            }
+            totalColumn.add(total);
+
+            if (i < totalProvisionColumn.size()) {
+                totalProvisionColumn.set(i, totalProvisionColumn.get(i) + total);
+            } else {
+                totalProvisionColumn.add(total);
+            }
+        }
+        addColumn("Total", totalColumn, ColTypes.DBL);
+    }
+
+    public void addProvisions() {
+        Map<String, Double> coutMoyenEnCoursMap = new HashMap<>();
+        Map<String, Double> coutMoyenEnCoursAccepteMap = new HashMap<>();
+        Map<String, Map<Date, List<Integer>>> nEnCoursMap = new HashMap<>();
+        Map<String, Map<Date, List<Integer>>> nEnCoursAccepteMap = new HashMap<>();
+        for (Basenew base : baseMapNew.values()) {
+            nEnCoursMap.put(base.numPolice, base.nEnCours);
+            nEnCoursAccepteMap.put(base.numPolice, base.nEnCoursAccepte);
+            coutMoyenEnCoursMap.put(base.numPolice, base.coutMoyenEnCours);
+            coutMoyenEnCoursAccepteMap.put(base.numPolice, base.coutMoyenEnCoursAccepte);
+        }
+
+        ArrayList<String> contratColumn = getColumn("Contrat");
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+
+        ArrayList<Double> totalProvisionColumn = new ArrayList<>();
+        populateColumnsFromMaps("En Cours", coutMoyenEnCoursMap, nEnCoursMap, contratColumn, datePeriodeColumn,totalProvisionColumn);
+        populateColumnsFromMaps("En Cours Accepté", coutMoyenEnCoursAccepteMap, nEnCoursAccepteMap, contratColumn, datePeriodeColumn,totalProvisionColumn);
+        addColumn("Total Provision", totalProvisionColumn, ColTypes.DBL);
+
     }
 
 }

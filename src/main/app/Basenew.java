@@ -20,8 +20,6 @@ import java.io.FileOutputStream;
 import java.util.Map;
 
 import static main.app.App.*;
-import static main.app.Baser.MAX_ANNEE;
-import static main.app.Baser.MIN_ANNEE;
 import static main.app.DFnew.ColTypes.STR;
 import static main.app.Estimatenew.minMaxDateSousMapEstimate;
 
@@ -34,6 +32,9 @@ public class Basenew extends DFnew {
     public static final String STATUT_FICTIF_FIC = "Comptable";
     public static final char DEFAULT_DELIMITER = ';';
     public static final char TAB_DELIMITER = '\t';
+    static final int MAX_ANNEE = 2026;
+    static final int MIN_ANNEE = 2013;
+    static final int yearN = MAX_ANNEE - MIN_ANNEE + 1;
     public static final Date MAX_PREVI_DATE;
     public static final Date MIN_PREVI_DATE;
     static final String CURRENT_MONTH;
@@ -1141,8 +1142,6 @@ public class Basenew extends DFnew {
         ArrayList<Date> dateSousColumn = getColumn("date_sous");
         ArrayList<Integer> yearSurvColumn = getColumn("year_surv");
         ArrayList<String> statutColumn = getColumn("statut");
-
-        int yearN = MAX_ANNEE - MIN_ANNEE + 1;
 
         for (int i = 0; i < nrow; i++) {
             String statut = statutColumn.get(i);
