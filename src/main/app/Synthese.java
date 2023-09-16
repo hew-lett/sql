@@ -2498,7 +2498,7 @@ public class Synthese {
             }
             double sum = 0;
             int sumN = 0;
-            Object[] datesSousBase = currentBase.c("date_sous");
+            Object[] datesSousBase = currentBase.c(DATE_SOUS);
             Object[] montantsIP = currentBase.c("montant_IP");
             for (int j = 0; j < currentBase.nrow; j++) {
                 // Ensure proper typecasting
@@ -2547,8 +2547,8 @@ public class Synthese {
             }
             double sum = 0;
             int sumN = 0;
-            Object[] datesSousBase = baseFic.c("date_sous");
-            Object[] contratsFic = baseFic.c("num_police");
+            Object[] datesSousBase = baseFic.c(DATE_SOUS);
+            Object[] contratsFic = baseFic.c(POLICE);
             Object[] montantsIP = baseFic.c("montant_IP");
             for (int j = 0; j < baseFic.nrow; j++) {
                 // Ensure proper typecasting

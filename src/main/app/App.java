@@ -83,7 +83,13 @@ public class App {
     public static Map<String, String> globalStatutMap = new HashMap<>();
     public static Map<String, String> globalStatutCollect = new HashMap<>();
     public static Map<String, ArrayList<Float>> coefAQmap = new HashMap<>();
-
+    public static final String POLICE = "police";
+    public static final String DATE_SOUS = "date_sous";
+    public static final String DATE_SURV = "date_surv";
+    public static final String DATE_DECLA = "date_decla";
+    public static final String MONTANT = "montant";
+    public static final String STATUT = "statut";
+    public static final String YEAR_SURV = "ys_added";
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
 

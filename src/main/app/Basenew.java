@@ -21,6 +21,7 @@ import java.util.Map;
 
 import static main.app.App.*;
 import static main.app.DFnew.ColTypes.STR;
+import static main.app.Estimatenew.gapsMap;
 import static main.app.Estimatenew.minMaxDateSousMapEstimate;
 
 public class Basenew extends DFnew {
@@ -473,6 +474,7 @@ public class Basenew extends DFnew {
     private void dataTraitementSin() {
         this.cleanStatut();
         this.date_autofill();
+        this.repairGapsDateSousSIN();
         this.addYearColumns();
         this.createPivotTables();
         this.populateUniqueStatuts();
@@ -484,6 +486,7 @@ public class Basenew extends DFnew {
     }
     private void dataTraitementFic() {
         date_autofill_agg();
+        repairGapsDateSousFIC();
         addYearColumns();
         addStatutFictifFic();
         populateUniqueNumPoliceValues();
@@ -493,18 +496,9 @@ public class Basenew extends DFnew {
         populateNumPoliceDateRangeMap();
     }
     public void addYearColumns() {
-        ArrayList<Date> dateSousColumn = getColumn("date_sous");
-        ArrayList<Date> dateSurvColumn = getColumn("date_surv");
+        ArrayList<Date> dateSurvColumn = getColumn(DATE_SURV);
 
-        ArrayList<Integer> yearSousColumn = new ArrayList<>();
         ArrayList<Integer> yearSurvColumn = new ArrayList<>();
-
-        // Extracting the year from date_sous
-        for (Date date : dateSousColumn) {
-            Calendar calendar = Calendar.getInstance();
-            calendar.setTime(date);
-            yearSousColumn.add(calendar.get(Calendar.YEAR));
-        }
 
         // Extracting the year from date_surv
         for (Date date : dateSurvColumn) {
@@ -513,17 +507,11 @@ public class Basenew extends DFnew {
             yearSurvColumn.add(calendar.get(Calendar.YEAR));
         }
 
-        // Create new columns and populate them
-        Column<Integer> yearSousNewColumn = new Column<>(yearSousColumn, ColTypes.INT);
         Column<Integer> yearSurvNewColumn = new Column<>(yearSurvColumn, ColTypes.INT);
 
-        // Add to columns list
-        columns.add(yearSousNewColumn);
         columns.add(yearSurvNewColumn);
 
-        // Add headers
-        headers.add("year_sous");
-        headers.add("year_surv");
+        headers.add(YEAR_SURV);
     }
     private ArrayList<Object> getReferentialRow(String key) {
         for (int rowIndex = 0; rowIndex < refCols.nrow; rowIndex++) {
@@ -620,7 +608,7 @@ public class Basenew extends DFnew {
         return input.replace("é", "e");
     }
     public void cleanStatut() {
-        ArrayList<String> statuts = this.getColumn("statut");
+        ArrayList<String> statuts = this.getColumn(STATUT);
         for (int i = 0; i < statuts.size(); i++) {
             if(statuts.get(i) != null) {
                 String currentStatut = statuts.get(i).replace("–", "-");
@@ -633,11 +621,11 @@ public class Basenew extends DFnew {
         }
     }
     public void cleanNumPoliceGS() {
-        ArrayList<String> polices = this.getColumn("num_police");
+        ArrayList<String> polices = this.getColumn(POLICE);
         polices.replaceAll(value -> value.replace(" ", ""));
     }
     private void cleanNumPoliceDBP() {
-        ArrayList<String> polices = getColumn("num_police");
+        ArrayList<String> polices = getColumn(POLICE);
         for (int i = 0; i < nrow; i++) {
             if (polices.get(i).equals("ICICDBP17")) {
                 polices.set(i, "ICIDBP17");
@@ -647,11 +635,11 @@ public class Basenew extends DFnew {
 
     void date_autofill() {
         // Indices for required columns in the current DF
-        int indexDateSurv = headers.indexOf("date_surv");
-        int indexDateSous = headers.indexOf("date_sous");
-        ArrayList<Date> colDateSurv = getColumn("date_surv");
-        ArrayList<Date> colDateSous = getColumn("date_sous");
-        ArrayList<Date> colDateDecla = getColumn("date_decla");
+        int indexDateSurv = headers.indexOf(DATE_SURV);
+        int indexDateSous = headers.indexOf(DATE_SOUS);
+        ArrayList<Date> colDateSurv = getColumn(DATE_SURV);
+        ArrayList<Date> colDateSous = getColumn(DATE_SOUS);
+        ArrayList<Date> colDateDecla = getColumn(DATE_DECLA);
 
         // Indices for required columns in the refProg DF
         ArrayList<String> colContrat = refProg.getColumn("Contrat");
@@ -698,12 +686,12 @@ public class Basenew extends DFnew {
         }
     }
     void date_autofill_agg() {
-        int indexDateSurv = headers.indexOf("date_surv");
-        int indexDateSous = headers.indexOf("date_sous");
-        ArrayList<Date> colDateSurv = getColumn("date_surv");
-        ArrayList<Date> colDateSous = getColumn("date_sous");
-        ArrayList<Date> colDateDecla = getColumn("date_decla");
-        ArrayList<String> colPolice = getColumn("num_police");
+        int indexDateSurv = headers.indexOf(DATE_SURV);
+        int indexDateSous = headers.indexOf(DATE_SOUS);
+        ArrayList<Date> colDateSurv = getColumn(DATE_SURV);
+        ArrayList<Date> colDateSous = getColumn(DATE_SOUS);
+        ArrayList<Date> colDateDecla = getColumn(DATE_DECLA);
+        ArrayList<String> colPolice = getColumn(POLICE);
 
         // Indices for required columns in the refProg DF
         ArrayList<String> colContrat = refProg.getColumn("Contrat");
@@ -785,7 +773,47 @@ public class Basenew extends DFnew {
             repairDates(indexDateSurv, indexDateSous, colDateSurv, colDateSous, colDateDecla, i, dateMinSous, dateMaxSous, dateMinSurv, dateMaxSurv, mensu);
         }
     }
+    public void repairGapsDateSousSIN() {
+        if (gapsMap.containsKey(numPolice)) {
+            Map<Date, Integer> map = gapsMap.get(numPolice);
+            List<Date> dateSousColumn = getColumn(DATE_SOUS);
 
+            for (int i = 0; i < nrow; i++) {
+                Date date = dateSousColumn.get(i);
+                // If the specific date is in the map, adjust it
+                if (map.containsKey(date)) {
+                    int monthsToSubtract = map.get(date);
+
+                    Calendar cal = Calendar.getInstance();
+                    cal.setTime(date);
+                    cal.add(Calendar.MONTH, -monthsToSubtract);  // Subtract the months
+                    dateSousColumn.set(i, cal.getTime());
+                }
+            }
+        }
+    }
+    public void repairGapsDateSousFIC() {
+        List<Date> dateSousColumn = getColumn(DATE_SOUS);
+        List<String> policeColumn = getColumn(POLICE);
+
+        for (int i = 0; i < nrow; i++) {
+            String numPolice = policeColumn.get(i);
+
+            if (gapsMap.containsKey(numPolice)) {
+                Date date = dateSousColumn.get(i);
+
+                // If the specific date of that 'numPolice' is in the map, adjust it
+                if (gapsMap.get(numPolice).containsKey(date)) {
+                    int monthsToSubtract = gapsMap.get(numPolice).get(date);
+
+                    Calendar cal = Calendar.getInstance();
+                    cal.setTime(date);
+                    cal.add(Calendar.MONTH, -monthsToSubtract);  // Subtract the months
+                    dateSousColumn.set(i, cal.getTime());
+                }
+            }
+        }
+    }
     private void repairDates(int indexDateSurv, int indexDateSous, ArrayList<Date> colDateSurv,
                              ArrayList<Date> colDateSous, ArrayList<Date> colDateDecla, int i,
                              Date dateMinSous, Date dateMaxSous, Date dateMinSurv, Date dateMaxSurv, boolean mensu) {
@@ -834,11 +862,11 @@ public class Basenew extends DFnew {
         getColumnByIndex(columnIndex).set(rowIndex,date);
     }
     public void createPivotTables() {
-        List<Double> montant_IPs = getColumn("montant_IP");
-        List<String> statuts = getColumn("statut");
-        List<Date> date_sousArray = getColumn("date_sous");
-        List<Date> date_survArray = getColumn("date_surv");
-        List<Integer> year_survArray = getColumn("year_surv");
+        List<Double> montant_IPs = getColumn(MONTANT);
+        List<String> statuts = getColumn(STATUT);
+        List<Date> date_sousArray = getColumn(DATE_SOUS);
+        List<Date> date_survArray = getColumn(DATE_SURV);
+        List<Integer> year_survArray = getColumn(YEAR_SURV);
 
         for (int i = 0; i < nrow; i++) {
             String statut = statuts.get(i);
@@ -938,12 +966,12 @@ public class Basenew extends DFnew {
 
     }
     public void createPivotTablesFic() {
-        List<Double> montant_IPs = getColumn("montant_IP");
-        List<String> statuts = getColumn("statut");
-        List<String> num_polices = getColumn("num_police");
-        List<Date> date_sousArray = getColumn("date_sous");
-        List<Date> date_survArray = getColumn("date_surv");
-        List<Integer> year_survArray = getColumn("year_surv");
+        List<Double> montant_IPs = getColumn(MONTANT);
+        List<String> statuts = getColumn(STATUT);
+        List<String> num_polices = getColumn(POLICE);
+        List<Date> date_sousArray = getColumn(DATE_SOUS);
+        List<Date> date_survArray = getColumn(DATE_SURV);
+        List<Integer> year_survArray = getColumn(YEAR_SURV);
 
         for (int i = 0; i < nrow; i++) {
             String statut = statuts.get(i);
@@ -1027,10 +1055,10 @@ public class Basenew extends DFnew {
     }
 
     public void populateUniqueStatuts() {
-        uniqueStatuts.addAll(getColumn("statut"));
+        uniqueStatuts.addAll(getColumn(STATUT));
     }
     public void populateUniqueNumPoliceValues() {
-        uniqueNumPoliceValues.addAll(getColumn("num_police"));
+        uniqueNumPoliceValues.addAll(getColumn(POLICE));
     }
     public void populateStatutDateRangeMap() {
         for (String statut : uniqueStatuts) {
@@ -1106,8 +1134,8 @@ public class Basenew extends DFnew {
         double sum = 0.0;
         int count = 0;
 
-        ArrayList<String> statutCol = getColumn("statut");
-        ArrayList<Double> montantCol = getColumn("montant_IP");
+        ArrayList<String> statutCol = getColumn(STATUT);
+        ArrayList<Double> montantCol = getColumn(MONTANT);
         for (int i = 0; i < nrow; i++) {
 
             // Check if the status is not in the excluded list
@@ -1123,8 +1151,8 @@ public class Basenew extends DFnew {
         double sum = 0.0;
         int count = 0;
 
-        ArrayList<String> statutCol = getColumn("statut");
-        ArrayList<Double> montantCol = getColumn("montant_IP");
+        ArrayList<String> statutCol = getColumn(STATUT);
+        ArrayList<Double> montantCol = getColumn(MONTANT);
         for (int i = 0; i < nrow; i++) {
             if (statutCol.get(i).equals("Terminé - accepté")) {
                 sum += montantCol.get(i);
@@ -1139,9 +1167,9 @@ public class Basenew extends DFnew {
         Map<Date, List<Integer>> finalCount = new HashMap<>();
 
         // Extract the date_sous, year_surv, and statut columns
-        ArrayList<Date> dateSousColumn = getColumn("date_sous");
-        ArrayList<Integer> yearSurvColumn = getColumn("year_surv");
-        ArrayList<String> statutColumn = getColumn("statut");
+        ArrayList<Date> dateSousColumn = getColumn(DATE_SOUS);
+        ArrayList<Integer> yearSurvColumn = getColumn(YEAR_SURV);
+        ArrayList<String> statutColumn = getColumn(STATUT);
 
         for (int i = 0; i < nrow; i++) {
             String statut = statutColumn.get(i);
@@ -1160,19 +1188,19 @@ public class Basenew extends DFnew {
     }
 
     public void addStatutFictifSin() {
-        int indStatut = headers.indexOf("statut");
+        int indStatut = headers.indexOf(STATUT);
         if (indStatut == -1) {
             ArrayList<String> totalValues = new ArrayList<>(Collections.nCopies(nrow, "Total"));
-            addColumn("statut", totalValues, STR);
+            addColumn(STATUT, totalValues, STR);
         }
     }
     public void addStatutFictifFic() {
-        int indStatut = headers.indexOf("statut");
+        int indStatut = headers.indexOf(STATUT);
         if (indStatut != -1) {
             columns.remove(indStatut);
         }
         ArrayList<String> totalValues = new ArrayList<>(Collections.nCopies(nrow, STATUT_FICTIF_FIC));
-        addColumn("statut", totalValues, STR);
+        addColumn(STATUT, totalValues, STR);
     }
     public static String getFilenameWithoutExtension(String fullPath) {
         String filename = new java.io.File(fullPath).getName();
@@ -1190,7 +1218,7 @@ public class Basenew extends DFnew {
         // Create a header row
         Row headerRow = sheet.createRow(0);
         Cell headerCell1 = headerRow.createCell(0);
-        headerCell1.setCellValue("Statut");
+        headerCell1.setCellValue(STATUT);
         Cell headerCell2 = headerRow.createCell(1);
         headerCell2.setCellValue("NumPolice");
 

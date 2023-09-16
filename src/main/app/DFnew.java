@@ -314,7 +314,7 @@ public class DFnew {
     }
 
 
-    // COLUMNS
+    // GETTERS
     @SuppressWarnings("unchecked")
     public <T> ArrayList<T> getColumn(String header) {
         int index = headers.indexOf(header);
@@ -382,6 +382,8 @@ public class DFnew {
             return type;
         }
     }
+
+    // SETTERS
     protected void setColumns(ArrayList<Column<?>> columns) {
         this.columns = columns;
     }
@@ -428,6 +430,7 @@ public class DFnew {
         }
     }
 
+    // SORT-DELETE
     protected void trimNullDatePeriodeRows() {
         ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
         ArrayList<Integer> rowsToDelete = new ArrayList<>();
@@ -502,7 +505,58 @@ public class DFnew {
         // Delete the identified rows from the current dataset
         deleteRows(rowsToDelete);
     }
+    public void sortTableByContractAndDate() {
+        List<String> contractColumn = getColumn("Contrat");
+        List<Date> dateColumn = getColumn("Date Periode");
 
+        // Create a list of row indices to sort
+        List<Integer> rowIndices = new ArrayList<>();
+        for (int i = 0; i < nrow; i++) {
+            rowIndices.add(i);
+        }
+
+        // Sort row indices based on the contract and date columns
+        rowIndices.sort(new Comparator<Integer>() {
+            @Override
+            public int compare(Integer row1, Integer row2) {
+                // Compare by contract
+                int contractComparison = contractColumn.get(row1).compareTo(contractColumn.get(row2));
+                if (contractComparison != 0) {
+                    return contractComparison;
+                }
+
+                // If contracts are the same, compare by date
+                Date date1 = dateColumn.get(row1);
+                Date date2 = dateColumn.get(row2);
+
+                // Handling potential nulls in date column
+                if (date1 == null && date2 == null) return 0;
+                if (date1 == null) return -1;
+                if (date2 == null) return 1;
+
+                return date1.compareTo(date2);
+            }
+        });
+
+        // Reorder the rows based on the sorted row indices
+        reorderRows(rowIndices);
+    }
+    private void reorderRows(List<Integer> sortedIndices) {
+        // For each column, create a new list based on the sorted row indices
+        for (int col = 0; col < columns.size(); col++) {
+            List<Object> oldColumn = getColumnByIndex(col);
+            List<Object> newColumn = new ArrayList<>();
+
+            for (Integer index : sortedIndices) {
+                newColumn.add(oldColumn.get(index));
+            }
+
+            // Replace old column data with new sorted data
+            for (int i = 0; i < nrow; i++) {
+                oldColumn.set(i, newColumn.get(i));
+            }
+        }
+    }
     void mergeRows(ArrayList<Integer> rowsToDelete, int i, int origin) {
         for (int col = 0; col < this.columns.size(); col++) {
             if(columns.get(col).getType().equals(DBL)) {
@@ -729,7 +783,6 @@ public class DFnew {
             }
         }
     }
-
     // Helper method to create a map for direct lookups
     private Map<String, Integer> createMapFromTable(DFnew table) {
         Map<String, Integer> map = new HashMap<>();

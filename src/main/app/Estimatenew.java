@@ -39,6 +39,7 @@ public class Estimatenew extends DFnew {
     private static final List<String> allYearHeaders = new ArrayList<>();
     private static final List<Date> allDates = generateAllDatesAndHeaders();
     private static final List<Integer> allYears = generateAllYearsAndHeaders();
+    public static final Map<String, Map<Date, Integer>> gapsMap = new HashMap<>();
 
     public static void main(String[] args) throws Exception {
         Stopwatch st = new Stopwatch();
@@ -174,10 +175,8 @@ public class Estimatenew extends DFnew {
         generateMinMaxDateSousMap();
         mergeRegul();
         mergeDBP();
-
-//        baseNcol = ncol;
-//        mask_col = new boolean[ncol];
-//        Arrays.fill(mask_col, true);
+        sortTableByContractAndDate();
+        findDateGapsFromLastAvailable();
     }
     private void transformDatePeriodeColumn() {
         SimpleDateFormat dateFormatter = new SimpleDateFormat("dd-MM-yyyy");
@@ -981,5 +980,100 @@ public class Estimatenew extends DFnew {
         cal.set(Calendar.SECOND, 0);
         cal.set(Calendar.MILLISECOND, 0);
        return cal.getTime();
+    }
+    public void findDateGaps() {
+
+        List<String> contractColumn = getColumn("Contrat");
+        List<Date> dateColumn = getColumn("Date Periode");
+
+        String currentContract = null;
+        Date previousDate = null;
+
+        for (int i = 0; i < nrow; i++) {
+            String contract = contractColumn.get(i);
+            Date date = dateColumn.get(i);
+
+            if (currentContract == null || !currentContract.equals(contract)) {
+                // New contract group
+                currentContract = contract;
+                previousDate = date;
+                continue;
+            }
+
+            long differenceInMonths = monthsBetweenDates(previousDate, date);
+            if (differenceInMonths > 1) {
+                // Found a gap
+                if (!gapsMap.containsKey(contract)) {
+                    gapsMap.put(contract, new HashMap<>());
+                }
+
+                Calendar cal = Calendar.getInstance();
+                cal.setTime(previousDate);
+
+                // Populate the gaps
+                for (int j = 1; j < differenceInMonths; j++) {
+                    cal.add(Calendar.MONTH, 1);  // Increment by 1 month
+                    Date missingDate = cal.getTime();
+                    gapsMap.get(contract).put(missingDate, (int) differenceInMonths - j);
+                }
+            }
+
+            previousDate = date;
+        }
+    }
+    public void findDateGapsFromLastAvailable() {
+        List<String> contractColumn = getColumn("Contrat");
+        List<Date> dateColumn = getColumn("Date Periode");
+
+        String currentContract = null;
+        Date previousDate = null;
+
+        for (int i = 0; i < nrow; i++) {
+            String contract = contractColumn.get(i);
+            Date date = dateColumn.get(i);
+
+            if (currentContract == null || !currentContract.equals(contract)) {
+                // New contract group
+                currentContract = contract;
+                previousDate = date;
+                continue;
+            }
+
+            long differenceInMonths = monthsBetweenDates(previousDate, date);
+            if (differenceInMonths > 1) {
+                // Found a gap
+                if (!gapsMap.containsKey(contract)) {
+                    gapsMap.put(contract, new HashMap<>());
+                }
+
+                Calendar cal = Calendar.getInstance();
+                cal.setTime(previousDate);
+
+                // Populate the gaps
+                for (int j = 1; j < differenceInMonths; j++) {
+                    cal.add(Calendar.MONTH, 1);  // Increment by 1 month
+                    Date missingDate = cal.getTime();
+                    gapsMap.get(contract).put(missingDate, j);  // Using 'j' to count months since the last available date
+                }
+            }
+
+            previousDate = date;
+        }
+    }
+
+    // Helper method to compute the difference in months between two dates
+    private static long monthsBetweenDates(Date date1, Date date2) {
+        Calendar startCalendar = new GregorianCalendar();
+        startCalendar.setTime(date1);
+        Calendar endCalendar = new GregorianCalendar();
+        endCalendar.setTime(date2);
+
+        long monthsBetween = 0;
+        while (startCalendar.before(endCalendar)) {
+            startCalendar.add(Calendar.MONTH, 1);
+            monthsBetween++;
+        }
+
+        return monthsBetween;
     }
 }
