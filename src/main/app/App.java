@@ -82,7 +82,7 @@ public class App {
     public static List<String> statutsForTreatment;
     public static Map<String, String> globalStatutMap = new HashMap<>();
     public static Map<String, String> globalStatutCollect = new HashMap<>();
-    public static Map<String, List<Object>> coefAQmap = new HashMap<>();
+    public static Map<String, ArrayList<Float>> coefAQmap = new HashMap<>();
 
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
@@ -252,16 +252,35 @@ public class App {
         }
 
     }
-    public static void getCoefsAcquisition() throws IOException, ParseException {
+    public static void getCoefsAcquisition() throws IOException, ParseException, ClassNotFoundException {
+        String todayString = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String filePath = wd + todayString + "_coefs.dat";
 
-        coefAQmap.putAll(TableCoefAcquisition.processDF(new DFnew(wd + "TDB Part 2_Hors France_populated_coef.csv", ';', false, "coefsAQ")));
-        coefAQmap.putAll(TableCoefAcquisition.processDF(new DFnew(wd + "TDB Part 2_France_populated_coef.csv", ';', false, "coefsAQ")));
+        File file = new File(filePath);
 
-        // The accumulator now has the combined map from both files
-        System.out.println(FloatArrayDictionary.getTotalArraysPassed() + " total coefs added");
-        System.out.println(FloatArrayDictionary.getUniqueArraysStored() + " unique coefs stored");
+        if (file.exists()) {
+            coefAQmap = (Map<String, ArrayList<Float>>) readObjectFromFile(filePath);
+        } else {
+            coefAQmap.putAll(TableCoefAcquisition.processDF(new DFnew(wd + "TDB Part 2_Hors France_populated_coef.csv", ';', false, "coefsAQ")));
+            coefAQmap.putAll(TableCoefAcquisition.processDF(new DFnew(wd + "TDB Part 2_France_populated_coef.csv", ';', false, "coefsAQ")));
+            // The accumulator now has the combined map from both files
+            System.out.println(FloatArrayDictionary.getTotalArraysPassed() + " total coefs added");
+            System.out.println(FloatArrayDictionary.getUniqueArraysStored() + " unique coefs stored");
+            // Save to file
+            saveObjectToFile(coefAQmap, filePath);
+        }
+    }
+    public static void saveObjectToFile(Object obj, String filePath) throws IOException {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filePath))) {
+            oos.writeObject(obj);
+        }
     }
 
+    public static Object readObjectFromFile(String filePath) throws IOException, ClassNotFoundException {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath))) {
+            return ois.readObject();
+        }
+    }
     public static boolean isMonthAfterOrEQCurrent(String monthYear) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-yyyy");
         YearMonth inputYearMonth = YearMonth.parse(monthYear, formatter);

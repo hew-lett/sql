@@ -10,6 +10,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
+import static java.lang.Math.min;
 import static main.app.App.*;
 import static main.app.Basenew.STATUT_FICTIF_FIC;
 import static main.app.Basenew.MAX_PREVI_DATE;
@@ -96,6 +97,11 @@ public class Estimatenew extends DFnew {
         st.printElapsedTime();
 
         estimate.addProvisions();
+        st.printElapsedTime();
+
+        estimate.addPrimesAcquises();
+        st.printElapsedTime();
+
         estimate.saveToCsvWithSuffix("_FDT");
         st.printElapsedTime();
     }
@@ -172,23 +178,6 @@ public class Estimatenew extends DFnew {
 //        baseNcol = ncol;
 //        mask_col = new boolean[ncol];
 //        Arrays.fill(mask_col, true);
-    }
-    public void trimNullDatePeriodeRows() {
-        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
-        ArrayList<Integer> rowsToDelete = new ArrayList<>();
-
-        // Start from the end and move to the beginning
-        for (int i = datePeriodeColumn.size() - 1; i >= 0; i--) {
-            if (datePeriodeColumn.get(i) == null) {
-                rowsToDelete.add(i);
-            } else {
-                // Stop once a non-null value is found
-                break;
-            }
-        }
-
-        // Now, delete those rows
-        deleteRows(rowsToDelete);
     }
     private void transformDatePeriodeColumn() {
         SimpleDateFormat dateFormatter = new SimpleDateFormat("dd-MM-yyyy");
@@ -865,7 +854,132 @@ public class Estimatenew extends DFnew {
         populateColumnsFromMaps("En Cours", coutMoyenEnCoursMap, nEnCoursMap, contratColumn, datePeriodeColumn,totalProvisionColumn);
         populateColumnsFromMaps("En Cours Accepté", coutMoyenEnCoursAccepteMap, nEnCoursAccepteMap, contratColumn, datePeriodeColumn,totalProvisionColumn);
         addColumn("Total Provision", totalProvisionColumn, ColTypes.DBL);
-
     }
+    public void addPrimesAcquises() {
+        appendPAmensuel(true);
+        appendPAsums();
+    }
+    public void appendPAmensuel(boolean avecICI) {
+        ArrayList<Date> dateColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+        String primeColumnName;
+        if (avecICI) {
+            primeColumnName = "MONTANT TOTAL NET COMPAGNIE";
+        } else {
+            primeColumnName = "MONTANT TOTAL PRIME ASSUREUR";
+        }
+        ArrayList<Double> primeColumn = getColumn(primeColumnName);
 
+        addLabeledBlock(allDateHeaders,"Primes Acquises mensuel", DBL);
+
+        int tableBegin = headers.size() - allDates.size();
+
+        // Create a map to store contractKey and its corresponding count of missing dateKeys.
+        Map<String, List<Date>> warningMap = new HashMap<>();
+        for (int i = 0; i < nrow; i++) {
+            String contrat = contratColumn.get(i);
+            Date date = dateColumn.get(i);
+
+            String combinedKey = contrat.toLowerCase() + "_" + date;
+            ArrayList<Float> coefs = coefAQmap.get(combinedKey);
+            if (coefs == null) {
+                warningMap.computeIfAbsent(contrat, k -> new ArrayList<>()).add(date);
+                continue;
+            }
+
+            Double prime = primeColumn.get(i);
+
+            int coefBegin = allDates.indexOf(date);
+            if (coefBegin >= 0) {
+                int reste = min(allDates.size() - coefBegin, coefs.size());
+                coefBegin += tableBegin;
+                for (int iterCoef = 0; iterCoef < reste; iterCoef++) {
+                    Float coef = coefs.get(iterCoef);
+                    if (coef > 0) {
+                        getColumnByIndex(coefBegin + iterCoef).set(i, prime * coef);
+                    }
+                }
+            }
+        }
+        // print warnings
+        for (Map.Entry<String, List<Date>> entry : warningMap.entrySet()) {
+            String contrat = entry.getKey();
+            List<Date> missingDates = entry.getValue();
+
+            System.out.println("Contrat: " + contrat);
+            System.out.println("Missing Dates:");
+            for (Date date : missingDates) {
+                System.out.println(date);
+            }
+            System.out.println("-------------"); // Separator for clarity
+        }
+    }
+    public void appendPAsums() {
+        int tableBegin = columns.size();
+        addLabeledBlock(allYearHeaders,"Primes Acquises annuel",DBL);
+        addEmptyColumn("Total",DBL);
+        addEmptyColumn("Prime Acquise à date",DBL); // Added this column
+
+        // Step 1: Create a map to store the number of months for each year
+        Map<Integer, Integer> monthsPerYear = new HashMap<>();
+
+        Date thisMonth = thisMonth();
+
+        // Step 2: Iterate over all dates
+        int totalMonthsTillNow = 0;
+        for (Date date : allDates) {
+            int year = getYearFromDate(date);
+            monthsPerYear.put(year, monthsPerYear.getOrDefault(year, 0) + 1);
+
+            if (!date.after(thisMonth)) {
+                totalMonthsTillNow++;
+            }
+        }
+        // For each row
+        for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+            double rowTotal = 0;
+            double primeToDate = 0;
+            int monthColumnsBegin = tableBegin - allDates.size();
+            int processedMonths = 0; // Track the number of months processed
+
+            for (int yearIndex = 0; yearIndex < allYears.size(); yearIndex++) {
+                int yearStart = monthColumnsBegin + processedMonths; // Adjust the year start based on the number of months processed
+
+                int monthsInThisYear = monthsPerYear.get(allYears.get(yearIndex));
+                double yearlyTotal = 0;
+
+                for (int monthOffset = 0; monthOffset < monthsInThisYear; monthOffset++) {
+                    Double monthlyValue = (Double) getColumnByIndex(yearStart + monthOffset).get(rowIndex);
+                    if (monthlyValue != null) {
+                        yearlyTotal += monthlyValue;
+                        if (processedMonths < totalMonthsTillNow) {
+                            primeToDate += monthlyValue;
+                        }
+                    }
+                    processedMonths++;
+                }
+
+                getColumnByIndex(tableBegin + yearIndex).set(rowIndex, yearlyTotal);
+                rowTotal += yearlyTotal;
+            }
+
+            // Set the totals for this row
+            getColumnByIndex(headers.size() - 2).set(rowIndex, rowTotal); // -2 because we added a new column
+            getColumnByIndex(headers.size() - 1).set(rowIndex, primeToDate); // "Prime Acquise à date"
+        }
+    }
+    public int getYearFromDate(Date date) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        return cal.get(Calendar.YEAR);
+    }
+    public Date thisMonth() {
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.DAY_OF_MONTH, 1);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+       return cal.getTime();
+    }
 }

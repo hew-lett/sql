@@ -124,7 +124,6 @@ public class Synthese {
         mapStatut.print();
     }
     public Synthese(String path, char delim, boolean toLower, boolean subHeader, boolean detectColtypes) {
-        System.out.println(path + " debug");
         headers = new ArrayList<>();
         columns = new ArrayList<>();
 

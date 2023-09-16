@@ -1372,13 +1372,13 @@ public class Estimate extends DF {
         addMois();
         subheader[begin] = "Primes acquises mensuel";
         appendUpdateKeepAll(begin);
-        populatePrimesAcquisesMonthTotal();
+//        populatePrimesAcquisesMonthTotal();
 
         begin = ncol;
         addAnnees();
         subheader[begin] = "Primes acquises annuel";
         appendUpdateKeepAll(begin);
-        populatePrimesAcquisesYearly();
+//        populatePrimesAcquisesYearly();
 
         begin = ncol;
         this.df.add(totalPA);
@@ -1393,149 +1393,149 @@ public class Estimate extends DF {
         appendUpdateKeepAll(begin);
 
     }
-    public void populatePrimesAcquisesMonthTotal() {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
-        int begin = ncol - lastAppendSize;
-        int monthBegin;
-        double[] total = new double[nrow];
-        double[] total_aDate = new double[nrow];
-        double[] taux = new double[nrow];
-
-        // Create a map to store contractKey and its corresponding count of missing dateKeys.
-        Map<String, Integer> warningMap = new HashMap<>();
-
-        // Get today's month and year
-        Calendar today = Calendar.getInstance();
-        int currentYear = today.get(Calendar.YEAR);
-        int currentMonth = today.get(Calendar.MONTH) + 1;  // Calendar.MONTH is zero-based
-
-        for (int i = 0; i < nrow; i++) {
-            String contractKey = (String) this.c(ind_contrat)[i];
-            String dateKey = (String) this.c(ind_datePeriode)[i];
-            String combinedKey = contractKey + "_" + dateKey;
-
-            List<Object> values = coefAQmap.get(combinedKey.toLowerCase());
-            if (values == null) {
-                // Update the count for the contractKey in the warning map.
-                warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
-                System.out.println("didnt find coef acquis for " + combinedKey);
-                continue;
-            }
-
-            Double prime = (Double) values.get(1);
-            float[] coefs = (float[]) values.get(2);
-
-            // Extract the year and month from the dateKey which is in "MM-yyyy" format.
-            String[] parts = dateKey.split("-");
-            int month = Integer.parseInt(parts[0]);
-            int year = Integer.parseInt(parts[1]);
-
-            monthBegin = -1;
-            for (int col = begin; col < ncol; col++) {
-                if (header[col].equals(dateKey)) {
-                    monthBegin = col; break;
-                }
-            }
-
-            for (int col = monthBegin, coefInd = 0; col < ncol && coefInd < coefs.length; col++, coefInd++) {
-                double value = prime * coefs[coefInd];
-                this.c(col)[i] = String.format("%.2f", value);
-
-                // Add to the total
-                total[i] += value;
-
-                // If the date is less than or equal to today's month/year, add to totalsToToday
-                if (year < currentYear || (year == currentYear && month <= currentMonth)) {
-                    total_aDate[i] += value;
-                }
-
-                // Adjust the month and year for the next iteration
-                month++;
-                if (month > 12) {
-                    month = 1;
-                    year++;
-                }
-            }
-        }
-
-        totalPA = convertToStringArrayWithTwoDecimals(total);
-        totalPAaDate = convertToStringArrayWithTwoDecimals(total_aDate);
-        for (int i = 0; i < nrow; i++) {
-            taux[i] = total_aDate[i] / total[i];
-        }
-        tauxAcquisition = convertToStringArrayWithTwoDecimals(taux);
-
-        // Print out the warning messages after iterating through all rows.
-        for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
-            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " mois.");
-        }
-    }
-    public void populatePrimesAcquisesYearly() {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
-        int begin = ncol - lastAppendSize;
-
-        // Create a map to store contractKey and its corresponding count of missing dateKeys.
-        Map<String, Integer> warningMap = new HashMap<>();
-
-        for (int i = 0; i < nrow; i++) {
-            String contractKey = (String) this.c(ind_contrat)[i];
-            String dateKey = (String) this.c(ind_datePeriode)[i];
-            String combinedKey = contractKey + "_" + dateKey;
-
-            // Extract the year and month from the dateKey which is in "MM-yyyy" format.
-            String[] parts = dateKey.split("-");
-            int month = Integer.parseInt(parts[0]);
-            String yearKey = parts[1];
-
-            List<Object> values = coefAQmap.get(combinedKey.toLowerCase());
-            if (values == null) {
-                // Update the count for the contractKey in the warning map.
-                warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
-                continue;
-            }
-
-            Double prime = (Double) values.get(1);
-            float[] coefs = (float[]) values.get(2);
-
-            int coefIndex = 0;
-            while (coefIndex < coefs.length) {
-                int monthsRemaining = 12 - month + 1;  // Including the current month
-                float accumulatedCoefficient = 0f;
-                for (int j = 0; j < monthsRemaining && coefIndex < coefs.length; j++) {
-                    accumulatedCoefficient += coefs[coefIndex];
-                    coefIndex++;
-                }
-
-                int yearColumnIndex = -1;
-                for (int col = begin; col < ncol; col++) {
-                    if (header[col].equals(yearKey)) {
-                        yearColumnIndex = col;
-                        break;
-                    }
-                }
-
-                if (yearColumnIndex == -1) {
-//                    System.out.println("Error: No column found for year " + yearKey);
-//                    break;
-                    continue;
-                }
-
-                double value = prime * accumulatedCoefficient;
-                this.c(yearColumnIndex)[i] = String.format("%.2f", value);
-
-                // Reset for the next year
-                yearKey = String.valueOf(Integer.parseInt(yearKey) + 1);
-                month = 1;
-            }
-        }
-
-        // Print out the warning messages after iterating through all rows.
-        for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
-            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " annees");
-        }
-    }
+//    public void populatePrimesAcquisesMonthTotal() {
+//        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
+//        int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
+//        int begin = ncol - lastAppendSize;
+//        int monthBegin;
+//        double[] total = new double[nrow];
+//        double[] total_aDate = new double[nrow];
+//        double[] taux = new double[nrow];
+//
+//        // Create a map to store contractKey and its corresponding count of missing dateKeys.
+//        Map<String, Integer> warningMap = new HashMap<>();
+//
+//        // Get today's month and year
+//        Calendar today = Calendar.getInstance();
+//        int currentYear = today.get(Calendar.YEAR);
+//        int currentMonth = today.get(Calendar.MONTH) + 1;  // Calendar.MONTH is zero-based
+//
+//        for (int i = 0; i < nrow; i++) {
+//            String contractKey = (String) this.c(ind_contrat)[i];
+//            String dateKey = (String) this.c(ind_datePeriode)[i];
+//            String combinedKey = contractKey + "_" + dateKey;
+//
+//            List<Object> values = coefAQmap.get(combinedKey.toLowerCase());
+//            if (values == null) {
+//                // Update the count for the contractKey in the warning map.
+//                warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
+//                System.out.println("didnt find coef acquis for " + combinedKey);
+//                continue;
+//            }
+//
+//            Double prime = (Double) values.get(1);
+//            float[] coefs = (float[]) values.get(2);
+//
+//            // Extract the year and month from the dateKey which is in "MM-yyyy" format.
+//            String[] parts = dateKey.split("-");
+//            int month = Integer.parseInt(parts[0]);
+//            int year = Integer.parseInt(parts[1]);
+//
+//            monthBegin = -1;
+//            for (int col = begin; col < ncol; col++) {
+//                if (header[col].equals(dateKey)) {
+//                    monthBegin = col; break;
+//                }
+//            }
+//
+//            for (int col = monthBegin, coefInd = 0; col < ncol && coefInd < coefs.length; col++, coefInd++) {
+//                double value = prime * coefs[coefInd];
+//                this.c(col)[i] = String.format("%.2f", value);
+//
+//                // Add to the total
+//                total[i] += value;
+//
+//                // If the date is less than or equal to today's month/year, add to totalsToToday
+//                if (year < currentYear || (year == currentYear && month <= currentMonth)) {
+//                    total_aDate[i] += value;
+//                }
+//
+//                // Adjust the month and year for the next iteration
+//                month++;
+//                if (month > 12) {
+//                    month = 1;
+//                    year++;
+//                }
+//            }
+//        }
+//
+//        totalPA = convertToStringArrayWithTwoDecimals(total);
+//        totalPAaDate = convertToStringArrayWithTwoDecimals(total_aDate);
+//        for (int i = 0; i < nrow; i++) {
+//            taux[i] = total_aDate[i] / total[i];
+//        }
+//        tauxAcquisition = convertToStringArrayWithTwoDecimals(taux);
+//
+//        // Print out the warning messages after iterating through all rows.
+//        for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
+//            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " mois.");
+//        }
+//    }
+//    public void populatePrimesAcquisesYearly() {
+//        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
+//        int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
+//        int begin = ncol - lastAppendSize;
+//
+//        // Create a map to store contractKey and its corresponding count of missing dateKeys.
+//        Map<String, Integer> warningMap = new HashMap<>();
+//
+//        for (int i = 0; i < nrow; i++) {
+//            String contractKey = (String) this.c(ind_contrat)[i];
+//            String dateKey = (String) this.c(ind_datePeriode)[i];
+//            String combinedKey = contractKey + "_" + dateKey;
+//
+//            // Extract the year and month from the dateKey which is in "MM-yyyy" format.
+//            String[] parts = dateKey.split("-");
+//            int month = Integer.parseInt(parts[0]);
+//            String yearKey = parts[1];
+//
+//            List<Object> values = coefAQmap.get(combinedKey.toLowerCase());
+//            if (values == null) {
+//                // Update the count for the contractKey in the warning map.
+//                warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
+//                continue;
+//            }
+//
+//            Double prime = (Double) values.get(1);
+//            float[] coefs = (float[]) values.get(2);
+//
+//            int coefIndex = 0;
+//            while (coefIndex < coefs.length) {
+//                int monthsRemaining = 12 - month + 1;  // Including the current month
+//                float accumulatedCoefficient = 0f;
+//                for (int j = 0; j < monthsRemaining && coefIndex < coefs.length; j++) {
+//                    accumulatedCoefficient += coefs[coefIndex];
+//                    coefIndex++;
+//                }
+//
+//                int yearColumnIndex = -1;
+//                for (int col = begin; col < ncol; col++) {
+//                    if (header[col].equals(yearKey)) {
+//                        yearColumnIndex = col;
+//                        break;
+//                    }
+//                }
+//
+//                if (yearColumnIndex == -1) {
+////                    System.out.println("Error: No column found for year " + yearKey);
+////                    break;
+//                    continue;
+//                }
+//
+//                double value = prime * accumulatedCoefficient;
+//                this.c(yearColumnIndex)[i] = String.format("%.2f", value);
+//
+//                // Reset for the next year
+//                yearKey = String.valueOf(Integer.parseInt(yearKey) + 1);
+//                month = 1;
+//            }
+//        }
+//
+//        // Print out the warning messages after iterating through all rows.
+//        for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
+//            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " annees");
+//        }
+//    }
 /*    S/P previ hors PB
     S/P si pas réel acquis avec provision
     S/P si pas reel ultime avant PB

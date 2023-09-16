@@ -30,6 +30,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.poi.ss.formula.functions.T;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -62,6 +63,7 @@ public class DFnew {
     public static DFnew mapping;
     public static DFnew SPprevi;
     public static DFnew mapStatuts;
+    public static DFnew grilleTarif;
     static {
         try {
             PB = new DFnew(wd + "PB Micromania.csv",';',false,"PB");
@@ -71,16 +73,18 @@ public class DFnew {
             mapping = new DFnew(wd + "mapping.xlsx","Mapping entrant sinistres",false,"mapping");
             SPprevi = new DFnew(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1",false,"SPprevi");
             mapStatuts = new DFnew(wd + "statuts.xlsx","Statuts",false,"mapStatuts");
+            grilleTarif = new DFnew(wd + "Grille_Tarifaire.csv",';',false,"grilleTarif");
             mergeRowsOnContratRefProg();
             populateGlobalStatutMap();
             mapPoliceToPB();
             mapPoliceToSPPrevi();
-        } catch (IOException | ParseException e) {
+            getCoefsAcquisition();
+        } catch (IOException | ParseException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
     }
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd/MM/yyyy");
-    private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.##"); // Adjust the number of # after the point for precision.
+    private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.####"); // Adjust the number of # after the point for precision.
     public DFnew() {
 
     }
@@ -89,13 +93,20 @@ public class DFnew {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
 
-        DFnew SPprevi = new DFnew(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1",false,"SPprevi");
-        SPprevi.print();
+//        TDBfilterAndMergeSRC();
+//        DFnew TDB2src = new DFnew(wd + "TDB France SRC.csv",';',false,"TDB2_src");
+//        DFnew TDB2 = new DFnew(wd + "TDB part 2.csv",';',false,"TDB2");
+//        TDB2.populateTDB2(TDB2src);
+//        TDB2.saveTDBtoCSVprecision(wd + "TDB part 2_populated.csv");
+
+        DFnew TDB2populated = new DFnew(wd + "TDB part 2_populated.csv",';',false,"TDB2_populated");
+        TDB2populated.checkCoefficientSums();
 //        mapStatuts.populateStatutMap();
 
         stopwatch.printElapsedTime();
     }
     public DFnew(String csvFilePath, char delim, boolean toLower, String refFichier) throws IOException, ParseException {
+        path = csvFilePath;
         FileConfig config = FileConfig.getInstance();
         if (refFichier != null) {
             columnNamesToRead = config.getColumnNamesToRead(refFichier);
@@ -152,6 +163,7 @@ public class DFnew {
                throw new RuntimeException("column " + expectedHeader + " not found for base: " + csvFilePath);
             }
         }
+        trimNullFirstCol();
     }
     public DFnew(String xlsxFilePath, String sheetName, boolean toLower, String refFichier) throws IOException, ParseException {
         FileConfig config = FileConfig.getInstance();
@@ -221,6 +233,7 @@ public class DFnew {
         if (columnNamesToRead != null && columnTypes != null && columnNamesToRead.size() != columnTypes.size()) {
             throw new IllegalArgumentException("Mismatch between column names to read and column types provided.");
         }
+        trimNullFirstCol();
     }
 
     // CSV READER
@@ -244,14 +257,16 @@ public class DFnew {
     }
     public Object getCell(String cell, ColTypes type) throws ParseException {
         if (cell == null) {
-            if (type == DBL || type == FLT || type == INT) {
-                return 0.0;
-            } else {
-                return null;
-            }
+            return switch (type) {
+                case DBL -> 0.0;  // Default value for Double
+                case FLT -> 0f;   // Default value for Float
+                case INT -> 0;    // Default value for Int
+                default -> null;
+            };
         }
         return formatCell(cell, type);
     }
+
     public Object getLowerCell(String cell, ColTypes type) throws ParseException {
         if (cell == null) {
             return null;
@@ -269,16 +284,35 @@ public class DFnew {
                         yield null;  // Return null if the date is unparsable
                     }
                 }
-                case DBL -> Double.parseDouble(cell.replace(',', '.'));
-                case FLT -> Float.parseFloat(cell.replace(',', '.'));
-                case INT -> (int) Double.parseDouble(cell);
+                case DBL -> {
+                    try {
+                        yield Double.parseDouble(cell.replace(',', '.'));
+                    } catch (NumberFormatException e) {
+                        yield 0.0; // Return default for Double
+                    }
+                }
+                case FLT -> {
+                    try {
+                        yield Float.parseFloat(cell.replace(',', '.'));
+                    } catch (NumberFormatException e) {
+                        yield 0f;  // Return default for Float
+                    }
+                }
+                case INT -> {
+                    try {
+                        yield (int) Double.parseDouble(cell);
+                    } catch (NumberFormatException e) {
+                        yield 0;  // Return default for Int
+                    }
+                }
                 default -> null;
             };
-        } catch (NumberFormatException e) {
-            // Handle other potential parse errors for numerical types
-            return 0.0;
+        } catch (Exception e) {
+            // Handle any other potential errors and return null (or you can log the error here)
+            return null;
         }
     }
+
 
     // COLUMNS
     @SuppressWarnings("unchecked")
@@ -348,25 +382,86 @@ public class DFnew {
             return type;
         }
     }
-    public void setColumns(ArrayList<Column<?>> columns) {
+    protected void setColumns(ArrayList<Column<?>> columns) {
         this.columns = columns;
     }
-    public void setHeaders(ArrayList<String> headers) {
+    protected void setHeaders(ArrayList<String> headers) {
         this.headers = headers;
     }
-    public <T> void addColumn(String header, ArrayList<T> columnData, ColTypes type) {
+    protected <T> void addColumn(String header, ArrayList<T> columnData, ColTypes type) {
         columns.add(new Column<T>(columnData, type));
         headers.add(header);
         if(subheaders != null) {
             subheaders.add(null);  // Adding null for subheader only if it makes sense
         }
     }
-    public <T> void addColumnWithSubheader(String header, String subheader, ArrayList<T> columnData, ColTypes type) {
+    protected void addEmptyColumn(String header, ColTypes type) {
+        ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+        addColumn(header,columnData,type);
+    }
+    protected <T> void addColumnWithSubheader(String header, String subheader, ArrayList<T> columnData, ColTypes type) {
         columns.add(new Column<T>(columnData, type));
         headers.add(header);
         subheaders.add(subheader);  // Adding the provided subheader
     }
+    protected void addLabeledBlock(List<String> headersToAdd,String label, ColTypes type) {
+        headers.addAll(headersToAdd);
 
+        for (int i = 0; i < headersToAdd.size(); i++) {
+            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, type));
+        }
+
+        subheaders.add(label);
+        subheaders.addAll(Collections.nCopies(headersToAdd.size() - 1, null));
+    }
+    public void addCoefColumns() {
+        // Start appending columns from M to M+200
+        for (int i = 0; i <= 200; i++) {
+            String header;
+            if (i == 0) {
+                header = "M";
+            } else {
+                header = "M+" + i;
+            }
+            addEmptyColumn(header, ColTypes.FLT);
+        }
+    }
+
+    protected void trimNullDatePeriodeRows() {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+
+        // Start from the end and move to the beginning
+        for (int i = datePeriodeColumn.size() - 1; i >= 0; i--) {
+            if (datePeriodeColumn.get(i) == null) {
+                rowsToDelete.add(i);
+            } else {
+                // Stop once a non-null value is found
+                break;
+            }
+        }
+
+        // Now, delete those rows
+        deleteRows(rowsToDelete);
+    }
+    protected void trimNullFirstCol() {
+        ArrayList<T> colToTrim = getColumnByIndex(0);
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+
+        // Start from the end and move to the beginning
+        for (int i = colToTrim.size() - 1; i >= 0; i--) {
+            if (colToTrim.get(i) == null) {
+                rowsToDelete.add(i);
+            } else {
+                // Stop once a non-null value is found
+                break;
+            }
+        }
+
+        // Now, delete those rows
+        deleteRows(rowsToDelete);
+    }
     public void deleteRows(ArrayList<Integer> rowsToDelete) {
         // Sort rowsToDelete in descending order to avoid shifting index issues
         rowsToDelete.sort(Collections.reverseOrder());
@@ -383,6 +478,31 @@ public class DFnew {
         }
         nrow = nrow - rowsToDelete.size();
     }
+    public void deleteMatchingRowsVSGrilleTarif() {
+        // Build a set of combined keys for the external dataset
+        Set<String> externalCombinedKeys = new HashSet<>();
+        ArrayList<String> contrats = grilleTarif.getColumn("IDENTIFIANT_CONTRAT");
+        ArrayList<String> refs = grilleTarif.getColumn("REFERENCE");
+        for (int i = 0; i < grilleTarif.nrow; i++) {
+            String key = contrats.get(i) + "_" + refs.get(i);
+            externalCombinedKeys.add(key);
+        }
+
+        ArrayList<String> identifiantContrat = getColumn("IDENTIFIANT_CONTRAT");
+        ArrayList<String> reference = getColumn("REFERENCE");
+        // Find the rows to delete from the current dataset
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+        for (int i = 0; i < nrow; i++) {
+            String key = identifiantContrat.get(i) + "_" + reference.get(i);
+            if (externalCombinedKeys.contains(key)) {
+                rowsToDelete.add(i);
+            }
+        }
+
+        // Delete the identified rows from the current dataset
+        deleteRows(rowsToDelete);
+    }
+
     void mergeRows(ArrayList<Integer> rowsToDelete, int i, int origin) {
         for (int col = 0; col < this.columns.size(); col++) {
             if(columns.get(col).getType().equals(DBL)) {
@@ -558,6 +678,153 @@ public class DFnew {
 
         // Delete marked rows
         refProg.deleteRows(rowsToDelete);
+    }
+
+    // TDB
+    public static void TDBfilterAndMergeSRC() throws IOException, ParseException {
+        DFnew TDB2srcF = new DFnew(wd + "TDB France SRC.csv",';',false,"TDB2_src");
+        TDB2srcF.deleteMatchingRowsVSGrilleTarif();
+        DFnew TDB2srcHF = new DFnew(wd + "TDB Hors France SRC.csv",';',false,"TDB2_src");
+        TDB2srcHF.deleteMatchingRowsVSGrilleTarif();
+        mergeDatasets(TDB2srcF,TDB2srcHF);
+        TDB2srcF.saveTDBtoCSVprecision(wd + "TDB_SRC_merged.csv");
+    }
+    public static void mergeDatasets(DFnew dataset1, DFnew dataset2) {
+        // Append rows from dataset2 to dataset1
+        for (int colIndex = 0; colIndex < dataset1.columns.size(); colIndex++) {
+            ArrayList<Object> column1 = dataset1.getColumnByIndex(colIndex);
+            ArrayList<Object> column2 = dataset2.getColumnByIndex(colIndex);
+
+            column1.addAll(column2);  // Add all rows from column2 to column1
+        }
+
+        // Update the row count for dataset1
+        dataset1.nrow += dataset2.nrow;
+    }
+    public void populateTDB2(DFnew TDB2_src) {
+        // 1. Add coefficient columns to TDB2
+        addCoefColumns();
+
+        // 2. Create hashmaps for direct lookups
+        Map<String, Integer> tarifMap = createMapFromTable(grilleTarif);
+        Map<String, Integer> srcMap = createMapFromTable(TDB2_src);
+
+        // 3. For each row in TDB2, find coefficients
+        for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+            String identifiant = getColumn("IDENTIFIANT CONTRAT").get(rowIndex).toString();
+            String reference = getColumn("REFERENCE").get(rowIndex).toString().replace("\"", "");
+            String combinedKey = identifiant + "_" + reference;
+
+            boolean found = lookupAndAssign(tarifMap, grilleTarif, srcMap, TDB2_src, combinedKey, rowIndex);
+            if (!found && identifiant.equals("ICIMWTV19")) {
+                found = lookupAndAssign(tarifMap, grilleTarif, srcMap, TDB2_src, identifiant + "_" + reference + "_2", rowIndex);
+            }
+
+            if (!found && combinedKey.equals("ICIMWTL18_114771")) {
+                found = lookupAndAssign(tarifMap, grilleTarif, srcMap, TDB2_src, "ICIMWTL18_114773", rowIndex);
+            }
+            // If not found in both, print warning
+            if (!found) {
+                System.out.println("Warning: Key " + combinedKey + " not found in both tables.");
+            }
+        }
+    }
+
+    // Helper method to create a map for direct lookups
+    private Map<String, Integer> createMapFromTable(DFnew table) {
+        Map<String, Integer> map = new HashMap<>();
+        for (int i = 0; i < table.nrow; i++) {
+            String identifiant = table.getColumn("IDENTIFIANT_CONTRAT").get(i).toString();
+            String reference = table.getColumn("REFERENCE").get(i).toString().replace("\"", "");
+            String combinedKey = identifiant + "_" + reference;
+            map.put(combinedKey, i);
+        }
+        return map;
+    }
+    // Helper function to look up and assign values
+    private boolean lookupAndAssign(Map<String, Integer> tarifMap, DFnew tarifTable,
+                                    Map<String, Integer> srcMap, DFnew srcTable,
+                                    String key, int rowIndex) {
+        // First, try grilleTarif (tarifTable)
+        Integer tarifRow = tarifMap.get(key);
+        if (tarifRow != null) {
+            for (int colIndex = 2; colIndex <= 202; colIndex++) {
+                Float value = (Float) tarifTable.getColumnByIndex(colIndex).get(tarifRow);
+                if (value != null && value == 0.0f) {
+                    value = null;  // Set to null if the value is 0
+                }
+                getColumnByIndex(colIndex).set(rowIndex, value);
+            }
+            return true; // Successfully found and assigned from grilleTarif
+        }
+
+        // If not found in grilleTarif, try TDB2_src (srcTable)
+        Integer srcRow = srcMap.get(key);
+        if (srcRow != null) {
+            for (int colIndex = 2; colIndex <= 202; colIndex++) {
+                Float value = (Float) srcTable.getColumnByIndex(colIndex).get(srcRow);
+                if (value != null && value == 0.0f) {
+                    value = null;  // Set to null if the value is 0
+                }
+                getColumnByIndex(colIndex).set(rowIndex, value);
+            }
+            return true; // Successfully found and assigned from TDB2_src
+        }
+
+        return false; // Key not found in both tables
+    }
+
+
+    protected void saveTDBtoCSVprecision(String path) throws IOException {
+                try (BufferedWriter writer = Files.newBufferedWriter(Path.of(path), StandardCharsets.UTF_8)) {
+            // Write BOM for UTF-8
+            writer.write('\ufeff');
+
+            // If there are subheaders, write them
+            if (subheaders != null && !subheaders.isEmpty()) {
+                writer.write(subheaders.stream().map(sh -> sh != null ? sh : "").collect(Collectors.joining(";")));
+                writer.newLine();
+            }
+
+            // Write headers
+            writer.write(String.join(";", headers));
+            writer.newLine();
+
+            // Write data
+            for (int i = 0; i < nrow; i++) {
+                List<String> row = getRow(i).stream().map(item -> {
+                    if (item instanceof Date) {
+                        return DATE_FORMAT.format((Date) item);
+                    }
+                    return item != null ? item.toString() : "";
+                }).collect(Collectors.toList());
+
+                writer.write(String.join(";", row));
+                writer.newLine();
+            }
+        }
+    }
+    public void checkCoefficientSums() {
+        for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+            double sum = 0;
+
+            // Sum the coefficients from columns 2 to 202 inclusive
+            for (int colIndex = 2; colIndex <= 202; colIndex++) {
+                Object cell = getColumnByIndex(colIndex).get(rowIndex);
+                if (cell instanceof Number) {
+                    sum += ((Number) cell).doubleValue();
+                }
+            }
+
+            // Check if the sum is close enough to 1.0 (considering floating-point precision)
+            if (Math.abs(sum - 1.0) > 0.00001) {
+                String identifiant = getColumn("IDENTIFIANT CONTRAT").get(rowIndex).toString();
+                String reference = getColumn("REFERENCE").get(rowIndex).toString();
+                String combinedKey = identifiant + "_" + reference;
+
+                System.out.println("Key: " + combinedKey + ", Difference with 1: " + (1.0 - sum));
+            }
+        }
     }
 
 
