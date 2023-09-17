@@ -8,40 +8,26 @@ import java.util.ArrayList;
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
 import java.io.BufferedWriter;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.sql.*;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.*;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.Date;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
-import org.apache.commons.lang3.tuple.Pair;
-import org.apache.poi.ss.formula.functions.T;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.bouncycastle.util.encoders.UTF8;
 
-import static java.lang.Math.*;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static main.app.App.*;
 import static main.app.DFnew.ColTypes.*;
-import static main.app.Synthese.roundToFourDecimals;
-import static main.app.Synthese.roundToTwoDecimals;
+
 public class DFnew {
     public static final String wd = "E:/202305/wd/";
     protected String path;
@@ -67,6 +53,7 @@ public class DFnew {
     public static DFnew coefPM;
     private static final Set<String> aChercherDansCoefPM = new HashSet<>();
     public static final int lastM;
+    static final Map<Integer, ArrayList<Float>> mapCoefAQ = new HashMap<>();
     static {
         aChercherDansCoefPM.add("ICIPMCD15");
         aChercherDansCoefPM.add("ICIPMCH15");
@@ -76,6 +63,7 @@ public class DFnew {
         aChercherDansCoefPM.add("ICIPMDT15");
         aChercherDansCoefPM.add("ICIPMDV15");
         aChercherDansCoefPM.add("ICISMIC19");
+        aChercherDansCoefPM.add("ICIMOPEMPPRO22");
     } //PM
     static {
         try {
@@ -93,9 +81,8 @@ public class DFnew {
             mapPoliceToPB();
             mapPoliceToSPPrevi();
             repairReferenceGT();
-            getCoefsAcquisition();
             lastM = grilleTarif.findLastNonNullColumnFromM();
-        } catch (IOException | ParseException | ClassNotFoundException e) {
+        } catch (IOException | ParseException e) {
             throw new RuntimeException(e);
         }
 
@@ -109,20 +96,7 @@ public class DFnew {
     public static void main(String[] args) throws IOException, ParseException, Exception {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
-        Estimatenew estimate = new Estimatenew(wd+"TDB estimate par gestionnaire/TDB Estimate.csv",';',false);
 
-//        DFnew TDB2 = new DFnew(wd + "TDB part 2.csv",';',false,"TDB2");
-//        TDB2.populateTDB2();
-//        TDB2.fill0();
-//        TDB2.saveTDBtoCSVprecision(wd + "TDB part 2_populated.csv");
-        DFnew TDB2populated = new DFnew(wd + "TDB part 2_populated.csv",';',false,"TDB2_populated");
-        Map<Integer, List<Float>> mapCoefAQ = estimate.populateCoefficientMap(TDB2populated);
-        if(areListsSummingToOne(mapCoefAQ,estimate)) {
-            System.out.println("All lists sum to 1.0");
-        } else {
-            System.out.println("Some lists do not sum to 1.0");
-        }
-        writeMapAndEstimateToCSV(mapCoefAQ,estimate,outputFolder+"coefAcquisition.csv");
 //        mapStatuts.populateStatutMap();
         stopwatch.printElapsedTime();
     }
@@ -256,7 +230,26 @@ public class DFnew {
         }
         trimNullFirstCol();
     }
+    public static void getCoefsAcquisition(boolean populateTDB,Estimatenew estimate) throws IOException, ParseException {
 
+        if(populateTDB) {
+            DFnew TDB2 = new DFnew(wd + "TDB part 2.csv",';',false,"TDB2");
+            TDB2.populateTDB2();
+            TDB2.fill0();
+            TDB2.saveTDBtoCSVprecision(wd + "TDB part 2_populated.csv");
+        }
+
+        DFnew TDB2populated = new DFnew(wd + "TDB part 2_populated.csv",';',false,"TDB2_populated");
+
+        estimate.populateCoefficientMap(TDB2populated);
+
+        if(areListsSummingToOne(mapCoefAQ,estimate)) {
+            System.out.println("All lists sum to 1.0");
+        } else {
+            System.out.println("Some lists do not sum to 1.0");
+        }
+        writeMapAndEstimateToCSV(mapCoefAQ,estimate,outputFolder+"coefAcquisition.csv");
+    }
     // CSV READER
     protected void validateColumnInputs(ArrayList<String> columnNamesToRead, ArrayList<ColTypes> columnTypes, ArrayList<String> columnNamesAttributed) {
         int size;
@@ -276,7 +269,7 @@ public class DFnew {
             }
         }
     }
-    public Object getCell(String cell, ColTypes type) throws ParseException {
+    public Object getCell(String cell, ColTypes type) {
         if (cell == null) {
             return switch (type) {
                 case DBL -> 0.0;  // Default value for Double
@@ -288,7 +281,7 @@ public class DFnew {
         return formatCell(cell, type);
     }
 
-    public Object getLowerCell(String cell, ColTypes type) throws ParseException {
+    public Object getLowerCell(String cell, ColTypes type) {
         if (cell == null) {
             return null;
         }
@@ -312,7 +305,7 @@ public class DFnew {
                         yield 0.0; // Return default for Double
                     }
                 }
-                case FLT -> {
+                case FLT,FLTNULL -> {
                     try {
                         yield Float.parseFloat(cell.replace(',', '.'));
                     } catch (NumberFormatException e) {
@@ -326,7 +319,6 @@ public class DFnew {
                         yield 0;  // Return default for Int
                     }
                 }
-                default -> null;
             };
         } catch (Exception e) {
             // Handle any other potential errors and return null (or you can log the error here)
@@ -384,7 +376,7 @@ public class DFnew {
         DBL,
         FLT,
         INT,
-        SKP
+        FLTNULL
     }
     static class Column<T> {
         private final ArrayList<T> data;
@@ -490,7 +482,7 @@ public class DFnew {
         deleteRows(rowsToDelete);
     }
     protected void trimNullFirstCol() {
-        ArrayList<T> colToTrim = getColumnByIndex(0);
+        ArrayList<Object> colToTrim = getColumnByIndex(0);
         ArrayList<Integer> rowsToDelete = new ArrayList<>();
 
         // Start from the end and move to the beginning
@@ -870,13 +862,18 @@ public class DFnew {
             Date dateDebutPeriode = dates.get(rowIndex);
 
             boolean found = lookupAndAssign(tarifMap, grilleTarif, combinedKey, rowIndex, dateDebutPeriode, m, mTarif);
-            if (!found && contrat.equals("ICIMWTV19")) {
-                found = lookupAndAssign(tarifMap, grilleTarif, contrat + "_" + reference + "_2", rowIndex, dateDebutPeriode, m, mTarif);
+            if (!found) {
+                if (contrat.equals("ICIMWTV19")) {
+                    found = lookupAndAssign(tarifMap, grilleTarif, contrat + "_" + reference + "_2", rowIndex, dateDebutPeriode, m, mTarif);
+                } else if (combinedKey.equals("ICIMWTL18_114771")) {
+                    found = lookupAndAssign(tarifMap, grilleTarif, "ICIMWTL18_114773", rowIndex, dateDebutPeriode, m, mTarif);
+                } else if (combinedKey.equals("ICIELJVD15_3,66352E+12")) {
+                    found = lookupAndAssign(tarifMap, grilleTarif, "ICIELJVD15_3663515117693", rowIndex, dateDebutPeriode, m, mTarif);
+                } else if (combinedKey.equals("ICIELJVD15_3,6147E+12")) {
+                    found = lookupAndAssign(tarifMap, grilleTarif, "ICIELJVD15_3614700540598", rowIndex, dateDebutPeriode, m, mTarif);
+                }
             }
 
-            if (!found && combinedKey.equals("ICIMWTL18_114771")) {
-                found = lookupAndAssign(tarifMap, grilleTarif, "ICIMWTL18_114773", rowIndex, dateDebutPeriode, m, mTarif);
-            }
             // If not found in both, print warning
             if (!found) {
                 System.out.println("Warning: Key " + combinedKey + " not found in GT pour la date: " + dateDebutPeriode);
@@ -885,7 +882,6 @@ public class DFnew {
 
         addColumn("aFaire",rowsToTreat,INT);
         removeColumn("REFERENCE");
-        removeColumn("MONTANT PRIME ASSUREUR");
     }
     public void fill0() {
         // Step 1: Find the column named "M"
@@ -960,7 +956,6 @@ public class DFnew {
 
         return lastNonNullColumn - columnIndexM;
     }
-
 
     private boolean lookupAndAssign(Map<String, Map<Integer, DatePair>> tarifMap, DFnew tarifTable,
                                     String key, int rowIndex, Date dateDebutPeriode, int m, int mTarif) {
@@ -1071,8 +1066,7 @@ public class DFnew {
         }
         return coefficientMap;
     }
-    public Map<Integer, List<Float>> populateCoefficientMap(DFnew externalTable) throws ParseException {
-        Map<Integer, List<Float>> coefficientMap = new HashMap<>();
+    public void populateCoefficientMap(DFnew externalTable) throws ParseException {
 
         List<String> contracts = getColumn("Contrat");
         List<Date> datePeriodes = getColumn("Date Periode");
@@ -1081,6 +1075,7 @@ public class DFnew {
 
         List<String> extContracts = externalTable.getColumn("IDENTIFIANT CONTRAT");
         List<Date> extStartDate = externalTable.getColumn("DATE DEBUT PERIODE SOUSCRIPTION");
+        List<Double> primeColumn = externalTable.getColumn("MONTANT PRIME ASSUREUR");
         List<Integer> bool = externalTable.getColumn("aFaire");
 
         ArrayList<String> contratsPM = coefPM.getColumn("CONTRAT");
@@ -1090,30 +1085,23 @@ public class DFnew {
         int mPM = coefPM.headers.indexOf("M");
 
         List<ArrayList<Float>> lastThreeCoefficients = new ArrayList<>(); // Track the last three coefficient arrays
-        ArrayList<Float> defaultCoefficients = new ArrayList<>();
-        defaultCoefficients.add(1f);
-        for (int k = 1; k <= 200; k++) {
-            defaultCoefficients.add(null);
-        }
+        String previousContract = null;  // Store the previous contract outside the loop
 
         int jPM = 0;
         int jExt = 0;
-        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-        Date datedebug = sdf.parse("01/12/2015");
+
         for (int i = 0; i < contracts.size(); i++) {
-//            System.out.println(i);
             Double montant = montants.get(i);
             if (montant <= 0.0d) continue;
 
             String contract = contracts.get(i);
             Date datePeriode = datePeriodes.get(i);
-
-//            if (contract.equals("ICIPMCD15") && datedebug.equals(datePeriode)) {
-//                System.out.println("here");
-//            }
-            if (i == 10650) {
-                System.out.println("here");
+            // If we have a new contract, reinitialize lastThreeCoefficients
+            if (previousContract == null || !previousContract.equals(contract)) {
+                lastThreeCoefficients.clear();
+                previousContract = contract;  // Update the previous contract
             }
+
             // Check if the contract is in the HashSet
             if (aChercherDansCoefPM.contains(contract)) {
                 // Searching in contratsPM
@@ -1127,12 +1115,12 @@ public class DFnew {
                         Float coefValue = (Float) coefPM.getColumnByIndex(k).get(jPM);
                         coefficients.add(coefValue);
                     }
-                    coefficientMap.put(i, FloatArrayDictionary.getOrAdd(coefficients));
+                    mapCoefAQ.put(i, FloatArrayDictionary.getOrAdd(coefficients));
                     continue;  // Skip the rest of the loop iteration
                 }
             }
 
-            List<ArrayList<Float>> matchingCoefficients = new ArrayList<>();
+            List<Pair<ArrayList<Float>, Double>> matchingCoefficientsWithPrime = new ArrayList<>();
 
             while (jExt < extContracts.size() && (extContracts.get(jExt).compareTo(contract) < 0 || (extContracts.get(jExt).equals(contract) && extStartDate.get(jExt).compareTo(datePeriode) < 0))) {
                 jExt++;
@@ -1149,13 +1137,14 @@ public class DFnew {
                     Float coefValue = (Float) externalTable.getColumnByIndex(k).get(jExt);
                     coefficients.add(coefValue);
                 }
-                matchingCoefficients.add(coefficients);
+                Double prime = primeColumn.get(jExt);
+                matchingCoefficientsWithPrime.add(new Pair<>(coefficients, prime));
                 jExt++; // Move to next row in the external table
             }
 
-            if (!matchingCoefficients.isEmpty()) {
-                ArrayList<Float> averagedCoefficients = calculateAverageCoefficients(matchingCoefficients);
-                coefficientMap.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
+            if (!matchingCoefficientsWithPrime.isEmpty()) {
+                ArrayList<Float> averagedCoefficients = calculateAverageCoefficientsWithPrime(matchingCoefficientsWithPrime);
+                mapCoefAQ.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
 
                 if (lastThreeCoefficients.size() == 3) {
                     lastThreeCoefficients.remove(0);
@@ -1163,10 +1152,9 @@ public class DFnew {
                 lastThreeCoefficients.add(FloatArrayDictionary.getOrAdd(averagedCoefficients));
             } else {
                 // Logic for unmatched contract
-                if (!"BU".equals(fluxs.get(i))) {
                     if (!lastThreeCoefficients.isEmpty()) {
                         ArrayList<Float> averagedCoefficients = calculateAverageCoefficients(lastThreeCoefficients);
-                        coefficientMap.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
+                        mapCoefAQ.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
 
                         // Store the freshly calculated averaged coefficients to the last three coefficients
                         if (lastThreeCoefficients.size() == 3) {
@@ -1174,35 +1162,72 @@ public class DFnew {
                         }
                         lastThreeCoefficients.add(averagedCoefficients);
                     } else {
-                        System.out.println("Warning: cant calculate coef previ for Contrat: " + contract + " and Date Periode: " + datePeriode);
-                        coefficientMap.put(i, FloatArrayDictionary.getOrAdd(defaultCoefficients));
+                        System.out.println("Warning: cant calculate coef for Contrat, no data: " + contract + " and Date Periode: " + datePeriode);
                     }
-                } else {
-                    System.out.println("Warning: No match found for Contrat: " + contract + " and Date Periode: " + datePeriode);
-                    coefficientMap.put(i, FloatArrayDictionary.getOrAdd(defaultCoefficients));
+                if ("BU".equals(fluxs.get(i))) {
+                    System.out.println("Warning: No match found for BU Contrat: " + contract + " and Date Periode: " + datePeriode);
                 }
             }
         }
-
-        return coefficientMap;
     }
     private ArrayList<Float> calculateAverageCoefficients(List<ArrayList<Float>> coefficientsList) {
         ArrayList<Float> averagedCoefficients = new ArrayList<>();
+        int dim = coefficientsList.size();
         for (int mIter = 0; mIter <= lastM; mIter++) {
             float sum = 0;
-            int count = 0;
             for (ArrayList<Float> coefList : coefficientsList) {
                 Float value = coefList.get(mIter);
                 if (value != null) {
                     sum += value;
-                    count++;
                 }
             }
-            averagedCoefficients.add(count == 0 ? null : sum / count);
+            averagedCoefficients.add(sum == 0 ? null : sum / dim);
         }
         return averagedCoefficients;
     }
-    public static void writeMapAndEstimateToCSV(Map<Integer, List<Float>> mapCoefAQ, DFnew estimate, String outputPath) throws IOException {
+    private ArrayList<Float> calculateAverageCoefficientsWithPrime(List<Pair<ArrayList<Float>, Double>> coefficientsWithPrimeList) {
+        ArrayList<Float> weightedAverageCoefficients = new ArrayList<>();
+
+        for (int mIter = 0; mIter <= lastM; mIter++) {
+            float weightedSum = 0;
+            float totalPrime = 0;
+
+            for (Pair<ArrayList<Float>, Double> pair : coefficientsWithPrimeList) {
+                ArrayList<Float> coefList = pair.getKey();
+                Double prime = pair.getValue();
+
+                Float value = coefList.get(mIter);
+                if (value != null && prime != null) {
+                    weightedSum += (float) (value * prime);
+                    totalPrime += prime;
+                }
+            }
+            weightedAverageCoefficients.add(totalPrime == 0 || weightedSum == 0 ? null : weightedSum / totalPrime);
+        }
+        return weightedAverageCoefficients;
+    }
+
+    public static class Pair<K, V> {
+        private final K key;
+        private final V value;
+
+        public Pair(K key, V value) {
+            this.key = key;
+            this.value = value;
+        }
+
+        public K getKey() {
+            return key;
+        }
+
+        public V getValue() {
+            return value;
+        }
+    }
+    public static void writeMapAndEstimateToCSV(Map<Integer, ArrayList<Float>> mapCoefAQ, DFnew estimate, String outputPath) throws IOException {
+        SimpleDateFormat dateFormatter = new SimpleDateFormat("dd/MM/yyyy");
+        DecimalFormat floatFormatter = new DecimalFormat("0.#######"); // Up to 7 decimals
+
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(outputPath), StandardCharsets.UTF_8))) {
             // Write BOM (Byte Order Mark) for UTF-8 Encoding
             writer.write("\uFEFF");
@@ -1214,19 +1239,24 @@ public class DFnew {
             }
             writer.newLine();
 
-            for (Map.Entry<Integer, List<Float>> entry : mapCoefAQ.entrySet()) {
+            for (Map.Entry<Integer, ArrayList<Float>> entry : mapCoefAQ.entrySet()) {
                 Integer rowIndex = entry.getKey();
                 List<Float> coefficients = entry.getValue();
 
                 // Fetch "Contrat" and "Date Periode" columns from the row using rowIndex
                 String contrat = estimate.getColumn("Contrat").get(rowIndex).toString();
-                String datePeriode = estimate.getColumn("Date Periode").get(rowIndex).toString();
+                Date rawDate = (Date) estimate.getColumn("Date Periode").get(rowIndex);
+                String datePeriode = dateFormatter.format(rawDate);
 
                 // Write the data to the CSV file
                 writer.write(contrat + ";" + datePeriode);
 
                 for (Float coef : coefficients) {
-                    writer.write(";" + coef);
+                    if (coef == null) {
+                        writer.write(";");
+                    } else {
+                        writer.write(";" + floatFormatter.format(coef).replace('.', ','));
+                    }
                 }
                 writer.newLine();
             }
@@ -1265,11 +1295,11 @@ public class DFnew {
             }
         }
     }
-    public static boolean areListsSummingToOne(Map<Integer, List<Float>> mapCoefAQ, Estimatenew est) {
+    public static boolean areListsSummingToOne(Map<Integer, ArrayList<Float>> mapCoefAQ, Estimatenew est) {
         final float EPSILON = 1e-5f; // precision
         boolean allListsSumToOne = true; // to track if all lists sum to one
 
-        for (Map.Entry<Integer, List<Float>> entry : mapCoefAQ.entrySet()) {
+        for (Map.Entry<Integer, ArrayList<Float>> entry : mapCoefAQ.entrySet()) {
             float sum = 0.0f;
             for (Float value : entry.getValue()) {
                 if (value != null) {
@@ -1286,7 +1316,6 @@ public class DFnew {
 
         return allListsSumToOne;
     }
-
 
     public static void repairReferenceGT() {
         List<String> referenceColumn = grilleTarif.getColumn("REFERENCE");

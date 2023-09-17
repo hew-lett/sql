@@ -82,7 +82,6 @@ public class App {
     public static List<String> statutsForTreatment;
     public static Map<String, String> globalStatutMap = new HashMap<>();
     public static Map<String, String> globalStatutCollect = new HashMap<>();
-    public static Map<String, ArrayList<Float>> coefAQmap = new HashMap<>();
     public static final String POLICE = "police";
     public static final String DATE_SOUS = "date_sous";
     public static final String DATE_SURV = "date_surv";
@@ -104,8 +103,6 @@ public class App {
         PB.mapPoliceToPB();
         SPprevi = new DF(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1");
         SPprevi.mapPoliceToSPPrevi();
-        getCoefsAcquisition();
-
 
         stopwatch.printElapsedTime("refs");
 //        for (int i = 0; i < ref_source.nrow; i++) {
@@ -257,24 +254,6 @@ public class App {
             stopwatch.printElapsedTime();
         }
 
-    }
-    public static void getCoefsAcquisition() throws IOException, ParseException, ClassNotFoundException {
-        String todayString = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        String filePath = wd + todayString + "_coefs.dat";
-
-        File file = new File(filePath);
-
-        if (file.exists()) {
-            coefAQmap = (Map<String, ArrayList<Float>>) readObjectFromFile(filePath);
-        } else {
-            coefAQmap.putAll(TableCoefAcquisition.processDF(new DFnew(wd + "TDB Part 2_Hors France_populated_coef.csv", ';', false, "coefsAQ")));
-            coefAQmap.putAll(TableCoefAcquisition.processDF(new DFnew(wd + "TDB Part 2_France_populated_coef.csv", ';', false, "coefsAQ")));
-            // The accumulator now has the combined map from both files
-            System.out.println(FloatArrayDictionary.getTotalArraysPassed() + " total coefs added");
-            System.out.println(FloatArrayDictionary.getUniqueArraysStored() + " unique coefs stored");
-            // Save to file
-            saveObjectToFile(coefAQmap, filePath);
-        }
     }
     public static void saveObjectToFile(Object obj, String filePath) throws IOException {
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filePath))) {

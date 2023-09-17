@@ -2,8 +2,14 @@ package main.app;
 
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.text.ParseException;
@@ -46,6 +52,8 @@ public class Estimatenew extends DFnew {
         st.start();
 
         Estimatenew estimate = new Estimatenew(wd+"TDB estimate par gestionnaire/TDB Estimate.csv",';',false);
+        getCoefsAcquisition(true,estimate);
+
         for (int i = 0; i < refSource.nrow; i++) {
             boolean a_faire = !(refSource.getColumn("a faire").get(i)).equals("non");
             if (!a_faire) continue;
@@ -177,6 +185,86 @@ public class Estimatenew extends DFnew {
         mergeDBP();
         sortTableByContractAndDate();
         findDateGapsFromLastAvailable();
+        for (int i = 0; i < headers.size(); i++) {
+            if (headers.get(i).isEmpty()) {
+                headers.set(i, "*");
+            }
+        }
+//        saveUniqueCombinationsToXlsx(outputFolder+"casPrime.xlsx");
+    }
+    public void saveUniqueCombinationsToXlsx(String outputPath) throws IOException {
+        ArrayList<String> fluxColumn = getColumn("Flux");
+        ArrayList<Double> montantTotalNetCompagnieColumn = getColumn("MONTANT TOTAL NET COMPAGNIE");
+        ArrayList<Double> montantTotalPrimeAssureurColumn = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+
+        // Holds a unique set of row combinations
+        Set<String> uniqueCombinations = new HashSet<>();
+
+        // Collecting rows with unique combinations
+        ArrayList<ArrayList<Object>> collectedRows = new ArrayList<>();
+
+        for (int i = 0; i < nrow; i++) {
+            String fluxValue = fluxColumn.get(i);
+            String montantTotalNetCompagnieValue = classifyValue(montantTotalNetCompagnieColumn.get(i));
+            String montantTotalPrimeAssureurValue = classifyValue(montantTotalPrimeAssureurColumn.get(i));
+
+            String combinationKey = fluxValue + "_" + montantTotalNetCompagnieValue + "_" + montantTotalPrimeAssureurValue;
+
+            if (!uniqueCombinations.contains(combinationKey)) {
+                uniqueCombinations.add(combinationKey);
+                collectedRows.add(getRow(i));
+            }
+        }
+
+        // Save to XLSX
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Unique Combinations");
+
+            // Header Row
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers.get(i));
+            }
+
+            // Data Rows
+            SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy");
+            for (int i = 0; i < collectedRows.size(); i++) {
+                ArrayList<Object> row = collectedRows.get(i);
+                Row xlsxRow = sheet.createRow(i + 1);
+                for (int j = 0; j < row.size(); j++) {
+                    Cell cell = xlsxRow.createCell(j);
+                    Object value = row.get(j);
+                    if (value instanceof Double) {
+                        cell.setCellValue((Double) value);
+                    } else if (value instanceof Date) {
+                        cell.setCellValue(dateFormat.format((Date) value));
+                    } else {
+                        if (value == null) {
+                            cell.setCellValue("");
+                        } else {
+                            cell.setCellValue(value.toString());
+                        }
+                    }
+                }
+            }
+
+            try (FileOutputStream fos = new FileOutputStream(outputPath)) {
+                workbook.write(fos);
+            }
+        }
+    }
+
+    private String classifyValue(Double value) {
+        if (value == null) {
+            return "null";
+        } else if (value > 0) {
+            return "positive";
+        } else if (value < 0) {
+            return "negative";
+        } else {
+            return "zero";
+        }
     }
     private void transformDatePeriodeColumn() {
         SimpleDateFormat dateFormatter = new SimpleDateFormat("dd-MM-yyyy");
@@ -874,19 +962,22 @@ public class Estimatenew extends DFnew {
         int tableBegin = headers.size() - allDates.size();
 
         // Create a map to store contractKey and its corresponding count of missing dateKeys.
+        ArrayList<Float> defaultCoefs = new ArrayList<>();
+        defaultCoefs.add(1f);
+
         Map<String, List<Date>> warningMap = new HashMap<>();
         for (int i = 0; i < nrow; i++) {
             String contrat = contratColumn.get(i);
             Date date = dateColumn.get(i);
-
-            String combinedKey = contrat.toLowerCase() + "_" + date;
-            ArrayList<Float> coefs = coefAQmap.get(combinedKey);
-            if (coefs == null) {
-                warningMap.computeIfAbsent(contrat, k -> new ArrayList<>()).add(date);
-                continue;
-            }
-
             Double prime = primeColumn.get(i);
+
+            ArrayList<Float> coefs = mapCoefAQ.get(i);
+            if (coefs == null) {
+                coefs = defaultCoefs;
+                if (prime > 0) {
+                    warningMap.computeIfAbsent(contrat, k -> new ArrayList<>()).add(date);
+                }
+            }
 
             int coefBegin = allDates.indexOf(date);
             if (coefBegin >= 0) {
