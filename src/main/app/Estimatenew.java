@@ -943,7 +943,7 @@ public class Estimatenew extends DFnew {
         addColumn("Total Provision", totalProvisionColumn, ColTypes.DBL);
     }
     public void addPrimesAcquises() {
-        appendPAmensuel(true);
+        appendPAmensuel(false);
         appendPAsums();
     }
     public void appendPAmensuel(boolean avecICI) {
@@ -969,7 +969,9 @@ public class Estimatenew extends DFnew {
         for (int i = 0; i < nrow; i++) {
             String contrat = contratColumn.get(i);
             Date date = dateColumn.get(i);
+
             Double prime = primeColumn.get(i);
+            if (prime == 0d) continue;
 
             ArrayList<Float> coefs = mapCoefAQ.get(i);
             if (coefs == null) {
@@ -985,7 +987,10 @@ public class Estimatenew extends DFnew {
                 coefBegin += tableBegin;
                 for (int iterCoef = 0; iterCoef < reste; iterCoef++) {
                     Float coef = coefs.get(iterCoef);
-                    if (coef > 0) {
+                    if (coef != null) {
+                        if (coef == 0f) {
+                            System.out.println("ERROR in row " + i);
+                        }
                         getColumnByIndex(coefBegin + iterCoef).set(i, prime * coef);
                     }
                 }

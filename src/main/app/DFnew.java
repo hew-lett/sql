@@ -1348,7 +1348,8 @@ public class DFnew {
         Path originalPath = Paths.get(this.path);
         String filenameWithoutExtension = originalPath.getFileName().toString().replaceFirst("[.][^.]+$", "");
         String fileExtension = originalPath.toString().substring(originalPath.toString().lastIndexOf(".") + 1);
-        String newPath = originalPath.getParent() + "/" + filenameWithoutExtension + suffix + "." + fileExtension;
+//        String newPath = originalPath.getParent() + "/" + filenameWithoutExtension + suffix + "." + fileExtension;
+        String newPath = outputFolder + filenameWithoutExtension + suffix + "." + fileExtension;
 
         try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(newPath), StandardCharsets.UTF_8)) {
             // Write BOM for UTF-8
