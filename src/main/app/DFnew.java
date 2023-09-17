@@ -64,6 +64,19 @@ public class DFnew {
     public static DFnew SPprevi;
     public static DFnew mapStatuts;
     public static DFnew grilleTarif;
+    public static DFnew coefPM;
+    private static final Set<String> aChercherDansCoefPM = new HashSet<>();
+    public static final int lastM;
+    static {
+        aChercherDansCoefPM.add("ICIPMCD15");
+        aChercherDansCoefPM.add("ICIPMCH15");
+        aChercherDansCoefPM.add("ICIPMEG15");
+        aChercherDansCoefPM.add("ICIPMG17");
+        aChercherDansCoefPM.add("ICIPMTT15");
+        aChercherDansCoefPM.add("ICIPMDT15");
+        aChercherDansCoefPM.add("ICIPMDV15");
+        aChercherDansCoefPM.add("ICISMIC19");
+    } //PM
     static {
         try {
             PB = new DFnew(wd + "PB Micromania.csv",';',false,"PB");
@@ -74,15 +87,19 @@ public class DFnew {
             SPprevi = new DFnew(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1",false,"SPprevi");
             mapStatuts = new DFnew(wd + "statuts.xlsx","Statuts",false,"mapStatuts");
             grilleTarif = new DFnew(wd + "Grille_Tarifaire.csv",';',false,"grilleTarif");
+            coefPM = new DFnew(wd + "coefPM.csv",';',false,"coefPM");
             mergeRowsOnContratRefProg();
             populateGlobalStatutMap();
             mapPoliceToPB();
             mapPoliceToSPPrevi();
+            repairReferenceGT();
             getCoefsAcquisition();
+            lastM = grilleTarif.findLastNonNullColumnFromM();
         } catch (IOException | ParseException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
-    }
+
+    } //REFS
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd/MM/yyyy");
     private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.####"); // Adjust the number of # after the point for precision.
     public DFnew() {
@@ -92,17 +109,21 @@ public class DFnew {
     public static void main(String[] args) throws IOException, ParseException, Exception {
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.start();
+        Estimatenew estimate = new Estimatenew(wd+"TDB estimate par gestionnaire/TDB Estimate.csv",';',false);
 
-//        TDBfilterAndMergeSRC();
-//        DFnew TDB2src = new DFnew(wd + "TDB France SRC.csv",';',false,"TDB2_src");
 //        DFnew TDB2 = new DFnew(wd + "TDB part 2.csv",';',false,"TDB2");
-//        TDB2.populateTDB2(TDB2src);
+//        TDB2.populateTDB2();
+//        TDB2.fill0();
 //        TDB2.saveTDBtoCSVprecision(wd + "TDB part 2_populated.csv");
-
         DFnew TDB2populated = new DFnew(wd + "TDB part 2_populated.csv",';',false,"TDB2_populated");
-        TDB2populated.checkCoefficientSums();
+        Map<Integer, List<Float>> mapCoefAQ = estimate.populateCoefficientMap(TDB2populated);
+        if(areListsSummingToOne(mapCoefAQ,estimate)) {
+            System.out.println("All lists sum to 1.0");
+        } else {
+            System.out.println("Some lists do not sum to 1.0");
+        }
+        writeMapAndEstimateToCSV(mapCoefAQ,estimate,outputFolder+"coefAcquisition.csv");
 //        mapStatuts.populateStatutMap();
-
         stopwatch.printElapsedTime();
     }
     public DFnew(String csvFilePath, char delim, boolean toLower, String refFichier) throws IOException, ParseException {
@@ -417,7 +438,7 @@ public class DFnew {
         subheaders.add(label);
         subheaders.addAll(Collections.nCopies(headersToAdd.size() - 1, null));
     }
-    public void addCoefColumns() {
+    public void addCoefDatColumns() {
         // Start appending columns from M to M+200
         for (int i = 0; i <= 200; i++) {
             String header;
@@ -428,9 +449,29 @@ public class DFnew {
             }
             addEmptyColumn(header, ColTypes.FLT);
         }
+//        addEmptyColumn("DATE DEBUT TARIF", ColTypes.DAT);
+//        addEmptyColumn("DATE FIN TARIF", ColTypes.DAT);
     }
 
     // SORT-DELETE
+    protected void removeColumn(String header) {
+        int columnIndex = headers.indexOf(header);
+        if (columnIndex == -1) {
+            System.out.println("Warning: Header " + header + " not found.");
+            return;
+        }
+
+        // Remove column data
+        columns.remove(columnIndex);
+
+        // Remove header
+        headers.remove(columnIndex);
+
+        // Remove subheader if exists
+        if (subheaders != null && !subheaders.isEmpty()) {
+            subheaders.remove(columnIndex);
+        }
+    }
     protected void trimNullDatePeriodeRows() {
         ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
         ArrayList<Integer> rowsToDelete = new ArrayList<>();
@@ -477,6 +518,21 @@ public class DFnew {
                 if (rowIndex >= 0 && rowIndex < currentColumn.size()) {
                     currentColumn.remove(rowIndex.intValue());
                 }
+            }
+        }
+        nrow = nrow - rowsToDelete.size();
+    }
+    public void deleteRowsUnsafe(ArrayList<Integer> rowsToDelete) {
+        // Sort rowsToDelete in descending order to avoid shifting index issues
+        rowsToDelete.sort(Collections.reverseOrder());
+
+        // Iterate over every column and delete the rows
+        for (int col = 0; col < this.columns.size(); col++) {
+            System.out.println(col);
+            ArrayList<Object> currentColumn = getColumnByIndex(col);
+
+            for (int rowIndex : rowsToDelete) {
+                currentColumn.remove(rowIndex);
             }
         }
         nrow = nrow - rowsToDelete.size();
@@ -755,78 +811,427 @@ public class DFnew {
         // Update the row count for dataset1
         dataset1.nrow += dataset2.nrow;
     }
-    public void populateTDB2(DFnew TDB2_src) {
-        // 1. Add coefficient columns to TDB2
-        addCoefColumns();
+    // Inner class to store the date pair
+    public static class DatePair {
+        Date startDate;
+        Date endDate;
 
-        // 2. Create hashmaps for direct lookups
-        Map<String, Integer> tarifMap = createMapFromTable(grilleTarif);
-        Map<String, Integer> srcMap = createMapFromTable(TDB2_src);
-
-        // 3. For each row in TDB2, find coefficients
-        for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
-            String identifiant = getColumn("IDENTIFIANT CONTRAT").get(rowIndex).toString();
-            String reference = getColumn("REFERENCE").get(rowIndex).toString().replace("\"", "");
-            String combinedKey = identifiant + "_" + reference;
-
-            boolean found = lookupAndAssign(tarifMap, grilleTarif, srcMap, TDB2_src, combinedKey, rowIndex);
-            if (!found && identifiant.equals("ICIMWTV19")) {
-                found = lookupAndAssign(tarifMap, grilleTarif, srcMap, TDB2_src, identifiant + "_" + reference + "_2", rowIndex);
-            }
-
-            if (!found && combinedKey.equals("ICIMWTL18_114771")) {
-                found = lookupAndAssign(tarifMap, grilleTarif, srcMap, TDB2_src, "ICIMWTL18_114773", rowIndex);
-            }
-            // If not found in both, print warning
-            if (!found) {
-                System.out.println("Warning: Key " + combinedKey + " not found in both tables.");
-            }
+        public DatePair(Date startDate, Date endDate) {
+            this.startDate = startDate;
+            this.endDate = endDate;
         }
     }
     // Helper method to create a map for direct lookups
-    private Map<String, Integer> createMapFromTable(DFnew table) {
-        Map<String, Integer> map = new HashMap<>();
+    private Map<String, Map<Integer, DatePair>> createMapFromTable(DFnew table) {
+        Map<String, Map<Integer, DatePair>> map = new HashMap<>();
         for (int i = 0; i < table.nrow; i++) {
             String identifiant = table.getColumn("IDENTIFIANT_CONTRAT").get(i).toString();
             String reference = table.getColumn("REFERENCE").get(i).toString().replace("\"", "");
             String combinedKey = identifiant + "_" + reference;
-            map.put(combinedKey, i);
+
+            Date startDate = (Date) table.getColumn("DATE DEBUT TARIF").get(i);
+            Date endDate = (Date) table.getColumn("DATE FIN TARIF").get(i);
+
+            map.computeIfAbsent(combinedKey, k -> new HashMap<>()).put(i, new DatePair(startDate, endDate));
         }
         return map;
     }
     // Helper function to look up and assign values
-    private boolean lookupAndAssign(Map<String, Integer> tarifMap, DFnew tarifTable,
-                                    Map<String, Integer> srcMap, DFnew srcTable,
-                                    String key, int rowIndex) {
-        // First, try grilleTarif (tarifTable)
-        Integer tarifRow = tarifMap.get(key);
-        if (tarifRow != null) {
-            for (int colIndex = 2; colIndex <= 202; colIndex++) {
-                Float value = (Float) tarifTable.getColumnByIndex(colIndex).get(tarifRow);
-                if (value != null && value == 0.0f) {
-                    value = null;  // Set to null if the value is 0
-                }
-                getColumnByIndex(colIndex).set(rowIndex, value);
+    public void populateTDB2() {
+        // 1. Add coefficient columns to TDB2
+        addCoefDatColumns();
+
+        // 2. Create hashmaps for direct lookups
+        Map<String, Map<Integer, DatePair>> tarifMap = createMapFromTable(grilleTarif);
+        ArrayList<String> contrats = getColumn("IDENTIFIANT CONTRAT");
+        ArrayList<String> refs = getColumn("REFERENCE");
+        ArrayList<Date> dates = getColumn("DATE DEBUT PERIODE SOUSCRIPTION");
+        ArrayList<Double> montants = getColumn("MONTANT PRIME ASSUREUR");
+
+        int m = headers.indexOf("M");
+        int mTarif = grilleTarif.headers.indexOf("M");
+
+        ArrayList<Integer> rowsToTreat = new ArrayList<>();
+        // 3. For each row in TDB2, find coefficients
+        for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+            Double montant = montants.get(rowIndex);
+            if (montant <= 0.0d) {
+                rowsToTreat.add(0);
+                continue;
             }
-            return true; // Successfully found and assigned from grilleTarif
+            rowsToTreat.add(1);
+
+            String contrat = contrats.get(rowIndex);
+            if (aChercherDansCoefPM.contains(contrat)) continue;
+
+            String reference = refs.get(rowIndex).replace("\"", "").toUpperCase();
+            String combinedKey = contrat + "_" + reference;
+
+            Date dateDebutPeriode = dates.get(rowIndex);
+
+            boolean found = lookupAndAssign(tarifMap, grilleTarif, combinedKey, rowIndex, dateDebutPeriode, m, mTarif);
+            if (!found && contrat.equals("ICIMWTV19")) {
+                found = lookupAndAssign(tarifMap, grilleTarif, contrat + "_" + reference + "_2", rowIndex, dateDebutPeriode, m, mTarif);
+            }
+
+            if (!found && combinedKey.equals("ICIMWTL18_114771")) {
+                found = lookupAndAssign(tarifMap, grilleTarif, "ICIMWTL18_114773", rowIndex, dateDebutPeriode, m, mTarif);
+            }
+            // If not found in both, print warning
+            if (!found) {
+                System.out.println("Warning: Key " + combinedKey + " not found in GT pour la date: " + dateDebutPeriode);
+            }
         }
 
-        // If not found in grilleTarif, try TDB2_src (srcTable)
-        Integer srcRow = srcMap.get(key);
-        if (srcRow != null) {
-            for (int colIndex = 2; colIndex <= 202; colIndex++) {
-                Float value = (Float) srcTable.getColumnByIndex(colIndex).get(srcRow);
-                if (value != null && value == 0.0f) {
-                    value = null;  // Set to null if the value is 0
+        addColumn("aFaire",rowsToTreat,INT);
+        removeColumn("REFERENCE");
+        removeColumn("MONTANT PRIME ASSUREUR");
+    }
+    public void fill0() {
+        // Step 1: Find the column named "M"
+        int columnIndexM = headers.indexOf("M");
+        ArrayList<Date> columnDate = getColumn("DATE DEBUT PERIODE SOUSCRIPTION");
+        ArrayList<String> columnContrat = getColumn("IDENTIFIANT CONTRAT");
+
+        Date currentGroupDate = null;
+        String currentContract = null;
+        int maxIndexForCurrentGroup = columnIndexM;
+        int startOfCurrentGroup = 0;
+
+        for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+            Date rowDate = columnDate.get(rowIndex);
+            String rowContract = columnContrat.get(rowIndex);
+
+            // Check for change in date or contract, or end of the table
+            if (currentGroupDate == null || !currentGroupDate.equals(rowDate) || !currentContract.equals(rowContract) || rowIndex == nrow - 1) {
+
+                // If it's not the very first row
+                if (currentGroupDate != null) {
+                    // Process the detected group
+                    for (int i = startOfCurrentGroup; i < rowIndex; i++) {
+                        for (int col = columnIndexM; col <= maxIndexForCurrentGroup; col++) {
+                            Float value = (Float) getColumnByIndex(col).get(i);
+                            if (value == null) {
+                                getColumnByIndex(col).set(i, 0.0f);
+                            }
+                        }
+                    }
+                    // Reset the max column index for the next group
+                    maxIndexForCurrentGroup = columnIndexM;
                 }
-                getColumnByIndex(colIndex).set(rowIndex, value);
+
+                // Set the new group's start
+                startOfCurrentGroup = rowIndex;
+                currentGroupDate = rowDate;
+                currentContract = rowContract;
             }
-            return true; // Successfully found and assigned from TDB2_src
+
+            // Find the last non-null column for current row
+            for (int col = columnIndexM; col < headers.size()-1; col++) {
+                Float value = (Float) getColumnByIndex(col).get(rowIndex);
+                if (value != null) {
+                    maxIndexForCurrentGroup = Math.max(maxIndexForCurrentGroup, col);
+                }
+            }
+        }
+    }
+    public int findLastNonNullColumnFromM() {
+        // Find the column named "M"
+        int columnIndexM = headers.indexOf("M");
+        if (columnIndexM == -1) {
+            throw new IllegalArgumentException("Column with header: M not found.");
         }
 
-        return false; // Key not found in both tables
+        int lastNonNullColumn = columnIndexM;
+
+        // Iterate over columns starting from "M"
+        for (int col = columnIndexM; col < headers.size(); col++) {
+            if (!columns.get(col).type.equals(FLT)) continue;
+            ArrayList<Float> columnData = getColumnByIndex(col);  // Assuming columns after M are of type Float. Adjust if needed.
+
+            // Iterate over rows for the current column
+            for (Float value : columnData) {
+                if (value != null && value != 0f) {
+                    lastNonNullColumn = col;  // Update the last non-null column
+                    break;  // Move to the next column since we found a non-null value
+                }
+            }
+        }
+
+        return lastNonNullColumn - columnIndexM;
     }
 
+
+    private boolean lookupAndAssign(Map<String, Map<Integer, DatePair>> tarifMap, DFnew tarifTable,
+                                    String key, int rowIndex, Date dateDebutPeriode, int m, int mTarif) {
+        Map<Integer, DatePair> rowDatePairs = tarifMap.get(key);
+        if (rowDatePairs != null) {
+            for (Map.Entry<Integer, DatePair> entry : rowDatePairs.entrySet()) {
+                DatePair datePair = entry.getValue();
+                if (!dateDebutPeriode.before(datePair.startDate) && !dateDebutPeriode.after(datePair.endDate)) {
+                    int tarifRow = entry.getKey();
+                    for (int colIndex = m, colTarifIndex = mTarif; colIndex <= m+lastM; colIndex++,colTarifIndex++) {
+                        Float value = (Float) tarifTable.getColumnByIndex(colTarifIndex).get(tarifRow);
+                        if (value == 0.0f) {
+                            value = null;  // Set to null if the value is 0
+                        }
+                        getColumnByIndex(colIndex).set(rowIndex, value);
+                    }
+//                    Date value1 = (Date) tarifTable.getColumnByIndex(mTarif+201).get(tarifRow);
+//                    getColumnByIndex(m+201).set(rowIndex, value1);
+//                    Date value2 = (Date) tarifTable.getColumnByIndex(mTarif+202).get(tarifRow);
+//                    getColumnByIndex(m+202).set(rowIndex, value2);
+
+                    return true; // Successfully found and assigned from grilleTarif
+                }
+            }
+        }
+        return false;
+    }
+
+    public Map<Integer, List<Float>> populateCoefficientMapOld(DFnew externalTable) throws ParseException {
+        Map<Integer, List<Float>> coefficientMap = new HashMap<>();
+
+        List<String> contracts = getColumn("Contrat");
+        List<Date> datePeriodes = getColumn("Date Periode");
+        List<Double> montants = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+        List<String> fluxs = getColumn("Flux"); // Track values in the "Flux" column
+
+        List<String> extContracts = externalTable.getColumn("IDENTIFIANT CONTRAT");
+        List<Date> extStartDate = externalTable.getColumn("DATE DEBUT PERIODE SOUSCRIPTION");
+
+        ArrayList<String> contratsPM = coefPM.getColumn("CONTRAT");
+        ArrayList<Date> datesPM = coefPM.getColumn("DATE");
+
+        int m = externalTable.headers.indexOf("M");
+        int mPM = coefPM.headers.indexOf("M");
+
+        List<ArrayList<Float>> lastThreeCoefficients = new ArrayList<>(); // Track the last three coefficient arrays
+
+        for (int i = 0; i < contracts.size(); i++) {
+            Double montant = montants.get(i);
+            if (montant <= 0.0d) continue;
+
+            String contract = contracts.get(i);
+            Date datePeriode = datePeriodes.get(i);
+
+            if (aChercherDansCoefPM.contains(contract)) {
+                for (int j = 0; j < contratsPM.size(); j++) {
+                    if (contract.equals(contratsPM.get(j)) && datePeriode.equals(datesPM.get(j))) {
+                        ArrayList<Float> coefficients = new ArrayList<>();
+                        for (int k = mPM; k <= mPM+200; k++) {
+                            Float coefValue = (Float) coefPM.getColumnByIndex(k).get(j);
+                            coefficients.add(coefValue);
+                        }
+                        coefficientMap.put(i, FloatArrayDictionary.getOrAdd(coefficients));
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            List<ArrayList<Float>> matchingCoefficients = new ArrayList<>();
+
+            for (int j = 0; j < extContracts.size(); j++) {
+                if (contract.equals(extContracts.get(j)) && datePeriode.equals(extStartDate.get(j))) {
+                    ArrayList<Float> coefficients = new ArrayList<>();
+                    for (int k = m; k <= m+200; k++) {
+                        Float coefValue = (Float) externalTable.getColumnByIndex(k).get(j);
+                        coefficients.add(coefValue);
+                    }
+                    matchingCoefficients.add(coefficients);
+                }
+            }
+
+            if (matchingCoefficients.isEmpty()) {
+                if (!"BU".equals(fluxs.get(i))) {
+                    if (!lastThreeCoefficients.isEmpty()) {
+                        ArrayList<Float> averagedCoefficients = calculateAverageCoefficients(lastThreeCoefficients);
+                        coefficientMap.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
+                        // Store the freshly calculated averaged coefficients to the last three coefficients
+                        if (lastThreeCoefficients.size() == 3) {
+                            lastThreeCoefficients.remove(0);  // Remove the oldest coefficient array
+                        }
+                        lastThreeCoefficients.add(averagedCoefficients);
+                    } else {
+                        System.out.println("Warning: cant calculate coef previ for Contrat: " + contract + " and Date Periode: " + datePeriode);
+                    }
+                } else {
+                    System.out.println("Warning: No match found for Contrat: " + contract + " and Date Periode: " + datePeriode);
+                }
+            } else {
+                ArrayList<Float> averagedCoefficients = calculateAverageCoefficients(matchingCoefficients);
+                coefficientMap.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
+                // Ensure the lastThreeCoefficients list never exceeds a size of 3
+                if (lastThreeCoefficients.size() == 3) {
+                    lastThreeCoefficients.remove(0);
+                }
+                lastThreeCoefficients.add(FloatArrayDictionary.getOrAdd(averagedCoefficients));
+            }
+        }
+        return coefficientMap;
+    }
+    public Map<Integer, List<Float>> populateCoefficientMap(DFnew externalTable) throws ParseException {
+        Map<Integer, List<Float>> coefficientMap = new HashMap<>();
+
+        List<String> contracts = getColumn("Contrat");
+        List<Date> datePeriodes = getColumn("Date Periode");
+        List<Double> montants = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+        List<String> fluxs = getColumn("Flux"); // Track values in the "Flux" column
+
+        List<String> extContracts = externalTable.getColumn("IDENTIFIANT CONTRAT");
+        List<Date> extStartDate = externalTable.getColumn("DATE DEBUT PERIODE SOUSCRIPTION");
+        List<Integer> bool = externalTable.getColumn("aFaire");
+
+        ArrayList<String> contratsPM = coefPM.getColumn("CONTRAT");
+        ArrayList<Date> datesPM = coefPM.getColumn("DATE");
+
+        int m = externalTable.headers.indexOf("M");
+        int mPM = coefPM.headers.indexOf("M");
+
+        List<ArrayList<Float>> lastThreeCoefficients = new ArrayList<>(); // Track the last three coefficient arrays
+        ArrayList<Float> defaultCoefficients = new ArrayList<>();
+        defaultCoefficients.add(1f);
+        for (int k = 1; k <= 200; k++) {
+            defaultCoefficients.add(null);
+        }
+
+        int jPM = 0;
+        int jExt = 0;
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+        Date datedebug = sdf.parse("01/12/2015");
+        for (int i = 0; i < contracts.size(); i++) {
+//            System.out.println(i);
+            Double montant = montants.get(i);
+            if (montant <= 0.0d) continue;
+
+            String contract = contracts.get(i);
+            Date datePeriode = datePeriodes.get(i);
+
+//            if (contract.equals("ICIPMCD15") && datedebug.equals(datePeriode)) {
+//                System.out.println("here");
+//            }
+            if (i == 10650) {
+                System.out.println("here");
+            }
+            // Check if the contract is in the HashSet
+            if (aChercherDansCoefPM.contains(contract)) {
+                // Searching in contratsPM
+                while (jPM < contratsPM.size() && (contratsPM.get(jPM).compareTo(contract) < 0 || (contratsPM.get(jPM).equals(contract) && datesPM.get(jPM).compareTo(datePeriode) < 0))) {
+                    jPM++;
+                }
+
+                if (jPM < contratsPM.size() && contratsPM.get(jPM).equals(contract) && datesPM.get(jPM).equals(datePeriode)) {
+                    ArrayList<Float> coefficients = new ArrayList<>();
+                    for (int k = mPM; k <= mPM+lastM; k++) {
+                        Float coefValue = (Float) coefPM.getColumnByIndex(k).get(jPM);
+                        coefficients.add(coefValue);
+                    }
+                    coefficientMap.put(i, FloatArrayDictionary.getOrAdd(coefficients));
+                    continue;  // Skip the rest of the loop iteration
+                }
+            }
+
+            List<ArrayList<Float>> matchingCoefficients = new ArrayList<>();
+
+            while (jExt < extContracts.size() && (extContracts.get(jExt).compareTo(contract) < 0 || (extContracts.get(jExt).equals(contract) && extStartDate.get(jExt).compareTo(datePeriode) < 0))) {
+                jExt++;
+            }
+            // Searching in extContracts for multiple matching rows
+            while (jExt < extContracts.size() && extContracts.get(jExt).equals(contract) && extStartDate.get(jExt).equals(datePeriode)) {
+                if (bool.get(jExt) == 0) { // montant <= 0
+                    jExt++;
+                    continue;
+                }
+
+                ArrayList<Float> coefficients = new ArrayList<>();
+                for (int k = m; k <= m+lastM; k++) {
+                    Float coefValue = (Float) externalTable.getColumnByIndex(k).get(jExt);
+                    coefficients.add(coefValue);
+                }
+                matchingCoefficients.add(coefficients);
+                jExt++; // Move to next row in the external table
+            }
+
+            if (!matchingCoefficients.isEmpty()) {
+                ArrayList<Float> averagedCoefficients = calculateAverageCoefficients(matchingCoefficients);
+                coefficientMap.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
+
+                if (lastThreeCoefficients.size() == 3) {
+                    lastThreeCoefficients.remove(0);
+                }
+                lastThreeCoefficients.add(FloatArrayDictionary.getOrAdd(averagedCoefficients));
+            } else {
+                // Logic for unmatched contract
+                if (!"BU".equals(fluxs.get(i))) {
+                    if (!lastThreeCoefficients.isEmpty()) {
+                        ArrayList<Float> averagedCoefficients = calculateAverageCoefficients(lastThreeCoefficients);
+                        coefficientMap.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
+
+                        // Store the freshly calculated averaged coefficients to the last three coefficients
+                        if (lastThreeCoefficients.size() == 3) {
+                            lastThreeCoefficients.remove(0);  // Remove the oldest coefficient array
+                        }
+                        lastThreeCoefficients.add(averagedCoefficients);
+                    } else {
+                        System.out.println("Warning: cant calculate coef previ for Contrat: " + contract + " and Date Periode: " + datePeriode);
+                        coefficientMap.put(i, FloatArrayDictionary.getOrAdd(defaultCoefficients));
+                    }
+                } else {
+                    System.out.println("Warning: No match found for Contrat: " + contract + " and Date Periode: " + datePeriode);
+                    coefficientMap.put(i, FloatArrayDictionary.getOrAdd(defaultCoefficients));
+                }
+            }
+        }
+
+        return coefficientMap;
+    }
+    private ArrayList<Float> calculateAverageCoefficients(List<ArrayList<Float>> coefficientsList) {
+        ArrayList<Float> averagedCoefficients = new ArrayList<>();
+        for (int mIter = 0; mIter <= lastM; mIter++) {
+            float sum = 0;
+            int count = 0;
+            for (ArrayList<Float> coefList : coefficientsList) {
+                Float value = coefList.get(mIter);
+                if (value != null) {
+                    sum += value;
+                    count++;
+                }
+            }
+            averagedCoefficients.add(count == 0 ? null : sum / count);
+        }
+        return averagedCoefficients;
+    }
+    public static void writeMapAndEstimateToCSV(Map<Integer, List<Float>> mapCoefAQ, DFnew estimate, String outputPath) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(outputPath), StandardCharsets.UTF_8))) {
+            // Write BOM (Byte Order Mark) for UTF-8 Encoding
+            writer.write("\uFEFF");
+
+            // Write CSV headers
+            writer.write("Contrat;Date Periode");
+            for (int i = 0; i <= lastM; i++) {  // Iterate from 0 to lastM inclusive
+                writer.write(";M" + (i == 0 ? "" : "+" + i));
+            }
+            writer.newLine();
+
+            for (Map.Entry<Integer, List<Float>> entry : mapCoefAQ.entrySet()) {
+                Integer rowIndex = entry.getKey();
+                List<Float> coefficients = entry.getValue();
+
+                // Fetch "Contrat" and "Date Periode" columns from the row using rowIndex
+                String contrat = estimate.getColumn("Contrat").get(rowIndex).toString();
+                String datePeriode = estimate.getColumn("Date Periode").get(rowIndex).toString();
+
+                // Write the data to the CSV file
+                writer.write(contrat + ";" + datePeriode);
+
+                for (Float coef : coefficients) {
+                    writer.write(";" + coef);
+                }
+                writer.newLine();
+            }
+        }
+    }
 
     protected void saveTDBtoCSVprecision(String path) throws IOException {
                 try (BufferedWriter writer = Files.newBufferedWriter(Path.of(path), StandardCharsets.UTF_8)) {
@@ -846,6 +1251,9 @@ public class DFnew {
             // Write data
             for (int i = 0; i < nrow; i++) {
                 List<String> row = getRow(i).stream().map(item -> {
+                    if (item instanceof Float) {
+                        return String.format("%.7f", item);
+                    }
                     if (item instanceof Date) {
                         return DATE_FORMAT.format((Date) item);
                     }
@@ -857,29 +1265,54 @@ public class DFnew {
             }
         }
     }
-    public void checkCoefficientSums() {
-        for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
-            double sum = 0;
+    public static boolean areListsSummingToOne(Map<Integer, List<Float>> mapCoefAQ, Estimatenew est) {
+        final float EPSILON = 1e-5f; // precision
+        boolean allListsSumToOne = true; // to track if all lists sum to one
 
-            // Sum the coefficients from columns 2 to 202 inclusive
-            for (int colIndex = 2; colIndex <= 202; colIndex++) {
-                Object cell = getColumnByIndex(colIndex).get(rowIndex);
-                if (cell instanceof Number) {
-                    sum += ((Number) cell).doubleValue();
+        for (Map.Entry<Integer, List<Float>> entry : mapCoefAQ.entrySet()) {
+            float sum = 0.0f;
+            for (Float value : entry.getValue()) {
+                if (value != null) {
+                    sum += value;
                 }
             }
 
-            // Check if the sum is close enough to 1.0 (considering floating-point precision)
-            if (Math.abs(sum - 1.0) > 0.00001) {
-                String identifiant = getColumn("IDENTIFIANT CONTRAT").get(rowIndex).toString();
-                String reference = getColumn("REFERENCE").get(rowIndex).toString();
-                String combinedKey = identifiant + "_" + reference;
+            if (Math.abs(sum - 1.0f) > EPSILON) {
+                System.out.println("Bad key: " + entry.getKey() + " " + sum); // print the key for which the list doesn't sum to one
+                System.out.println(est.getRow(entry.getKey()));
+                allListsSumToOne = false;
+            }
+        }
 
-                System.out.println("Key: " + combinedKey + ", Difference with 1: " + (1.0 - sum));
+        return allListsSumToOne;
+    }
+
+
+    public static void repairReferenceGT() {
+        List<String> referenceColumn = grilleTarif.getColumn("REFERENCE");
+        List<String> contratColumn = grilleTarif.getColumn("IDENTIFIANT_CONTRAT");
+
+        for (int i = 0; i < referenceColumn.size(); i++) {
+            String contrat = contratColumn.get(i);
+            String currentValue = referenceColumn.get(i);
+            if (currentValue != null) {
+                referenceColumn.set(i, currentValue.toUpperCase());
+                if (contrat.equals("ICIMOCN22")) {
+                    referenceColumn.set(i, extractUpToLast000(currentValue).toUpperCase());
+                }
             }
         }
     }
+    public static String extractUpToLast000(String input) {
+        int lastIndex = input.lastIndexOf("000");
 
+        if (lastIndex != -1) {
+            return input.substring(0, lastIndex + 3);  // +3 to include "000" in the result
+        }
+
+        // If "000" is not found in the string, return the input as is (or you can return null or any default value)
+        return input;
+    }
 
     // CSV WRITER
     protected void saveToCsvWithSuffix(String suffix) throws IOException {
