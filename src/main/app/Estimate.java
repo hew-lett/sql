@@ -1963,7 +1963,7 @@ public class Estimate extends DF {
             return 0.0;
         }
 
-        String stringValue = (String) value;
+        String stringValue = value.toString();
 
         try {
             return Double.parseDouble(stringValue.replace(',', '.'));

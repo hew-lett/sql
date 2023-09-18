@@ -40,15 +40,6 @@ public class Synthese {
     private List<Integer> refMapping;
     private ArrayList<Boolean> bu;
     public static Synthese syntAncien;
-
-//    static {
-//        try {
-//            syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-//        } catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
-//    }
-
     private ArrayList<Integer> mapToAncien;
     public static final String[] INTEGER_COLUMNS;
     public static final String[] DOUBLE_COLUMNS;

@@ -1252,8 +1252,6 @@ public class Estimatenew extends DFnew {
         populateSPColumns(false);
     }
     public void populateSPPreviHorsPB() {
-        avecICImask.add(true);
-        sansICImask.add(true);
         // Get the required columns from the current table
         List<String> contrats = getColumn("Contrat");
         List<Date> datePeriodes = getColumn("Date Periode");
@@ -1301,8 +1299,6 @@ public class Estimatenew extends DFnew {
         }
     }
     public void populatePBColumn() {
-        avecICImask.add(true);
-        sansICImask.add(true);
         // Get the required columns from the current table
         List<String> contrats = getColumn("Contrat");
         List<Date> datePeriodes = getColumn("Date Periode");
