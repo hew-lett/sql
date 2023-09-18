@@ -2,20 +2,27 @@ package main.app;
 
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
+import org.apache.poi.ss.formula.functions.Today;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.xpath.operations.Bool;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
+import java.lang.reflect.Array;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
+import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static main.app.App.*;
 import static main.app.Basenew.STATUT_FICTIF_FIC;
@@ -27,32 +34,24 @@ import static main.app.Basenew.yearN;
 import static main.app.DFnew.ColTypes.*;
 
 public class Estimatenew extends DFnew {
-    int baseNcol = 0;
-    int lastAppendSize = 0;
-    String[] totalPA;
-    String[] totalPAaDate;
-    String[] tauxAcquisition;
-    Double[] colSPprevi;
-    Double[] colPB;
-    Double[] colSinUltime;
-
-    boolean[] mask_col;
-    protected Stopwatch stopwatch = new Stopwatch();
-    public Set<String> uniqueStatutsEstimate;
-    public Set<String> uniqueNumPoliceEstimate = new HashSet<>();
     public static Map<String, Map<String, Date>> minMaxDateSousMapEstimate = new HashMap<>();
     private static final List<String> allDateHeaders = new ArrayList<>();
     private static final List<String> allYearHeaders = new ArrayList<>();
     private static final List<Date> allDates = generateAllDatesAndHeaders();
     private static final List<Integer> allYears = generateAllYearsAndHeaders();
     public static final Map<String, Map<Date, Integer>> gapsMap = new HashMap<>();
-
+    private final ArrayList<Double> plusComm = new ArrayList<>();
+    private final ArrayList<Boolean> avecICImask = new ArrayList<>();
+    private final ArrayList<Boolean> sansICImask = new ArrayList<>();
     public static void main(String[] args) throws Exception {
         Stopwatch st = new Stopwatch();
         st.start();
 
         Estimatenew estimate = new Estimatenew(wd+"TDB estimate par gestionnaire/TDB Estimate.csv",';',false);
-        getCoefsAcquisition(true,estimate);
+        getCoefsAcquisition(false,estimate);
+        Basenew baseGP = new Basenew(wd+"aux SIN/Garantie Privée.csv", false);
+        Basenew baseGDM = new Basenew(wd+"aux SIN/Advise.csv", false);
+        Basenew baseADV = new Basenew(wd+"aux SIN/Guy Demarle.csv", false);
 
         for (int i = 0; i < refSource.nrow; i++) {
             boolean a_faire = !(refSource.getColumn("a faire").get(i)).equals("non");
@@ -96,8 +95,13 @@ public class Estimatenew extends DFnew {
             }
 
             Basenew baseFic = new Basenew(wd + path_fic,map_fic,false);
-            baseMapNew.put(path_fic, baseFic);
+            ficMapNew.put(path_fic, baseFic);
         }
+
+        baseMapNew.put(baseGP.numPolice,baseGP);
+        baseMapNew.put(baseGDM.numPolice,baseGDM);
+        baseMapNew.put(baseADV.numPolice,baseADV);
+
         st.printElapsedTime();
         estimate.appendAllPivotsFic();
         st.printElapsedTime();
@@ -108,10 +112,19 @@ public class Estimatenew extends DFnew {
         estimate.addProvisions();
         st.printElapsedTime();
 
+        estimate.beginSplit();
         estimate.addPrimesAcquises();
         st.printElapsedTime();
 
-        estimate.saveToCsvWithSuffix("_FDT");
+        estimate.addSP();
+        st.printElapsedTime();
+
+        estimate.saveFDT(true);
+        st.printElapsedTime();
+
+        estimate.saveFDT(false);
+        st.printElapsedTime();
+
         st.printElapsedTime();
     }
     public Estimatenew(String csvFilePath, char delim, boolean toLower) throws IOException, ParseException {
@@ -178,19 +191,21 @@ public class Estimatenew extends DFnew {
         }
 
         subheaders = new ArrayList<>(Collections.nCopies(headers.size(), null));
-        trimNullDatePeriodeRows();
+        trimNullDatePeriodeRows_cleanHeader();
         transformDatePeriodeColumn();
         generateMinMaxDateSousMap();
         mergeRegul();
         mergeDBP();
         sortTableByContractAndDate();
         findDateGapsFromLastAvailable();
-        for (int i = 0; i < headers.size(); i++) {
-            if (headers.get(i).isEmpty()) {
-                headers.set(i, "*");
-            }
-        }
+        addComm();
 //        saveUniqueCombinationsToXlsx(outputFolder+"casPrime.xlsx");
+    }
+    private void beginSplit() {
+        for (String s : headers) {
+            avecICImask.add(true);
+            sansICImask.add(true);
+        }
     }
     public void saveUniqueCombinationsToXlsx(String outputPath) throws IOException {
         ArrayList<String> fluxColumn = getColumn("Flux");
@@ -254,7 +269,13 @@ public class Estimatenew extends DFnew {
             }
         }
     }
-
+    private void addComm() {
+        ArrayList<Double> mtpa = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+        ArrayList<Double> comm = getColumn("MONTANT TOTAL COMMISSION ICI");
+        for (int i = 0; i < nrow; i++) {
+            plusComm.add(mtpa.get(i) + comm.get(i));
+        }
+    }
     private String classifyValue(Double value) {
         if (value == null) {
             return "null";
@@ -808,6 +829,7 @@ public class Estimatenew extends DFnew {
 
             for (String statut : baseSin.uniqueStatuts) {
                 if (statut.isEmpty()) continue;  // Skip if statut is an empty string
+                if (statut.equals("Total")) continue;  // Skip faux statut
 
                 // Replace "sinistre" with the value of statut for the labels
                 String monthlyLabel = "Charge " + statut + " mensuel";
@@ -942,22 +964,30 @@ public class Estimatenew extends DFnew {
         populateColumnsFromMaps("En Cours Accepté", coutMoyenEnCoursAccepteMap, nEnCoursAccepteMap, contratColumn, datePeriodeColumn,totalProvisionColumn);
         addColumn("Total Provision", totalProvisionColumn, ColTypes.DBL);
     }
+
     public void addPrimesAcquises() {
+        appendPAmensuel(true);
+        appendPAsums(true);
+
         appendPAmensuel(false);
-        appendPAsums();
+        appendPAsums(false);
     }
     public void appendPAmensuel(boolean avecICI) {
+        String label;
+        if (avecICI) {
+            label = "Primes Acquises mensuel ";
+        } else {
+            label = "Primes Acquises mensuel";
+        }
         ArrayList<Date> dateColumn = getColumn("Date Periode");
         ArrayList<String> contratColumn = getColumn("Contrat");
-        String primeColumnName;
-        if (avecICI) {
-            primeColumnName = "MONTANT TOTAL NET COMPAGNIE";
-        } else {
-            primeColumnName = "MONTANT TOTAL PRIME ASSUREUR";
-        }
-        ArrayList<Double> primeColumn = getColumn(primeColumnName);
 
-        addLabeledBlock(allDateHeaders,"Primes Acquises mensuel", DBL);
+        ArrayList<Double> primeColumn = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+        if (avecICI) {
+            primeColumn = plusComm;
+        }
+
+        addLabeledBlock(allDateHeaders, label, DBL, avecICI);
 
         int tableBegin = headers.size() - allDates.size();
 
@@ -976,7 +1006,7 @@ public class Estimatenew extends DFnew {
             ArrayList<Float> coefs = mapCoefAQ.get(i);
             if (coefs == null) {
                 coefs = defaultCoefs;
-                if (prime > 0) {
+                if (prime > 0 && !policesComm.contains(contrat)) {
                     warningMap.computeIfAbsent(contrat, k -> new ArrayList<>()).add(date);
                 }
             }
@@ -996,24 +1026,38 @@ public class Estimatenew extends DFnew {
                 }
             }
         }
-        // print warnings
-        for (Map.Entry<String, List<Date>> entry : warningMap.entrySet()) {
-            String contrat = entry.getKey();
-            List<Date> missingDates = entry.getValue();
+        if (!avecICI) {
+            // print warnings
+            for (Map.Entry<String, List<Date>> entry : warningMap.entrySet()) {
+                String contrat = entry.getKey();
+                List<Date> missingDates = entry.getValue();
 
-            System.out.println("Contrat: " + contrat);
-            System.out.println("Missing Dates:");
-            for (Date date : missingDates) {
-                System.out.println(date);
+                System.out.println("Contrat: " + contrat);
+                System.out.println("CoefAcquisition non trouvé pour:");
+                for (Date date : missingDates) {
+                    System.out.println(dateDefault.format(date));
+                }
+                System.out.println("-------------"); // Separator for clarity
             }
-            System.out.println("-------------"); // Separator for clarity
         }
     }
-    public void appendPAsums() {
+    public void appendPAsums(boolean avecICI) {
+        String label; String labelPA;
+        if (avecICI) {
+            label = "Primes Acquises annuel ";
+            labelPA = "Prime Acquise à date ";
+        } else {
+            label = "Primes Acquises annuel";
+            labelPA = "Prime Acquise à date";
+        }
         int tableBegin = columns.size();
-        addLabeledBlock(allYearHeaders,"Primes Acquises annuel",DBL);
+        addLabeledBlock(allYearHeaders,label,DBL,avecICI);
         addEmptyColumn("Total",DBL);
-        addEmptyColumn("Prime Acquise à date",DBL); // Added this column
+        avecICImask.add(avecICI);
+        sansICImask.add(!avecICI);
+        addEmptyColumn(labelPA,DBL);
+        avecICImask.add(avecICI);
+        sansICImask.add(!avecICI);
 
         // Step 1: Create a map to store the number of months for each year
         Map<Integer, Integer> monthsPerYear = new HashMap<>();
@@ -1063,6 +1107,8 @@ public class Estimatenew extends DFnew {
             getColumnByIndex(headers.size() - 1).set(rowIndex, primeToDate); // "Prime Acquise à date"
         }
     }
+
+    // DATE HELPERS
     public int getYearFromDate(Date date) {
         Calendar cal = Calendar.getInstance();
         cal.setTime(date);
@@ -1156,7 +1202,6 @@ public class Estimatenew extends DFnew {
             previousDate = date;
         }
     }
-
     // Helper method to compute the difference in months between two dates
     private static long monthsBetweenDates(Date date1, Date date2) {
         Calendar startCalendar = new GregorianCalendar();
@@ -1171,5 +1216,366 @@ public class Estimatenew extends DFnew {
         }
 
         return monthsBetween;
+    }
+
+    // SP
+    public void addSP () {
+        ArrayList<String> colsToAdd = new ArrayList<>(Arrays.asList(
+                "Taux acquisition","Taux acquisition ",
+                "PB", "S/P previ hors PB",
+                "S/P si pas réel acquis avec provision","S/P si pas réel acquis avec provision ",
+                "S/P si pas reel ultime avant PB","S/P si pas reel ultime avant PB ",
+                "S/P si pas reel ultime apres PB","S/P si pas reel ultime apres PB ",
+                "Sinistre Ultime", "Sinistre Ultime "));
+        ArrayList<Boolean> avecICIcolumns = new ArrayList<>(Arrays.asList(false,true,true,true,false,true,false,true,false,true,false,true));
+        ArrayList<Boolean> sansICIcolumns = new ArrayList<>(Arrays.asList(true,false,true,true,true,false,true,false,true,false,true,false));
+        avecICImask.addAll(avecICIcolumns);
+        sansICImask.addAll(sansICIcolumns);
+
+        for (String header : colsToAdd) {
+            addEmptyColumn(header,DBL);
+        }
+
+        populateSPPreviHorsPB();
+        populatePBColumn();
+
+        calculateTauxAcquisition(true);
+        calculateTauxAcquisition(false);
+
+        populateSPPasReelAcquisAvecProvision(true);
+        populateSPPasReelAcquisAvecProvision(false);
+
+        addTriangleUltime(true);
+        addTriangleUltime(false);
+
+        populateSPColumns(true);
+        populateSPColumns(false);
+    }
+    public void populateSPPreviHorsPB() {
+        avecICImask.add(true);
+        sansICImask.add(true);
+        // Get the required columns from the current table
+        List<String> contrats = getColumn("Contrat");
+        List<Date> datePeriodes = getColumn("Date Periode");
+
+        // Create or get the "S/P previ hors PB" column (assuming it exists)
+        ArrayList<Double> spPreviHorsPB = getColumn("S/P previ hors PB");
+
+        // Prepare the mapping from the SPprevi external table
+        Map<String, Map<Integer, Double>> externMap = new HashMap<>();
+
+        List<String> externContrats = SPprevi.getColumn("IDENTIFIANT CONTRAT");
+        List<Integer> externAnnees = SPprevi.getColumn("ANNEES");
+        List<Double> externSPPreviSansICI = SPprevi.getColumn("S/P PREVI SANS ICI");
+
+        // Populate the hashmap with values from the external SPprevi table
+        for (int i = 0; i < externContrats.size(); i++) {
+            String externContract = externContrats.get(i);
+            Integer externYear = externAnnees.get(i);
+            Double spValue = externSPPreviSansICI.get(i);
+
+            if (!externMap.containsKey(externContract)) {
+                externMap.put(externContract, new HashMap<>());
+            }
+
+            externMap.get(externContract).put(externYear, spValue);
+        }
+
+        // Iterate through the rows of the current table and populate the "S/P previ hors PB" column
+        for (int i = 0; i < contrats.size(); i++) {
+            String contract = contrats.get(i);
+            Date datePeriode = datePeriodes.get(i);
+
+            // Extract the year from the date
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(datePeriode);
+            int year = cal.get(Calendar.YEAR);
+
+            Map<Integer, Double> yearValueMap = externMap.get(contract);
+            if (yearValueMap != null) {
+                Double value = yearValueMap.get(year);
+                spPreviHorsPB.set(i, value == null ? 0.0d : value);
+            } else {
+                spPreviHorsPB.set(i, 0.0d);
+            }
+        }
+    }
+    public void populatePBColumn() {
+        avecICImask.add(true);
+        sansICImask.add(true);
+        // Get the required columns from the current table
+        List<String> contrats = getColumn("Contrat");
+        List<Date> datePeriodes = getColumn("Date Periode");
+
+        // Create or get the "PB" column (assuming it exists)
+        ArrayList<Double> pbColumn = getColumn("PB");
+
+        // Prepare the mapping from the PB external table
+        Map<String, Map<Date, Double>> externMap = new HashMap<>();
+
+        List<String> externContrats = PB.getColumn("Contrat");
+        List<Date> externDates = PB.getColumn("Date");
+        List<Double> externPBValues = PB.getColumn("PB");
+
+        // Populate the hashmap with values from the external PB table
+        for (int i = 0; i < externContrats.size(); i++) {
+            String externContract = externContrats.get(i);
+            Date externDate = externDates.get(i);
+            Double pbValue = externPBValues.get(i);
+
+            if (!externMap.containsKey(externContract)) {
+                externMap.put(externContract, new HashMap<>());
+            }
+
+            externMap.get(externContract).put(externDate, pbValue);
+        }
+
+        // Iterate through the rows of the current table and populate the PB column
+        for (int i = 0; i < contrats.size(); i++) {
+            String contract = contrats.get(i);
+            Date datePeriode = datePeriodes.get(i);
+
+            Map<Date, Double> dateValueMap = externMap.get(contract);
+            if (dateValueMap != null) {
+                Double value = dateValueMap.get(datePeriode);
+                pbColumn.set(i, value == null ? 0.0d : value);
+            } else {
+                pbColumn.set(i, 0.0d);
+            }
+        }
+    }
+    public void calculateTauxAcquisition(boolean avecICI) {
+        ArrayList<Double> primeAcquise; ArrayList<Double> montantTotal; ArrayList<Double> tauxAcquisitionColumn;
+        if (avecICI) {
+            primeAcquise = getColumn("Prime Acquise à date ");
+            montantTotal = plusComm;
+            tauxAcquisitionColumn = getColumn("Taux acquisition ");
+        } else {
+            primeAcquise = getColumn("Prime Acquise à date");
+            montantTotal = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+            tauxAcquisitionColumn = getColumn("Taux acquisition");
+        }
+
+        for (int i = 0; i < primeAcquise.size(); i++) {
+            Double prime = primeAcquise.get(i);
+            Double montant = montantTotal.get(i);
+
+            if (prime == null || montant == null) {
+                tauxAcquisitionColumn.set(i, null); // Set null if any of the values are null
+                System.out.println("Warning: Found null value at row " + (i+1) + ". Column 'Taux acquisition' set to null.");
+                continue;
+            }
+
+            if (montant == 0.0) {
+                tauxAcquisitionColumn.set(i, 0.0); // Avoid division by zero
+            } else {
+                double taux = prime / montant;
+
+                if (Double.isNaN(taux)) {
+                    tauxAcquisitionColumn.set(i, 0.0);
+                } else {
+                    tauxAcquisitionColumn.set(i, taux);
+                }
+            }
+        }
+    }
+    public void populateSPPasReelAcquisAvecProvision(boolean avecICI) {
+        ArrayList<Double> primeAcquise; ArrayList<Double> tauxAcquisitionColumn; ArrayList<Double> resultColumn;
+        if (avecICI) {
+            primeAcquise = getColumn("Prime Acquise à date ");
+            tauxAcquisitionColumn = getColumn("Taux acquisition ");
+            resultColumn = getColumn("S/P si pas réel acquis avec provision ");
+        } else {
+            primeAcquise = getColumn("Prime Acquise à date");
+            tauxAcquisitionColumn = getColumn("Taux acquisition");
+            resultColumn = getColumn("S/P si pas réel acquis avec provision");
+        }
+        // Fetch all the required columns
+        ArrayList<Double> chargeComptable = getColumnSubheader("Charge Comptable totale");
+        ArrayList<Double> provisionEnCours = getColumnByDoubleNotation("Provision En Cours", "Total");
+        ArrayList<Double> PB = getColumn("PB");
+
+        for (int i = 0; i < chargeComptable.size(); i++) {
+            double numerator = (chargeComptable.get(i) == null ? 0 : chargeComptable.get(i)) + provisionEnCours.get(i);
+            double denominator = primeAcquise.get(i) + (PB.get(i) * tauxAcquisitionColumn.get(i));
+
+            if (denominator == 0) {
+                resultColumn.set(i, 0.0);
+            } else {
+                resultColumn.set(i, max(numerator / denominator, 0.0));
+            }
+        }
+    }
+    public void addTriangleUltime(boolean avecICI) {
+        String labelTriangle; int paFirstIndex; int sinUltimeIndex;
+        if (avecICI) {
+            labelTriangle = "Sinistres Previ si pas Reel comptable ";
+            paFirstIndex = subheaders.indexOf("Primes Acquises mensuel ");
+            sinUltimeIndex = headers.indexOf("Sinistre Ultime ");
+        } else {
+            labelTriangle = "Sinistres Previ si pas Reel comptable";
+            paFirstIndex = subheaders.indexOf("Primes Acquises mensuel");
+            sinUltimeIndex = headers.indexOf("Sinistre Ultime");
+        }
+
+        headers.addAll(allDateHeaders);
+
+        for (int i = 0; i < allDateHeaders.size(); i++) {
+            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, ColTypes.DBL));
+            avecICImask.add(avecICI);
+            sansICImask.add(!avecICI);
+        }
+
+        subheaders.add(labelTriangle);
+        subheaders.addAll(Collections.nCopies(allDateHeaders.size() - 1, null));
+
+        int beginIndex = headers.size() - allDates.size();
+
+        int comptaFirstIndex = subheaders.indexOf("Charge Comptable mensuelle");
+        ArrayList<Double> spColumn = getColumn("S/P previ hors PB");
+        ArrayList<Double> provisionColumn = getColumn("Total Provision");
+
+        ArrayList<Double> sinistreUltimeColumn = new ArrayList<>(Collections.nCopies(nrow, 0.0));
+
+        int offset = 0;
+        for (int col = beginIndex; col < headers.size(); col++) {
+            if (allDates.get(col-beginIndex).before(TODAY_01)) {
+                ArrayList<Double> comptaColumn = getColumnByIndex(comptaFirstIndex + offset);
+                for (int row = 0; row < nrow; row++) {
+                    Double compta = comptaColumn.get(row);
+                    Double value = (compta == null ? 0.0 : compta) + provisionColumn.get(row);
+                    getColumnByIndex(col).set(row,value);
+                    sinistreUltimeColumn.set(row, sinistreUltimeColumn.get(row) + value);
+                }
+                offset++;
+            } else {
+                ArrayList<Double> paColumn = getColumnByIndex(paFirstIndex + offset);
+                for (int row = 0; row < nrow; row++) {
+                    Double pa = paColumn.get(row);
+                    if (pa == null) {
+                        getColumnByIndex(col).set(row,0.0);
+                    } else {
+                        Double value = pa * spColumn.get(row);
+                        getColumnByIndex(col).set(row,value);
+                        sinistreUltimeColumn.set(row, sinistreUltimeColumn.get(row) + value);
+                    }
+                }
+                offset++;
+            }
+        }
+        columns.set(sinUltimeIndex,new Column<>(sinistreUltimeColumn, DBL));
+    }
+    public void populateSPColumns(boolean avecICI) {
+        ArrayList<Double> sinistreUltimeColumn; ArrayList<Double> primeColumn; ArrayList<Double> avantPB; ArrayList<Double> apresPB;
+        if (avecICI) {
+            sinistreUltimeColumn = getColumn("Sinistre Ultime ");
+            primeColumn = plusComm;
+            avantPB = getColumn("S/P si pas reel ultime avant PB ");
+            apresPB = getColumn("S/P si pas reel ultime apres PB ");
+        } else {
+            sinistreUltimeColumn = getColumn("Sinistre Ultime");
+            primeColumn = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+            avantPB = getColumn("S/P si pas reel ultime avant PB");
+            apresPB = getColumn("S/P si pas reel ultime apres PB");
+        }
+
+        ArrayList<Double> pbColumn = getColumn("PB");
+
+        for (int i = 0; i < nrow; i++) {
+            Double sinistreValue = sinistreUltimeColumn.get(i);
+            Double pbValue = pbColumn.get(i);
+            Double primeValue = primeColumn.get(i);
+
+            Double denominatorApresPB = primeValue + pbValue;
+
+            // Populate the columns based on the formulas
+            if (primeValue == 0.0) {
+                avantPB.set(i, 0.0);
+            } else {
+                avantPB.set(i, sinistreValue / primeValue);
+            }
+
+            if (denominatorApresPB == 0) {
+                apresPB.set(i, 0.0);
+            } else {
+                apresPB.set(i, sinistreValue / denominatorApresPB);
+            }
+        }
+    }
+
+    protected void addLabeledBlock(List<String> headersToAdd,String label, ColTypes type, boolean avecICI) {
+        headers.addAll(headersToAdd);
+
+        for (int i = 0; i < headersToAdd.size(); i++) {
+            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, type));
+            avecICImask.add(avecICI);
+            sansICImask.add(!avecICI);
+        }
+
+        subheaders.add(label);
+        subheaders.addAll(Collections.nCopies(headersToAdd.size() - 1, null));
+    }
+    protected void saveFDT(boolean avecICI) throws IOException {
+        Path originalPath = Paths.get(this.path);
+        String filenameWithoutExtension = originalPath.getFileName().toString().replaceFirst("[.][^.]+$", "");
+        String fileExtension = originalPath.toString().substring(originalPath.toString().lastIndexOf(".") + 1);
+        String newPath;
+        if (avecICI) {
+            newPath = outputFolder + filenameWithoutExtension + "_FDT_avec ICI." + fileExtension;
+        } else {
+            newPath = outputFolder + filenameWithoutExtension + "_FDT." + fileExtension;
+        }
+
+        // Determine which mask to use based on avecICI
+        ArrayList<Boolean> mask = avecICI ? avecICImask : sansICImask;
+
+        try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(newPath), StandardCharsets.UTF_8)) {
+            // Write BOM for UTF-8
+            writer.write('\ufeff');
+
+            // If there are subheaders, write them
+            if (subheaders != null && !subheaders.isEmpty()) {
+                List<String> filteredSubheaders = new ArrayList<>();
+                for (int j = 0; j < subheaders.size(); j++) {
+                    if (mask.get(j)) {
+                        filteredSubheaders.add(subheaders.get(j) != null ? subheaders.get(j) : "");
+                    }
+                }
+                writer.write(String.join(";", filteredSubheaders));
+                writer.newLine();
+            }
+
+            // Write headers applying the mask
+            List<String> filteredHeaders = IntStream.range(0, headers.size())
+                    .filter(mask::get)
+                    .mapToObj(headers::get)
+                    .collect(Collectors.toList());
+            writer.write(String.join(";", filteredHeaders));
+            writer.newLine();
+
+            // Write data applying the mask
+            for (int i = 0; i < nrow; i++) {
+                List<String> row = getRow(i).stream()
+                        .map(item -> {
+                            if (item instanceof Date) {
+                                return DATE_FORMAT.format((Date) item);
+                            } else if (item instanceof Double) {
+                                return DECIMAL_FORMAT.format(item).replace('.', ','); // Replace period with comma
+                            }
+                            return item != null ? item.toString() : "";
+                        })
+                        .collect(Collectors.toList());
+
+                List<String> filteredRow = IntStream.range(0, row.size())
+                        .filter(mask::get)
+                        .mapToObj(row::get)
+                        .collect(Collectors.toList());
+
+                writer.write(String.join(";", filteredRow));
+                writer.newLine();
+            }
+        }
     }
 }

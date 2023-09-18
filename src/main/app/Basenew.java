@@ -300,6 +300,7 @@ public class Basenew extends DFnew {
     } //Sin_aux
     public Basenew(String path, boolean toLower) throws Exception {
         String fileName = getFilenameWithoutExtension(path);
+        String refFichier = "baseFic";
         if (fileName.equals("Advise")) {
             numPolice = "ICICDAV17";
         }
@@ -308,10 +309,10 @@ public class Basenew extends DFnew {
         }
         if (fileName.equals("Garantie Privée")) {
             numPolice = "ICICEDV16";
+            refFichier = "base";
         }
-        this.referentialRow = getReferentialRow(numPolice);
+        this.referentialRow = getReferentialRow(fileName);
 
-        String refFichier = "base";
         FileConfig config = FileConfig.getInstance();
         columnNamesToRead = config.getColumnNamesToRead(refFichier);
         columnTypes = config.getColumnTypes(refFichier);

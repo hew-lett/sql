@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.InputStream;
 import java.util.Date;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -52,6 +53,7 @@ public class DFnew {
     public static DFnew grilleTarif;
     public static DFnew coefPM;
     private static final Set<String> aChercherDansCoefPM = new HashSet<>();
+    public static final Set<String> policesComm = new HashSet<>();
     public static final int lastM;
     static final Map<Integer, ArrayList<Float>> mapCoefAQ = new HashMap<>();
     static {
@@ -64,6 +66,12 @@ public class DFnew {
         aChercherDansCoefPM.add("ICIPMDV15");
         aChercherDansCoefPM.add("ICISMIC19");
         aChercherDansCoefPM.add("ICIMOPEMPPRO22");
+
+        policesComm.add("Surcommission1");
+        policesComm.add("Surcommission2");
+        policesComm.add("PB-2020");
+        policesComm.add("ICIGSCOM21");
+        policesComm.add("ICIGSCOM20");
     } //PM
     static {
         try {
@@ -87,8 +95,8 @@ public class DFnew {
         }
 
     } //REFS
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd/MM/yyyy");
-    private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.####"); // Adjust the number of # after the point for precision.
+    static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd/MM/yyyy");
+    static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.####"); // Adjust the number of # after the point for precision.
     public DFnew() {
 
     }
@@ -242,6 +250,7 @@ public class DFnew {
         DFnew TDB2populated = new DFnew(wd + "TDB part 2_populated.csv",';',false,"TDB2_populated");
 
         estimate.populateCoefficientMap(TDB2populated);
+        adjustMapCoefAQ();
 
         if(areListsSummingToOne(mapCoefAQ,estimate)) {
             System.out.println("All lists sum to 1.0");
@@ -346,6 +355,27 @@ public class DFnew {
             throw new IllegalArgumentException("Column with header: " + header + " not found.");
         }
     }
+    public <T> ArrayList<T> getColumnByDoubleNotation(String subHeaderPart, String headerPart) {
+        int subHeaderIndex = subheaders.indexOf(subHeaderPart);
+        int headerIndex = -1;
+
+        if (subHeaderIndex != -1) {
+            // Start from the subheader's index and search the headers
+            for (int i = subHeaderIndex; i < headers.size(); i++) {
+                if (headers.get(i).contains(headerPart)) {
+                    headerIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (headerIndex == -1) {
+            throw new IllegalArgumentException("Column with subheader: " + subHeaderPart + " and header part: " + headerPart + " not found.");
+        }
+
+        return getColumnByIndex(headerIndex);
+    }
+
     @SuppressWarnings("unchecked")
     public <T> ArrayList<T> getColumnByIndex(int index) {
         if (index < 0 || index >= columns.size()) {
@@ -419,17 +449,6 @@ public class DFnew {
         headers.add(header);
         subheaders.add(subheader);  // Adding the provided subheader
     }
-    protected void addLabeledBlock(List<String> headersToAdd,String label, ColTypes type) {
-        headers.addAll(headersToAdd);
-
-        for (int i = 0; i < headersToAdd.size(); i++) {
-            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
-            columns.add(new Column<>(columnData, type));
-        }
-
-        subheaders.add(label);
-        subheaders.addAll(Collections.nCopies(headersToAdd.size() - 1, null));
-    }
     public void addCoefDatColumns() {
         // Start appending columns from M to M+200
         for (int i = 0; i <= 200; i++) {
@@ -464,7 +483,7 @@ public class DFnew {
             subheaders.remove(columnIndex);
         }
     }
-    protected void trimNullDatePeriodeRows() {
+    protected void trimNullDatePeriodeRows_cleanHeader() {
         ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
         ArrayList<Integer> rowsToDelete = new ArrayList<>();
 
@@ -480,6 +499,11 @@ public class DFnew {
 
         // Now, delete those rows
         deleteRows(rowsToDelete);
+        for (int i = 0; i < headers.size(); i++) {
+            if (headers.get(i).isEmpty()) {
+                headers.set(i, "*");
+            }
+        }
     }
     protected void trimNullFirstCol() {
         ArrayList<Object> colToTrim = getColumnByIndex(0);
@@ -956,7 +980,6 @@ public class DFnew {
 
         return lastNonNullColumn - columnIndexM;
     }
-
     private boolean lookupAndAssign(Map<String, Map<Integer, DatePair>> tarifMap, DFnew tarifTable,
                                     String key, int rowIndex, Date dateDebutPeriode, int m, int mTarif) {
         Map<Integer, DatePair> rowDatePairs = tarifMap.get(key);
@@ -982,89 +1005,6 @@ public class DFnew {
             }
         }
         return false;
-    }
-
-    public Map<Integer, List<Float>> populateCoefficientMapOld(DFnew externalTable) throws ParseException {
-        Map<Integer, List<Float>> coefficientMap = new HashMap<>();
-
-        List<String> contracts = getColumn("Contrat");
-        List<Date> datePeriodes = getColumn("Date Periode");
-        List<Double> montants = getColumn("MONTANT TOTAL PRIME ASSUREUR");
-        List<String> fluxs = getColumn("Flux"); // Track values in the "Flux" column
-
-        List<String> extContracts = externalTable.getColumn("IDENTIFIANT CONTRAT");
-        List<Date> extStartDate = externalTable.getColumn("DATE DEBUT PERIODE SOUSCRIPTION");
-
-        ArrayList<String> contratsPM = coefPM.getColumn("CONTRAT");
-        ArrayList<Date> datesPM = coefPM.getColumn("DATE");
-
-        int m = externalTable.headers.indexOf("M");
-        int mPM = coefPM.headers.indexOf("M");
-
-        List<ArrayList<Float>> lastThreeCoefficients = new ArrayList<>(); // Track the last three coefficient arrays
-
-        for (int i = 0; i < contracts.size(); i++) {
-            Double montant = montants.get(i);
-            if (montant <= 0.0d) continue;
-
-            String contract = contracts.get(i);
-            Date datePeriode = datePeriodes.get(i);
-
-            if (aChercherDansCoefPM.contains(contract)) {
-                for (int j = 0; j < contratsPM.size(); j++) {
-                    if (contract.equals(contratsPM.get(j)) && datePeriode.equals(datesPM.get(j))) {
-                        ArrayList<Float> coefficients = new ArrayList<>();
-                        for (int k = mPM; k <= mPM+200; k++) {
-                            Float coefValue = (Float) coefPM.getColumnByIndex(k).get(j);
-                            coefficients.add(coefValue);
-                        }
-                        coefficientMap.put(i, FloatArrayDictionary.getOrAdd(coefficients));
-                        break;
-                    }
-                }
-                continue;
-            }
-
-            List<ArrayList<Float>> matchingCoefficients = new ArrayList<>();
-
-            for (int j = 0; j < extContracts.size(); j++) {
-                if (contract.equals(extContracts.get(j)) && datePeriode.equals(extStartDate.get(j))) {
-                    ArrayList<Float> coefficients = new ArrayList<>();
-                    for (int k = m; k <= m+200; k++) {
-                        Float coefValue = (Float) externalTable.getColumnByIndex(k).get(j);
-                        coefficients.add(coefValue);
-                    }
-                    matchingCoefficients.add(coefficients);
-                }
-            }
-
-            if (matchingCoefficients.isEmpty()) {
-                if (!"BU".equals(fluxs.get(i))) {
-                    if (!lastThreeCoefficients.isEmpty()) {
-                        ArrayList<Float> averagedCoefficients = calculateAverageCoefficients(lastThreeCoefficients);
-                        coefficientMap.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
-                        // Store the freshly calculated averaged coefficients to the last three coefficients
-                        if (lastThreeCoefficients.size() == 3) {
-                            lastThreeCoefficients.remove(0);  // Remove the oldest coefficient array
-                        }
-                        lastThreeCoefficients.add(averagedCoefficients);
-                    } else {
-                        System.out.println("Warning: cant calculate coef previ for Contrat: " + contract + " and Date Periode: " + datePeriode);
-                    }
-                } else {
-                    System.out.println("Warning: No match found for Contrat: " + contract + " and Date Periode: " + datePeriode);
-                }
-            } else {
-                ArrayList<Float> averagedCoefficients = calculateAverageCoefficients(matchingCoefficients);
-                coefficientMap.put(i, FloatArrayDictionary.getOrAdd(averagedCoefficients));
-                // Ensure the lastThreeCoefficients list never exceeds a size of 3
-                if (lastThreeCoefficients.size() == 3) {
-                    lastThreeCoefficients.remove(0);
-                }
-                lastThreeCoefficients.add(FloatArrayDictionary.getOrAdd(averagedCoefficients));
-            }
-        }
-        return coefficientMap;
     }
     public void populateCoefficientMap(DFnew externalTable) throws ParseException {
 
@@ -1162,10 +1102,10 @@ public class DFnew {
                         }
                         lastThreeCoefficients.add(averagedCoefficients);
                     } else {
-                        System.out.println("Warning: cant calculate coef for Contrat, no data: " + contract + " and Date Periode: " + datePeriode);
+                        System.out.println("Warning: cant calculate coef, no data: " + contract + " for date: " + dateDefault.format(datePeriode));
                     }
                 if ("BU".equals(fluxs.get(i))) {
-                    System.out.println("Warning: No match found for BU Contrat: " + contract + " and Date Periode: " + datePeriode);
+                    System.out.println("Warning: No match found for BU Contrat: " + contract + " for date: " + dateDefault.format(datePeriode));
                 }
             }
         }
@@ -1205,6 +1145,35 @@ public class DFnew {
             weightedAverageCoefficients.add(totalPrime == 0 || weightedSum == 0 ? null : weightedSum / totalPrime);
         }
         return weightedAverageCoefficients;
+    }
+    public static void adjustMapCoefAQ() {
+        for (Map.Entry<Integer, ArrayList<Float>> entry : mapCoefAQ.entrySet()) {
+            ArrayList<Float> coefficients = entry.getValue();
+
+            // Calculate the current sum of coefficients
+            float sum = 0;
+            for (Float coef : coefficients) {
+                if (coef != null) {
+                    sum += coef;
+                }
+            }
+
+            // Calculate the difference from 1
+            float difference = 1 - sum;
+
+            // Add the difference to the first coefficient
+            if (!coefficients.isEmpty() && difference < 0.0001f) {
+                for (int i = 0; i < coefficients.size(); i++) {
+                    if (coefficients.get(i) != null) {
+                        coefficients.set(i, coefficients.get(i) + difference);
+                        break;  // Once we've added the difference, exit the loop
+                    }
+                }
+            }
+
+            // Update the map
+            mapCoefAQ.put(entry.getKey(), coefficients);
+        }
     }
 
     public static class Pair<K, V> {
@@ -1381,6 +1350,8 @@ public class DFnew {
             }
         }
     }
+
+
     private void writeLine(BufferedWriter writer, List<?> values) throws IOException {
         StringBuilder sb = new StringBuilder();
 

@@ -63,6 +63,7 @@ public class App {
     private static final String CURRENT_MONTH;
     private static final String PREVIOUS_MONTH;
     static final String LOG_FILE_PATH;
+    public static final Date TODAY_01;
     static {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMM");
         LocalDate now = LocalDate.now();
@@ -71,6 +72,14 @@ public class App {
         PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
 
         LOG_FILE_PATH = outputFolder +"logfile_" + getCurrentDateTime() + ".txt";
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(Calendar.DAY_OF_MONTH, 1);
+        calendar.set(Calendar.HOUR_OF_DAY, 0);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+        TODAY_01 = calendar.getTime();
     }
     private static final LocalDate TODAY = LocalDate.now();
     public static char delim = ';';
@@ -105,114 +114,6 @@ public class App {
         SPprevi.mapPoliceToSPPrevi();
 
         stopwatch.printElapsedTime("refs");
-//        for (int i = 0; i < ref_source.nrow; i++) {
-//            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
-//            if (!a_faire) continue;
-//            stopwatch.start();
-//            Base.currentHeaderRef = null;
-//            String folder = (String) ref_source.c("path")[i];
-//            String pays = (String) ref_source.c("pays_filekey")[i];
-//            String mapcol = (String) ref_source.c("mapping")[i];
-//            String estim = (String) ref_source.c("estimate")[i];
-//            String path_fic = (String) ref_source.c("path_fic")[i];
-//            String map_fic = (String) ref_source.c("map_fic")[i];
-//
-//            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
-//            Synthese wf = new Synthese(outputFolder + estim +"_fichier_de_travail.csv",delim,false,true,true);
-//
-//            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-//
-//            for (File file : fileList) {
-////                if (!file.toPath().toString().contains("EXTR")) continue;
-//                Base base = new Base(file,pays,mapcol);
-////                basesSin.add(base);
-//                baseMap.put(base.numPolice, base);
-//            }
-//            if (pays.equals("Italie")) {
-//                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
-//                for (File file : fileListGS) {
-////                if (!file.toPath().toString().contains("SMIC"))  continue;
-//                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
-//                    baseMap.put(base.numPolice, base);
-//                }
-//                Base baseGPTB = new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv"));
-//                Base baseMITL = new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv"));
-//                baseMap.put(baseGPTB.numPolice, baseGPTB);
-//                baseMap.put(baseMITL.numPolice, baseMITL);
-//            }
-////
-////            for (Base base : basesSin) {
-////                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-////                updateStatutDates(base); //global
-////            }
-////
-//            Base baseFic = new Base(wd + path_fic,map_fic);
-//
-//            wf.calculateHeaderFrequencies();
-//            wf.computeMvAvTvB(baseFic);
-//            wf.computeSumByStatutEtDateSurv();
-//
-//            stopwatch.printElapsedTime();
-//        }
-
-
-        for (int i = 0; i < ref_source.nrow; i++) {
-            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
-            if (!a_faire) continue;
-            stopwatch.start();
-            Base.currentHeaderRef = null;
-            String folder = (String) ref_source.c("path")[i];
-            String pays = (String) ref_source.c("pays_filekey")[i];
-            String mapcol = (String) ref_source.c("mapping")[i];
-            String estim = (String) ref_source.c("estimate")[i];
-            String path_fic = (String) ref_source.c("path_fic")[i];
-            String map_fic = (String) ref_source.c("map_fic")[i];
-
-            Estimate estimate = new Estimate(wd+"TDB estimate par gestionnaire/" + estim + ".xlsx");
-
-            File[] fileList = Objects.requireNonNull(new File(wd + folder).listFiles());
-            List<Base> basesSin = new ArrayList<>();
-
-            for (File file : fileList) {
-//                if (!file.toPath().toString().contains("EXDI")) continue;
-                Base base = new Base(file,pays,mapcol);
-                basesSin.add(base);
-            }
-            if (pays.equals("Italie")) {
-                File[] fileListGS = Objects.requireNonNull(new File(wd + "source SIN/Gamestop/").listFiles());
-                for (File file : fileListGS) {
-//                if (!file.toPath().toString().contains("GS CN"))  continue;
-                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1");
-                    basesSin.add(base);
-                }
-                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIGPTB15.csv")));
-                basesSin.add(new Base(new File(wd + "aux SIN/SPB Italie_ICIMITL16.csv")));
-            }
-
-            for (Base base : basesSin) {
-                policeStatutDateRangeMap.put(base.numPolice, base.statutDateRangeMap); //par police
-                updateStatutDates(base); //global
-            }
-
-            estimate.getUniqueStatutsFromMap(); // used for triangles
-            estimate.getUniqueNumPoliceEstimate(); // used for nothing (?)
-            updateGlobalDatesFromStatutMap();
-
-            Base baseFic = new Base(wd + path_fic,map_fic);
-            estimate.addFicMAT(baseFic);
-
-            stopwatch.printElapsedTime(pays + " integré");
-
-            estimate.addSinMAT(basesSin);
-            estimate.addProvisions(basesSin);
-            estimate.addPrimesAcquises();
-            estimate.addSP();
-
-            stopwatch.printElapsedTime("calculé");
-            estimate.saveToCSVFile(false);
-
-            stopwatch.start();
-        }
 
         for (int i = 0; i < ref_source.nrow; i++) {
             boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
