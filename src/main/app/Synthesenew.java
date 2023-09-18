@@ -14,13 +14,14 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static java.lang.Math.min;
 import static main.app.App.*;
 import static main.app.App.NA_DAT;
 import static main.app.DFnew.*;
 import static main.app.DFnew.ColTypes.*;
-import static main.app.Estimate.parseObjectToDouble;
 
 public class Synthesenew extends DFnew {
     private List<Integer> refMapping;
@@ -90,8 +91,13 @@ public class Synthesenew extends DFnew {
     public static void main(String[] args) throws IOException {
         Synthesenew synt = new Synthesenew(outputFolder + "TDB Estimate_FDT_avec ICI.csv");
         syntAncien = new Synthesenew(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-        Synthesenew syntPolice = new Synthesenew(synt,"", syntAncien,true);
+        
+        Synthesenew syntMois = new Synthesenew(synt,"", syntAncien,true);
+        syntMois.formatAllColumns();
+
+        Synthesenew syntPolice = new Synthesenew(syntMois,"");
         syntPolice.formatAllColumns();
+        
         String output = outputFolder + "Synthese.xlsx";
         syntPolice.exportToExcel(output, "Detaillé", null);
     }
@@ -334,8 +340,199 @@ public class Synthesenew extends DFnew {
         compareColumns(syntAncien, "Sinistre Ultime","Sinistre Ultime", "Variation Sinistre Ultime", false);
         compareColumns(syntAncien, "S/P Comptable à l'ultime yc ICI","S/P Comptable à l'ultime\n" + "yc ICI", "Variation S/P Comptable à l'ultime\n" + "yc ICI", true);
 
-    } 
-    
+    }
+    @SuppressWarnings("unchecked")
+    public Synthesenew(Synthesenew other, String synthesePolice) {
+        // Deep copy headers, subheaders
+        this.headers = new ArrayList<>(other.headers);
+        this.columns = new ArrayList<>();
+
+        // Initialize columns with deep copies
+        for (Column<?> col : other.columns) {
+            if (col.getType() == ColTypes.STR) {
+                this.columns.add(new Column<>(new ArrayList<String>(), STR));
+            } else if (col.getType() == ColTypes.DAT) {
+                this.columns.add(new Column<>(new ArrayList<Date>(), DAT));
+            } else if (col.getType() == ColTypes.DBL) {
+                this.columns.add(new Column<>(new ArrayList<Double>(), DBL));
+            }
+            // ... Add similar blocks for FLT, SKP, or any other types you might have ...
+        }
+
+        ArrayList<String> anneeColumn = other.getColumn("Année");
+
+        // Iterate over rows and copy only rows where "Année" starts with "Total"
+        for (int rowIndex = 0; rowIndex < anneeColumn.size(); rowIndex++) {
+            if (anneeColumn.get(rowIndex).startsWith("Total ")) {
+                // Copy this row for all columns
+                for (int colIndex = 0; colIndex < other.columns.size(); colIndex++) {
+                    Column<?> column = this.columns.get(colIndex);
+                    Column<?> otherColumn = other.columns.get(colIndex);
+                    if (column.getType() == STR) {
+                        ((ArrayList<String>)column.getData()).add(((ArrayList<String>)otherColumn.getData()).get(rowIndex));
+                    } else if (column.getType() == DAT) {
+                        ((ArrayList<Date>)column.getData()).add(((ArrayList<Date>)otherColumn.getData()).get(rowIndex));
+                    } else if (column.getType() == DBL) {
+                        ((ArrayList<Double>)column.getData()).add(((ArrayList<Double>)otherColumn.getData()).get(rowIndex));
+                    }
+                    // ... Add similar blocks for other types ...
+                }
+            }
+        }
+        
+        removeColumn("Date Periode");
+        anneeColumn.replaceAll(s -> s.replace("Total ", ""));
+    }
+    public Synthesenew(Synthesenew external, int parDistrib, Synthesenew syntAncien, boolean avecICI) {
+        headers = new ArrayList<>();
+        columns = new ArrayList<>();
+        refMapping = new ArrayList<>();
+        bu = new ArrayList<>();
+
+        populateRefMapping(external);
+        createBUList(external);
+        populateAssureur(); //prerequis refMapping!
+
+        // Helper method for adding mapped columns
+        addMappedColumn(external, "GESTIONNAIRE 1", "Gestionnaire", STR);
+        addMappedColumn(external, "LIBELLE DISTRIBUTEUR", "Distributeur", STR);
+        addMappedColumn(external, "Contrat", "Contrat", STR);
+        addMappedColumn(external, "Date Periode", "Date Periode", STR);
+        extractYearFromPeriode(); // Année
+        swapColumns("Date Periode", "Année");
+        cleanDistributeur();
+
+        List<String> sortOrder = Arrays.asList("Assureur", "Gestionnaire", "Distributeur", "Année", "Contrat", "Date Periode");
+        generalSort(sortOrder);
+        insertSummaryRowsDistrib();
+
+        addMappedColumnSummed(external, "NOMBRE TOTAL ADHESIONS", "Nombre Adhésions", DBL,"Distributeur");
+        addMappedColumnSummed(external, "MONTANT TOTAL HT", "Montant Total HT", DBL,"Distributeur");
+        addMappedColumnSummed(external, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", DBL,"Distributeur");
+
+        // Helper for adding empty columns
+        addEmptyColumn("xxx",INT);
+
+        // Adding columns from subheader
+        if (avecICI) {
+            addMappedColumnSummed(external, "Prime Acquise à date ", "Prime Acquise à date", DBL,"Distributeur");
+        } else {
+            addMappedColumnSummed(external, "Prime Acquise à date", "Prime Acquise à date", DBL,"Contrat");
+        }
+        addDataFromSubheaderSummed(external, "PB", "Participation aux Benefices", DBL,"Distributeur");
+        addDataFromSubheaderSummed(external, "Charge Comptable totale", "Total Sinistres Comptable", DBL,"Distributeur");
+
+        // Add "Total Sinistres Technique" from extern's subheader "Sinistre Nombre total"
+        addDataFromSubheaderSummed(external, "Charge sinistre total", "Total Sinistres Technique", DBL,"Distributeur");
+
+        calculateEcartSinistres();
+
+        // Add "Nombre Dossier En Cours" from extern's subheader "Nombre en cours total"
+        addDataFromSubheaderSummed(external, "Nombre en cours total", "Nombre Dossier En Cours", DBL,"Distributeur");
+        appendBlockSubheaderSummed(external, "Provisions: En cours", "Provision Sinistre Connu", true,"Distributeur");
+
+        populatePrimeEmiseReelle(external,"Distributeur",avecICI);
+
+        calculateColumnRatio("Taux primes émise réelle", "Prime émise réelle", "Montant Total Net Compagnie");
+        calculateColumnRatio("Taux d'acquisition des primes", "Prime Acquise à date", "Montant Total Net Compagnie");
+
+        calculatePBpourSPacquis();
+        calculateSPcomptableEmisYComprisICI();
+        calculateSoldeComptableEmisYComprisICI();
+        calculateSPcomptableAcquisYComprisICI();
+        addSoldeComptableAcquisColumn();
+        addSPTechniqueEmisColumn();
+        addSoldeTechniqueEmisColumn();
+        addSPTechniqueAcquisColumn();
+        addSoldeTechniqueAcquisColumn();
+        addSPTechniqueProvisionneEmisColumn();
+        addSoldeTechniqueProvisionneEmisColumn();
+        addSPTechniqueProvisionneAcquisColumn();
+        addSoldeTechniqueProvisionneAcquisColumn();
+        addDataFromSubheaderSummed(external, "Sinistre Ultime", "Sinistre Ultime", DBL,"Distributeur");
+        addMappedColumnSummed(external, "MONTANT TOTAL NET COMPAGNIE", "Prime à l'ultime", DBL,"Distributeur");
+        addSPComptableUltimateColumn();
+
+
+        mapToAncien = mapThisToExtern(syntAncien);
+        compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable",false);
+        compareColumns(syntAncien, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", "Variation des Primes émises",false);
+        compareColumns(syntAncien, "PRIME ACQUISE A DATE","Prime Acquise à date", "Variation primes acquises", false);
+        compareColumns(syntAncien, "Taux d'acquisition des primes","Taux d'acquisition des primes", "Variation Taux d'Acquisition", true);
+        compareColumns(syntAncien, "TOTAL SINISTRES COMPTABLE", "Total Sinistres Comptable","Variation des Sinistres Comptable", false);
+        compareColumns(syntAncien, "TOTAL SINISTRE TECHNIQUE", "Total Sinistres Technique","Variation des Sinistres Technique", false);
+        compareColumns(syntAncien, "Provisions sur sinistres connus", "Total Provision Sinistre Connu","Variation des Provisions sur Sinistre", false);
+        compareColumns(syntAncien, "S/P comptable acquis\n" + "yc ICI","S/P comptable acquis\n" + "yc ICI", "Variation S/P comptable acquis\n" + "yc ICI", true);
+        compareColumns(syntAncien, "S/P technique acquis\n" + "yc ICI","S/P technique acquis\n" + "yc ICI", "Variation S/P technique acquis\n" + "yc ICI", true);
+        compareColumns(syntAncien, "S/P technique provisionné acquis\n" + "yc ICI","S/P technique provisionné acquis\n" + "yc ICI", "Variation S/P technique provisionné acquis\n" + "yc ICI", true);
+        compareColumns(syntAncien, "Sinistre Ultime","Sinistre Ultime", "Variation Sinistre Ultime", false);
+        compareColumns(syntAncien, "S/P Comptable à l'ultime yc ICI","S/P Comptable à l'ultime\n" + "yc ICI", "Variation S/P Comptable à l'ultime\n" + "yc ICI", true);
+    }
+    @SuppressWarnings("unchecked")
+    public Synthesenew(Synthesenew other, int syntheseDistrib, boolean agreg) {
+        // Deep copy headers, subheaders
+        this.headers = new ArrayList<>(other.headers);
+        this.columns = new ArrayList<>();
+
+        // Initialize columns with deep copies
+        for (Synthese.Column<?> col : other.columns) {
+            if (col.getType() == Synthese.ColTypes.STR) {
+                this.columns.add(new Synthese.Column<>(new ArrayList<String>(), Synthese.ColTypes.STR));
+            } else if (col.getType() == Synthese.ColTypes.DAT) {
+                this.columns.add(new Synthese.Column<>(new ArrayList<Date>(), Synthese.ColTypes.DAT));
+            } else if (col.getType() == Synthese.ColTypes.DBL) {
+                this.columns.add(new Synthese.Column<>(new ArrayList<Double>(), Synthese.ColTypes.DBL));
+            }
+            // ... Add similar blocks for FLT, SKP, or any other types you might have ...
+        }
+
+        int anneeIndex = other.headers.indexOf("Année");
+        ArrayList<String> anneeColumn = null;
+        if (anneeIndex != -1) {
+            anneeColumn = other.getColumn("Année");
+        }
+
+        // Iterate over rows and copy only rows where "Année" starts with "Total"
+        for (int rowIndex = 0; rowIndex < other.getColumnByIndex(0).size(); rowIndex++) {
+            if (anneeColumn != null && anneeColumn.get(rowIndex).startsWith("Total ")) {
+                // Copy this row for all columns
+                for (int colIndex = 0; colIndex < other.columns.size(); colIndex++) {
+                    Synthese.Column<?> column = this.columns.get(colIndex);
+                    Synthese.Column<?> otherColumn = other.columns.get(colIndex);
+                    if (column.getType() == Synthese.ColTypes.STR) {
+                        ((ArrayList<String>)column.getData()).add(((ArrayList<String>)otherColumn.getData()).get(rowIndex));
+                    } else if (column.getType() == Synthese.ColTypes.DAT) {
+                        ((ArrayList<Date>)column.getData()).add(((ArrayList<Date>)otherColumn.getData()).get(rowIndex));
+                    } else if (column.getType() == Synthese.ColTypes.DBL) {
+                        ((ArrayList<Double>)column.getData()).add(((ArrayList<Double>)otherColumn.getData()).get(rowIndex));
+                    }
+                    // ... Add similar blocks for other types ...
+                }
+            }
+        }
+
+        String[] columnsToRemove = {"Date Periode", "Contrat"};
+
+        for (String columnName : columnsToRemove) {
+            int columnIndex = this.headers.indexOf(columnName);
+            if (columnIndex != -1) {
+                this.headers.remove(columnIndex);
+                this.columns.remove(columnIndex);
+            }
+        }
+
+
+        // Adjust the "Année" column to remove "Total "
+        if (anneeIndex != -1) {
+            ArrayList<String> adjustedAnneeColumn = this.getColumn("Année");
+            adjustedAnneeColumn.replaceAll(s -> s.replace("Total ", ""));
+        }
+
+        // Copy other necessary attributes
+        this.refMapping = new ArrayList<>(other.refMapping);
+        this.bu = new ArrayList<>(other.bu);
+        // ... Copy any other necessary attributes here ...
+    }
     
     @SuppressWarnings("unchecked")
     private <T> void addRowToColumns(Row row, boolean toLower) {
@@ -800,6 +997,20 @@ public class Synthesenew extends DFnew {
         }
 
         this.addColumn(targetColName, new ArrayList<>(targetData), type);
+    }
+    public static double parseObjectToDouble(Object value) {
+        if (value == null) {
+            return 0.0;
+        }
+
+        String stringValue = value.toString();
+
+        try {
+            return Double.parseDouble(stringValue.replace(',', '.'));
+        } catch (NumberFormatException e) {
+            // You can choose to log this exception or just return a default value
+            return 0.0;
+        }
     }
     // MATH
     private double safeDivision(double numerator, double denominator) {
@@ -1352,7 +1563,6 @@ public class Synthesenew extends DFnew {
         Column<String> newColumn = new Column<>(newColumnData, ColTypes.STR);
         columns.set(index, newColumn);
     }
-
     public void formatAllColumns() {
         for (String header : headers) {
             formatAndReplaceColumn(header);
@@ -1437,5 +1647,52 @@ public class Synthesenew extends DFnew {
         } else {
             throw new IllegalArgumentException("Column with header: " + header + " not found.");
         }
+    }
+    @SuppressWarnings("unchecked")
+    public void generalSort(List<String> sortOrder) {
+        ArrayList<Integer> indices = IntStream.range(0, columns.get(0).getData().size()).boxed().sorted(new Comparator<Integer>() {
+            @Override
+            public int compare(Integer index1, Integer index2) {
+                for (String colName : sortOrder) {
+                    int colIndex = headers.indexOf(colName);
+                    if (colIndex == -1) continue;
+
+                    ColTypes colType = columns.get(colIndex).getType();
+
+                    if ("Année".equals(colName) && colType == STR) {
+                        Integer year1 = Integer.parseInt((String) getColumnByIndex(colIndex).get(index1));
+                        Integer year2 = Integer.parseInt((String) getColumnByIndex(colIndex).get(index2));
+                        int result = year1.compareTo(year2);
+                        if (result != 0) return result;
+                    } else if ("Date Periode".equals(colName) && colType == STR) {
+                        try {
+                            Date date1 = new SimpleDateFormat("MM-yyyy").parse((String) getColumnByIndex(colIndex).get(index1));
+                            Date date2 = new SimpleDateFormat("MM-yyyy").parse((String) getColumnByIndex(colIndex).get(index2));
+                            int result = date1.compareTo(date2);
+                            if (result != 0) return result;
+                        } catch (ParseException e) {
+                            e.printStackTrace();
+                        }
+                    } else if (colType == STR) {
+                        String val1 = (String) getColumnByIndex(colIndex).get(index1);
+                        String val2 = (String) getColumnByIndex(colIndex).get(index2);
+                        int result = val1.compareTo(val2);
+                        if (result != 0) return result;
+                    }
+                }
+                return 0;
+            }
+        }).collect(Collectors.toCollection(ArrayList::new));
+
+// Sort the indices
+
+        // Reorder the data in all columns using the sorted order of indices
+        for (Column<?> column : columns) {
+            ArrayList<Object> originalData = new ArrayList<>(column.getData());
+            for (int i = 0; i < indices.size(); i++) {
+                ((ArrayList<Object>) column.getData()).set(i, originalData.get(indices.get(i)));
+            }
+        }
+
     }
 }
