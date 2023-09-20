@@ -8,7 +8,6 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.xpath.operations.Bool;
 
 import java.io.*;
 import java.lang.reflect.Array;
@@ -49,9 +48,6 @@ public class Estimatenew extends DFnew {
 
         Estimatenew estimate = new Estimatenew(wd+"TDB estimate par gestionnaire/TDB Estimate.csv",';',false);
         getCoefsAcquisition(false,estimate);
-        Basenew baseGP = new Basenew(wd+"aux SIN/Garantie Privée.csv", false);
-        Basenew baseGDM = new Basenew(wd+"aux SIN/Advise.csv", false);
-        Basenew baseADV = new Basenew(wd+"aux SIN/Guy Demarle.csv", false);
 
         for (int i = 0; i < refSource.nrow; i++) {
             boolean a_faire = !(refSource.getColumn("a faire").get(i)).equals("non");
@@ -97,7 +93,9 @@ public class Estimatenew extends DFnew {
             Basenew baseFic = new Basenew(wd + path_fic,map_fic,false);
             ficMapNew.put(path_fic, baseFic);
         }
-
+        Basenew baseGP = new Basenew(wd+"aux SIN/Garantie Privée.csv", false);
+        Basenew baseGDM = new Basenew(wd+"aux SIN/Advise.csv", false);
+        Basenew baseADV = new Basenew(wd+"aux SIN/Guy Demarle.csv", false);
         baseMapNew.put(baseGP.numPolice,baseGP);
         baseMapNew.put(baseGDM.numPolice,baseGDM);
         baseMapNew.put(baseADV.numPolice,baseADV);
@@ -119,11 +117,11 @@ public class Estimatenew extends DFnew {
         estimate.addSP();
         st.printElapsedTime();
 
-        estimate.saveFDT(true);
-        st.printElapsedTime();
-
         estimate.saveFDT(false);
         st.printElapsedTime();
+
+//        estimate.saveFDT(false);
+//        st.printElapsedTime();
 
         st.printElapsedTime();
     }

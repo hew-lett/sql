@@ -30,7 +30,8 @@ import static main.app.App.*;
 import static main.app.DFnew.ColTypes.*;
 
 public class DFnew {
-    public static final String wd = "E:/202305/wd/";
+    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
+//    public static final String wd = "E:/202305/wd/";
     protected String path;
     protected int nrow = 0;
     protected ArrayList<Column<?>> columns;
