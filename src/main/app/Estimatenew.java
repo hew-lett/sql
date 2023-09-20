@@ -1536,7 +1536,7 @@ public class Estimatenew extends DFnew {
                 List<String> filteredSubheaders = new ArrayList<>();
                 for (int j = 0; j < subheaders.size(); j++) {
                     if (mask.get(j)) {
-                        filteredSubheaders.add(subheaders.get(j) != null ? subheaders.get(j) : "");
+                        filteredSubheaders.add(subheaders.get(j) != null ? subheaders.get(j).trim() : "");
                     }
                 }
                 writer.write(String.join(";", filteredSubheaders));
@@ -1546,7 +1546,7 @@ public class Estimatenew extends DFnew {
             // Write headers applying the mask
             List<String> filteredHeaders = IntStream.range(0, headers.size())
                     .filter(mask::get)
-                    .mapToObj(headers::get)
+                    .mapToObj(index -> headers.get(index).trim())
                     .collect(Collectors.toList());
             writer.write(String.join(";", filteredHeaders));
             writer.newLine();

@@ -18,6 +18,7 @@ import java.util.Date;
 import static java.lang.Math.max;
 import static main.app.App.*;
 import static main.app.Base.STATUT_FICTIF_FIC;
+import static main.app.DFnew.parseObjectToDouble;
 
 public class Estimate extends DF {
     String key;
@@ -1957,20 +1958,6 @@ public class Estimate extends DF {
             result[i] = String.format("%.2f", input[i]);
         }
         return result;
-    }
-    public static double parseObjectToDouble(Object value) {
-        if (value == null) {
-            return 0.0;
-        }
-
-        String stringValue = value.toString();
-
-        try {
-            return Double.parseDouble(stringValue.replace(',', '.'));
-        } catch (NumberFormatException e) {
-            // You can choose to log this exception or just return a default value
-            return 0.0;
-        }
     }
 
 

@@ -8,19 +8,17 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static java.lang.Math.min;
 import static main.app.App.*;
 import static main.app.App.NA_DAT;
-import static main.app.DFnew.*;
 import static main.app.DFnew.ColTypes.*;
-import static main.app.Estimate.parseObjectToDouble;
 
 public class Synthesenew extends DFnew {
     private List<Integer> refMapping;
@@ -30,6 +28,7 @@ public class Synthesenew extends DFnew {
     public static final String[] INTEGER_COLUMNS;
     public static final String[] DOUBLE_COLUMNS;
     public static final String[] PERCENTAGE_COLUMNS;
+    private ArrayList<Double> primeColumn = new ArrayList<>();
 
     // column formatting types initialization block
     static {
@@ -41,6 +40,9 @@ public class Synthesenew extends DFnew {
         DOUBLE_COLUMNS = new String[] {
                 "Montant Total HT",
                 "Montant Total Net Compagnie",
+                "Montant Total Prime Assureur",
+                "Montant Total Commission ICI",
+                "Montant Total Prime",
                 "Prime Acquise à date",
                 "Participation aux Benefices",
                 "Total Sinistres Comptable",
@@ -62,12 +64,12 @@ public class Synthesenew extends DFnew {
                 "Provision Sinistre Connu 2026",
                 "Total Provision Sinistre Connu",
                 "Prime émise réelle",
-                "Solde comptable émis\nyc ICI",
-                "Solde comptable acquis\nyc ICI",
-                "Solde technique émis\nyc ICI",
-                "Solde technique acquis\nyc ICI",
-                "Solde technique provisionné emis\nyc ICI",
-                "Solde technique provisionné acquis\nyc ICI",
+                "Solde comptable émis",
+                "Solde comptable acquis",
+                "Solde technique émis",
+                "Solde technique acquis",
+                "Solde technique provisionné emis",
+                "Solde technique provisionné acquis",
                 "Sinistre Ultime",
                 "Prime à l'ultime"
         };
@@ -76,23 +78,24 @@ public class Synthesenew extends DFnew {
                 "Taux primes émise réelle",
                 "Taux d'acquisition des primes",
                 "PB pour S/P acquis",
-                "S/P comptable émis\nyc ICI",
-                "S/P comptable acquis\nyc ICI",
-                "S/P technique émis\nyc ICI",
-                "S/P technique acquis\nyc ICI",
-                "S/P technique provisionné émis\nyc ICI",
-                "S/P technique provisionné acquis\nyc ICI",
-                "S/P Comptable à l'ultime\nyc ICI"
+                "S/P comptable émis",
+                "S/P comptable acquis",
+                "S/P technique émis",
+                "S/P technique acquis",
+                "S/P technique provisionné émis",
+                "S/P technique provisionné acquis",
+                "S/P Comptable à l'ultime"
         };
     }
     protected Map<String, ArrayList<Integer>> frequencies = new LinkedHashMap<>();
 
     public static void main(String[] args) throws IOException {
         Synthesenew synt = new Synthesenew(outputFolder + "TDB Estimate_FDT_avec ICI.csv");
-        syntAncien = new Synthesenew(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-        Synthesenew syntPolice = new Synthesenew(synt,"", syntAncien,true);
+        syntAncien = new Synthesenew(wd+"TDB Part 1 Assureur synthèse 202212.xlsx","Synthèse année mois");
+        syntAncien.print(10);
+        Synthesenew syntPolice = new Synthesenew(synt,"", syntAncien,false);
         syntPolice.formatAllColumns();
-        String output = outputFolder + "Synthese.xlsx";
+        String output = outputFolder + "output.xlsx";
         syntPolice.exportToExcel(output, "Detaillé", null);
     }
     public Synthesenew(String path) throws IOException {
@@ -113,12 +116,12 @@ public class Synthesenew extends DFnew {
 
         String[] subHeaderRow = allRows.get(0);
         for (String subHeaderX : subHeaderRow) {
-            subheaders.add(Objects.requireNonNullElse(subHeaderX, ""));
+            subheaders.add(Objects.requireNonNullElse(subHeaderX, "").trim());
         }
 
         String[] headerRow = allRows.get(1);
         for (String header : headerRow) {
-            headers.add(Objects.requireNonNullElse(header, ""));
+            headers.add(Objects.requireNonNullElse(header, "").trim());
         }
 
         ArrayList<ColTypes> types = new ArrayList<>();
@@ -150,7 +153,7 @@ public class Synthesenew extends DFnew {
             columns.add(new Column<>(colData, colType));
         }
     } //FDT
-    public Synthesenew(String path, String sheetName, boolean toLower, boolean subHeader, boolean detectColtypes) throws IOException {
+    public Synthesenew(String path, String sheetName) throws IOException {
         headers = new ArrayList<>();
         columns = new ArrayList<>();
 
@@ -165,60 +168,26 @@ public class Synthesenew extends DFnew {
         // Handle headers
         Row headerRow = rows.next();
         for (Cell cell : headerRow) {
-            String headerValue = cell.getStringCellValue();
-            headers.add(toLower ? headerValue.trim().toLowerCase() : headerValue.trim());
+            headers.add(cell.getStringCellValue().replace("hors ICI","").replace("yc ICI","").replace("\n","").trim());
         }
 
-        // Determine column types
-        ColTypes[] detectedTypes;
-        if (detectColtypes && rows.hasNext()) {
-            Row typeRow = rows.next();
-            detectedTypes = new ColTypes[headers.size()];
-
-            for (int i = 0; i < headers.size(); i++) {
-                String header = headers.get(i);
-                Cell cell = typeRow.getCell(i, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
-                String cellValue = cell != null ? cell.getStringCellValue() : null;
-
-                if (header.matches("\\d{2}-\\d{4}")) {
-                    columns.add(new Column<>(new ArrayList<>(), DBL));
-                    detectedTypes[i] = DBL;
-                } else if (cellValue == null) {
-                    columns.add(new Column<>(new ArrayList<>(), STR));
-                    detectedTypes[i] = STR;
-                } else if (cellValue.matches("\\d{2}/\\d{2}/\\d{4}")) {
-                    columns.add(new Column<>(new ArrayList<>(), DAT));
-                    detectedTypes[i] = DAT;
-                } else if (cellValue.matches("[\\d.,\\s]+")) {
-                    columns.add(new Column<>(new ArrayList<>(), DBL));
-                    detectedTypes[i] = DBL;
+        ArrayList<ColTypes> columnTypes = new ArrayList<>();
+        boolean keyColumnFound = false;
+        for (String header : headers) {
+            if (!keyColumnFound) {
+                if (header.equals("ADHESIONS COMPTABLE")) {
+                    columnTypes.add(INT);
+                    keyColumnFound = true;
                 } else {
-                    columns.add(new Column<>(new ArrayList<>(), STR));
-                    detectedTypes[i] = STR;
+                    columnTypes.add(STR);
                 }
-            }
-
-            // Process this type row for actual data too
-            addRowToColumns(typeRow, toLower);
-
-        } else {
-            detectedTypes = new ColTypes[headers.size()];
-            Arrays.fill(detectedTypes, STR);
-            for (int i = 0; i < headers.size(); i++) {
-                columns.add(new Column<>(new ArrayList<>(), STR));
+            } else {
+                columnTypes.add(DBL);
             }
         }
-
-        // Handle subheaders
-        if (subHeader && rows.hasNext()) {
-            subheaders = new ArrayList<>();
-            Row subHeaderRow = rows.next();
-            for (Cell cell : subHeaderRow) {
-                String subHeaderValue = cell.getStringCellValue();
-                subheaders.add(toLower ? subHeaderValue.toLowerCase() : subHeaderValue);
-            }
+        for (ColTypes type : columnTypes) {
+            columns.add(new Column<>(new ArrayList<>(), type));
         }
-
         while (rows.hasNext()) {
             Row currentRow = rows.next();
             String[] parsedRow = new String[headers.size()];
@@ -226,18 +195,18 @@ public class Synthesenew extends DFnew {
 
                 Cell currentCell = currentRow.getCell(i, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
                 if (currentCell != null) {
-                    Object cellValue = parseCell(currentCell, detectedTypes[i], dateFormat);
+                    Object cellValue = parseCell(currentCell, columnTypes.get(i), dateFormat);
                     if (cellValue != null) {
                         parsedRow[i] = cellValue.toString();
                     } else {
-                        parsedRow[i] = ""; // or a default value you'd like to use in case of null
+                        parsedRow[i] = "";
                     }
                 } else {
                     parsedRow[i] = "";
                 }
 
             }
-            addRowToColumns(parsedRow, toLower);
+            addRowToColumns(parsedRow);
         }
         cleanAnnees();
         cleanDate();
@@ -268,74 +237,141 @@ public class Synthesenew extends DFnew {
 //        generalSort(sortOrder);
         insertSummaryRows();
 
-        addMappedColumnSummed(external, "NOMBRE TOTAL ADHESIONS", "Nombre Adhésions", INT, "Contrat");
-        addMappedColumnSummed(external, "MONTANT TOTAL HT", "Montant Total HT", DBL,"Contrat");
-        addMappedColumnSummed(external, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", DBL,"Contrat");
-
-        // Helper for adding empty columns
-        addEmptyColumn("xxx",INT);
-
-
-        // Adding columns from subheader
+        addMappedColumnSummedInt(external, "NOMBRE TOTAL ADHESIONS", "Nombre Adhésions", "Contrat");
+        addMappedColumnSummed(external, "MONTANT TOTAL HT", "Montant Total HT", "Contrat");
+        addMappedColumnSummed(external, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", "Contrat");
         if (avecICI) {
-            addMappedColumnSummed(external, "Prime Acquise à date ", "Prime Acquise à date", DBL,"Contrat");
+            addMappedColumnSummed(external, "MONTANT TOTAL PRIME ASSUREUR", "Montant Total Prime Assureur", "Contrat");
+            addMappedColumnSummed(external, "MONTANT TOTAL COMMISSION ICI","Montant Total Commission ICI", "Contrat");
+            calculatePrime(external, "MONTANT TOTAL PRIME ASSUREUR","MONTANT TOTAL COMMISSION ICI", "Montant Total Prime", "Contrat");
         } else {
-            addMappedColumnSummed(external, "Prime Acquise à date", "Prime Acquise à date", DBL,"Contrat");
+            addMappedColumnSummed(external, "MONTANT TOTAL PRIME ASSUREUR", "Montant Total Prime Assureur", "Contrat");
+            primeColumn = getColumn("Montant Total Prime Assureur");
         }
-        addMappedColumnSummed(external, "PB", "Participation aux Benefices", DBL,"Contrat");
-        addDataFromSubheaderSummed(external, "Charge Comptable totale", "Total Sinistres Comptable", DBL,"Contrat");
 
-        // Add "Total Sinistres Technique" from extern's subheader "Sinistre Nombre total"
-        addDataFromSubheaderSummed(external, "Charge sinistre totale", "Total Sinistres Technique", DBL,"Contrat");
+
+        addMappedColumnSummed(external, "Prime Acquise à date", "Prime Acquise à date", "Contrat");
+        addMappedColumnSummed(external, "PB", "Participation aux Benefices", "Contrat");
+        addDataFromSubheaderSummed(external, "Charge Comptable totale", "Total Sinistres Comptable", "Contrat");
+        addDataFromSubheaderSummed(external, "Charge sinistre totale", "Total Sinistres Technique", "Contrat");
 
         calculateEcartSinistres();
 
-        // Add "Nombre Dossier En Cours" from extern's subheader "Nombre en cours total"
-        addDataFromSubheaderSummed(external, "Nombre En cours total", "Nombre Dossier En Cours", DBL,"Contrat");
-        appendBlockSubheaderSummed(external, "Provision En Cours", "Provision Sinistre Connu", true,"Contrat");
+        addDataFromSubheaderSummed(external, "Nombre En cours total", "Nombre Dossier En Cours", "Contrat");
+        appendBlockSubheaderSummed(external, "Provision En Cours", "Provision Sinistre Connu","Contrat");
 
-        populatePrimeEmiseReelle(external,"Contrat",avecICI);
+        populatePrimeEmiseReelle("Contrat");
 
-        calculateColumnRatio("Taux primes émise réelle", "Prime émise réelle", "Montant Total Net Compagnie");
-        calculateColumnRatio("Taux d'acquisition des primes", "Prime Acquise à date", "Montant Total Net Compagnie");
+        calculatePrimeRatio("Taux primes émise réelle", "Prime émise réelle");
+        calculatePrimeRatio("Taux d'acquisition des primes", "Prime Acquise à date");
 
         calculatePBpourSPacquis();
-        calculateSPcomptableEmisYComprisICI();
-        calculateSoldeComptableEmisYComprisICI();
-        calculateSPcomptableAcquisYComprisICI();
-        addSoldeComptableAcquisColumn();
-        addSPTechniqueEmisColumn();
-        addSoldeTechniqueEmisColumn();
-        addSPTechniqueAcquisColumn();
-        addSoldeTechniqueAcquisColumn();
-        addSPTechniqueProvisionneEmisColumn();
-        addSoldeTechniqueProvisionneEmisColumn();
-        addSPTechniqueProvisionneAcquisColumn();
-        addSoldeTechniqueProvisionneAcquisColumn();
-        if(avecICI) {
-            addMappedColumnSummed(external, "Sinistre Ultime ", "Sinistre Ultime", DBL,"Contrat");
-        } else {
-            addMappedColumnSummed(external, "Sinistre Ultime", "Sinistre Ultime", DBL,"Contrat");
-        }
-        addMappedColumnSummed(external, "MONTANT TOTAL NET COMPAGNIE", "Prime à l'ultime", DBL,"Contrat");
+        calculateSPSolde();
+        calculateSPSoldeProv();
+
+        addMappedColumnSummed(external, "Sinistre Ultime", "Sinistre Ultime", "Contrat");
+        addColumn("Prime à l'ultime", primeColumn, DBL);
         addSPComptableUltimateColumn();
 
         mapToAncien = mapThisToExtern(syntAncien);
-        compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable",false);
-        compareColumns(syntAncien, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", "Variation des Primes émises",false);
+        compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable");
+        compareColumns(syntAncien, "MONTANT TOTAL PRIME ASSUREUR", "Montant Total Prime Assureur", "Variation des Primes émises",false);
         compareColumns(syntAncien, "PRIME ACQUISE A DATE","Prime Acquise à date", "Variation primes acquises", false);
         compareColumns(syntAncien, "Taux d'acquisition des primes","Taux d'acquisition des primes", "Variation Taux d'Acquisition", true);
         compareColumns(syntAncien, "TOTAL SINISTRES COMPTABLE", "Total Sinistres Comptable","Variation des Sinistres Comptable", false);
         compareColumns(syntAncien, "TOTAL SINISTRE TECHNIQUE", "Total Sinistres Technique","Variation des Sinistres Technique", false);
         compareColumns(syntAncien, "Provisions sur sinistres connus", "Total Provision Sinistre Connu","Variation des Provisions sur Sinistre", false);
-        compareColumns(syntAncien, "S/P comptable acquis\n" + "yc ICI","S/P comptable acquis\n" + "yc ICI", "Variation S/P comptable acquis\n" + "yc ICI", true);
-        compareColumns(syntAncien, "S/P technique acquis\n" + "yc ICI","S/P technique acquis\n" + "yc ICI", "Variation S/P technique acquis\n" + "yc ICI", true);
-        compareColumns(syntAncien, "S/P technique provisionné acquis\n" + "yc ICI","S/P technique provisionné acquis\n" + "yc ICI", "Variation S/P technique provisionné acquis\n" + "yc ICI", true);
+        compareColumns(syntAncien, "S/P comptable acquis","S/P comptable acquis", "Variation S/P comptable acquis", true);
+        compareColumns(syntAncien, "S/P technique acquis","S/P technique acquis", "Variation S/P technique acquis", true);
+        compareColumns(syntAncien, "S/P technique provisionné acquis","S/P technique provisionné acquis", "Variation S/P technique provisionné acquis", true);
         compareColumns(syntAncien, "Sinistre Ultime","Sinistre Ultime", "Variation Sinistre Ultime", false);
-        compareColumns(syntAncien, "S/P Comptable à l'ultime yc ICI","S/P Comptable à l'ultime\n" + "yc ICI", "Variation S/P Comptable à l'ultime\n" + "yc ICI", true);
+        compareColumns(syntAncien, "S/P Comptable à l'ultime","S/P Comptable à l'ultime", "Variation S/P Comptable à l'ultime", true);
 
-    } 
-    
+    }
+//    public Synthesenew(Synthesenew external, int pourDistrib, Synthesenew syntAncien, boolean avecICI) {
+//        headers = new ArrayList<>();
+//        columns = new ArrayList<>();
+//        refMapping = new ArrayList<>();
+//        bu = new ArrayList<>();
+//
+//        populateRefMapping(external);
+//        createBUList(external);
+//        populateAssureur(); //prerequis refMapping!
+//
+//        addMappedColumn(external, "GESTIONNAIRE 1", "Gestionnaire", STR);
+//        addMappedColumn(external, "LIBELLE DISTRIBUTEUR", "Distributeur", STR);
+//        addMappedColumn(external, "Contrat", "Contrat", STR);
+//        addMappedColumn(external, "Date Periode", "Date Periode", STR);
+//        extractYearFromPeriode(); // Année
+//        swapColumns("Date Periode", "Année");
+//        cleanDistributeur();
+//
+//        List<String> sortOrder = Arrays.asList("Assureur", "Gestionnaire", "Distributeur", "Année", "Contrat", "Date Periode");
+//        generalSort(sortOrder);
+//        insertSummaryRowsDistrib();
+//
+//        addMappedColumnSummedInt(external, "NOMBRE TOTAL ADHESIONS", "Nombre Adhésions", "Distributeur");
+//        addMappedColumnSummed(external, "MONTANT TOTAL HT", "Montant Total HT", "Distributeur");
+//        if (avecICI) {
+//            addMappedColumnSummed(external, "MONTANT TOTAL PRIME ASSUREUR", "Montant Total Prime Assureur", "Distributeur");
+//            addMappedColumnSummed(external, "MONTANT TOTAL COMMISSION ICI","Montant Total Commission ICI", "Distributeur");
+//            calculatePrime(external, "MONTANT TOTAL PRIME ASSUREUR","MONTANT TOTAL COMMISSION ICI", "Montant Total Prime", "Distributeur");
+//        } else {
+//            addMappedColumnSummed(external, "MONTANT TOTAL PRIME ASSUREUR", "Montant Total Prime Assureur", "Distributeur");
+//        }
+//
+//        if (avecICI) {
+//            addMappedColumnSummed(external, "Prime Acquise à date ", "Prime Acquise à date", "Contrat");
+//        } else {
+//            addMappedColumnSummed(external, "Prime Acquise à date", "Prime Acquise à date", "Contrat");
+//        }
+//        addDataFromSubheaderSummed(external, "PB", "Participation aux Benefices", "Distributeur");
+//        addDataFromSubheaderSummed(external, "Charge Comptable totale", "Total Sinistres Comptable", "Contrat");
+//        addDataFromSubheaderSummed(external, "Charge sinistre totale", "Total Sinistres Technique", "Contrat");
+//
+//        calculateEcartSinistres();
+//
+//        addDataFromSubheaderSummed(external, "Nombre en cours total", "Nombre Dossier En Cours", "Distributeur");
+//        appendBlockSubheaderSummed(external, "Provisions: En cours", "Provision Sinistre Connu", true,"Distributeur");
+//
+//        populatePrimeEmiseReelle(external,"Distributeur", avecICI);
+//
+//        calculateColumnRatio("Taux primes émise réelle", "Prime émise réelle", "Montant Total Net Compagnie");
+//        calculateColumnRatio("Taux d'acquisition des primes", "Prime Acquise à date", "Montant Total Net Compagnie");
+//
+//        calculatePBpourSPacquis();
+//        calculateSPcomptableEmis();
+//        calculateSoldeComptableEmis();
+//        calculateSPcomptableAcquis();
+//        addSoldeComptableAcquisColumn();
+//        addSPTechniqueEmisColumn();
+//        addSoldeTechniqueEmisColumn();
+//        addSPTechniqueAcquisColumn();
+//        addSoldeTechniqueAcquisColumn();
+//        addSPTechniqueProvisionneEmisColumn();
+//        addSoldeTechniqueProvisionneEmisColumn();
+//        addSPTechniqueProvisionneAcquisColumn();
+//        addSoldeTechniqueProvisionneAcquisColumn();
+//        addDataFromSubheaderSummed(external, "Sinistre Ultime", "Sinistre Ultime", "Distributeur");
+//        addMappedColumnSummed(external, "MONTANT TOTAL NET COMPAGNIE", "Prime à l'ultime", "Distributeur");
+//        addSPComptableUltimateColumn();
+//
+//
+//        mapToAncien = mapThisToExtern(syntAncien);
+//        compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable",false);
+//        compareColumns(syntAncien, "MONTANT TOTAL NET COMPAGNIE", "Montant Total Net Compagnie", "Variation des Primes émises",false);
+//        compareColumns(syntAncien, "PRIME ACQUISE A DATE","Prime Acquise à date", "Variation primes acquises", false);
+//        compareColumns(syntAncien, "Taux d'acquisition des primes","Taux d'acquisition des primes", "Variation Taux d'Acquisition", true);
+//        compareColumns(syntAncien, "TOTAL SINISTRES COMPTABLE", "Total Sinistres Comptable","Variation des Sinistres Comptable", false);
+//        compareColumns(syntAncien, "TOTAL SINISTRE TECHNIQUE", "Total Sinistres Technique","Variation des Sinistres Technique", false);
+//        compareColumns(syntAncien, "Provisions sur sinistres connus", "Total Provision Sinistre Connu","Variation des Provisions sur Sinistre", false);
+//        compareColumns(syntAncien, "S/P comptable acquis","S/P comptable acquis", "Variation S/P comptable acquis", true);
+//        compareColumns(syntAncien, "S/P technique acquis","S/P technique acquis", "Variation S/P technique acquis", true);
+//        compareColumns(syntAncien, "S/P technique provisionné acquis","S/P technique provisionné acquis", "Variation S/P technique provisionné acquis", true);
+//        compareColumns(syntAncien, "Sinistre Ultime","Sinistre Ultime", "Variation Sinistre Ultime", false);
+//        compareColumns(syntAncien, "S/P Comptable à l'ultime yc ICI","S/P Comptable à l'ultime", "Variation S/P Comptable à l'ultime", true);
+//
+//    }
     
     @SuppressWarnings("unchecked")
     private <T> void addRowToColumns(Row row, boolean toLower) {
@@ -348,18 +384,18 @@ public class Synthesenew extends DFnew {
         }
     }
     @SuppressWarnings("unchecked")
-    private <T> void addRowToColumns(String[] row, boolean toLower) {
+    private <T> void addRowToColumns(String[] row) {
         for (int i = 0; i < min(row.length, columns.size()); i++) {
             Column<T> col = (Column<T>) columns.get(i);
-            T cell = (T) getCellOfType(row[i], col.getType(), toLower);
+            T cell = (T) getCellOfType(row[i], col.getType());
             col.getData().add(cell);
         }
     }
     // CELL OPERATIONS
-    private Object getCellOfType(String cell, ColTypes type, boolean toLower) {
+    private Object getCellOfType(String cell, ColTypes type) {
         switch (type) {
             case STR -> {
-                return cell == null ? "" : (toLower ? cell.toLowerCase().trim() : cell.trim());
+                return cell == null ? "" : (cell.trim());
             }
             case DBL -> {
                 if (cell == null) return 0d;
@@ -367,6 +403,14 @@ public class Synthesenew extends DFnew {
                     return Double.parseDouble(cell.replace(",", ".").replace(" €", ""));
                 } catch (NumberFormatException ignored) {
                     return 0d;
+                }
+            }
+            case INT -> {
+                if (cell == null) return 0d;
+                try {
+                    return Integer.parseInt(cell);
+                } catch (NumberFormatException ignored) {
+                    return 0;
                 }
             }
             case DAT -> {
@@ -723,7 +767,6 @@ public class Synthesenew extends DFnew {
             i++;
         }
     }
-
     private void duplicateRowWithFourEmptyColumns(int rowIndex, String prefixColumn, String emptyColumn1, String emptyColumn2, String emptyColumn3, String emptyColumn4, String prefix) {
         for (int colIndex = 0; colIndex < columns.size(); colIndex++) {
             ArrayList<Object> columnData = (ArrayList<Object>) columns.get(colIndex).getData();
@@ -770,28 +813,35 @@ public class Synthesenew extends DFnew {
             }
         }
     }
-    private void addMappedColumnSummed(Synthesenew external, String sourceColName, String targetColName, ColTypes type, String colToAggregare) {
+
+    // ADD DATA
+    private void addMappedColumnSummed(Synthesenew external, String sourceColName, String targetColName, String colToAggregare) {
+        ArrayList<Double> sourceData = external.getColumn(sourceColName); // Assuming the source data are of type Double
+
+        AddDataSummedDBL(targetColName, colToAggregare, sourceData);
+    }
+    private void addMappedColumnSummedInt(Synthesenew external, String sourceColName, String targetColName, String colToAggregare) {
         List<String> anneeCol = this.getColumn("Année");
         List<String> contratCol = this.getColumn(colToAggregare);
 
-        ArrayList<Double> sourceData = external.getColumn(sourceColName); // Assuming the source data are of type Double
+        ArrayList<Integer> sourceData = external.getColumn(sourceColName); // Assuming the source data are of type Double
 
-        ArrayList<Double> targetData = new ArrayList<>(); // to store augmented data
-        double currentSum = 0.0;
-        double sumOfSums = 0.0;
+        ArrayList<Integer> targetData = new ArrayList<>(); // to store augmented data
+        int currentSum = 0;
+        int sumOfSums = 0;
 
         for (int i = 0, j = 0; i < anneeCol.size(); i++) {
-            double currentValue = (j < sourceData.size()) ? parseObjectToDouble(sourceData.get(j)) : 0.0; // Protect against index out of bounds
+            int currentValue = sourceData.get(j) == null ? 0 : sourceData.get(j); // Protect against index out of bounds
 
             // Check for the "Total" prefix and reset values as needed
             if (anneeCol.get(i).startsWith("Total")) {
-                targetData.add(roundToTwoDecimals(currentSum));
+                targetData.add(currentSum);
                 sumOfSums += currentSum;
-                currentSum = 0.0; // reset current sum
+                currentSum = 0; // reset current sum
             } else if (contratCol.get(i).startsWith("Total")) {
-                targetData.add(roundToTwoDecimals(sumOfSums));
-                currentSum = 0.0; // reset current sum
-                sumOfSums = 0.0;  // reset sum of sums
+                targetData.add(sumOfSums);
+                currentSum = 0; // reset current sum
+                sumOfSums = 0;  // reset sum of sums
             } else {
                 currentSum += currentValue;
                 targetData.add(currentValue);
@@ -799,31 +849,51 @@ public class Synthesenew extends DFnew {
             }
         }
 
-        this.addColumn(targetColName, new ArrayList<>(targetData), type);
+        this.addColumn(targetColName, new ArrayList<>(targetData), INT);
     }
-    // MATH
-    private double safeDivision(double numerator, double denominator) {
-        double result = 0.0;
-        if (denominator != 0) {
-            result = numerator / denominator;
-            if (Double.isNaN(result) || Double.isInfinite(result)) {
-                result = 0.0;
+    private void calculatePrime(Synthesenew external, String sourceColName1, String sourceColName2, String targetColName, String colToAggregare) {
+        List<String> anneeCol = this.getColumn("Année");
+        List<String> contratCol = this.getColumn(colToAggregare);
+
+        ArrayList<Double> sourceData1 = external.getColumn(sourceColName1);
+        ArrayList<Double> sourceData2 = external.getColumn(sourceColName2);
+
+        ArrayList<Double> targetData = new ArrayList<>(); // to store augmented data
+        double currentSum = 0.0;
+        double sumOfSums = 0.0;
+
+        for (int i = 0, j = 0; i < anneeCol.size(); i++) {
+            double currentValue1 = sourceData1.get(j) == null ? 0.0d : sourceData1.get(j); // Protect against index out of bounds
+            double currentValue2 = sourceData2.get(j) == null ? 0.0d : sourceData2.get(j); // Protect against index out of bounds
+
+            double currentValue = currentValue1 + currentValue2;
+
+            // Check for the "Total" prefix and reset values as needed
+            if (anneeCol.get(i).startsWith("Total")) {
+                targetData.add(currentSum);
+                primeColumn.add(currentSum);
+                sumOfSums += currentSum;
+                currentSum = 0.0; // reset current sum
+            } else if (contratCol.get(i).startsWith("Total")) {
+                targetData.add(sumOfSums);
+                primeColumn.add(sumOfSums);
+                currentSum = 0.0; // reset current sum
+                sumOfSums = 0.0;  // reset sum of sums
+            } else {
+                currentSum += currentValue;
+                targetData.add(currentValue);
+                primeColumn.add(currentValue);
+                j++; // Increment the iterator for the sourceData
             }
         }
-        return result;
+
+        this.addColumn(targetColName, new ArrayList<>(targetData), DBL);
     }
-    // Helper to round values to 4 decimal places
-    static double roundToFourDecimals(double value) {
-        return new BigDecimal(value).setScale(4, RoundingMode.HALF_UP).doubleValue();
-    }
-    static double roundToTwoDecimals(double value) {
-        return new BigDecimal(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
-    }
-    private void addDataFromSubheaderSummed(Synthesenew external, String subheaderName, String newColumnName, ColTypes type, String colToAggregare) {
+    private void addDataFromSubheaderSummed(Synthesenew external, String subheaderName, String newColumnName, String colToAggregare) {
         int columnIndex = external.subheaders.indexOf(subheaderName);
-        addDataFromIndexSummed(external, newColumnName, type, colToAggregare, columnIndex);
+        addDataFromIndexSummed(external, newColumnName, colToAggregare, columnIndex);
     }
-    private void addDataFromSubheaderHeaderSummed(Synthesenew external, String subheaderName,String headerName, String newColumnName, ColTypes type, String colToAggregare) {
+    private void addDataFromSubheaderHeaderSummed(Synthesenew external, String subheaderName,String headerName, String newColumnName, String colToAggregare) {
         int columnIndex = external.subheaders.indexOf(subheaderName);
         for (int i = columnIndex; i < external.headers.size(); i++) {
             if (external.subheaders.get(i).equals(headerName)) {
@@ -831,67 +901,15 @@ public class Synthesenew extends DFnew {
                 break;
             }
         }
-        addDataFromIndexSummed(external, newColumnName, type, colToAggregare, columnIndex);
+        addDataFromIndexSummed(external, newColumnName, colToAggregare, columnIndex);
     }
-    private void addDataFromIndexSummed(Synthesenew external, String newColumnName, ColTypes type, String colToAggregare, int columnIndex) {
+    private void addDataFromIndexSummed(Synthesenew external, String targetColName, String colToAggregare, int columnIndex) {
         if (columnIndex == -1) return;
+        ArrayList<Double> sourceData = external.getColumnByIndex(columnIndex);
 
-        ColTypes externalColumnType = external.columns.get(columnIndex).getType();
-        ArrayList<?> rawData = external.getColumnByIndex(columnIndex);
-        ArrayList<Double> transformedData = new ArrayList<>();
-
-        List<String> anneeCol = this.getColumn("Année");
-        List<String> contratCol = this.getColumn(colToAggregare);
-
-        double currentSum = 0.0;
-        double sumOfSums = 0.0;
-
-        int i = 0;
-        int j = 0;
-        while (i < anneeCol.size()) {
-            Double currentValue;
-            if (type == DBL && externalColumnType == STR) {
-                String value = (String) rawData.get(j);
-                try {
-                    currentValue = Double.parseDouble(value.replace(',','.'));
-                } catch (NumberFormatException e) {
-                    currentValue = 0.0;  // Default to 0 for non-numeric or empty values
-                }
-            } else {
-                currentValue = (Double) rawData.get(j);  // Assuming other columns are all of type Double
-            }
-
-            if (anneeCol.get(i).startsWith("Total")) {
-                transformedData.add(roundToTwoDecimals(currentSum));
-                sumOfSums += currentSum;
-                currentSum = 0.0; // reset current sum
-                i++;
-            } else if (contratCol.get(i).startsWith("Total")) {
-                transformedData.add(roundToTwoDecimals(sumOfSums));
-                currentSum = 0.0; // reset current sum
-                sumOfSums = 0.0;  // reset sum of sums
-                i++;
-            } else {
-                currentSum += currentValue;
-                transformedData.add(currentValue);
-                i++;
-                j++;
-            }
-        }
-
-        this.addColumn(newColumnName, transformedData, type);
+        AddDataSummedDBL(targetColName, colToAggregare, sourceData);
     }
-    private void calculateEcartSinistres() {
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> totalSinistreComptableData = this.getColumn("Total Sinistres Comptable");
-        ArrayList<Double> ecartSinistresData = new ArrayList<>();
-
-        for (int i = 0; i < totalSinistreTechniqueData.size(); i++) {
-            ecartSinistresData.add(totalSinistreTechniqueData.get(i) - totalSinistreComptableData.get(i));
-        }
-        this.addColumn("Ecart sinistres Technique - Comptable", ecartSinistresData, DBL);
-    }
-    private void appendBlockSubheaderSummed(Synthesenew external, String subheaderName, String prefix, boolean total, String colToAggregare) {
+    private void appendBlockSubheaderSummed(Synthesenew external, String subheaderName, String prefix, String colToAggregare) {
         int startColumnIndex = external.subheaders.indexOf(subheaderName);
 
         if (startColumnIndex == -1) {
@@ -916,69 +934,80 @@ public class Synthesenew extends DFnew {
             if (!external.subheaders.get(columnIndex).isEmpty() && columnIndex != startColumnIndex) {
                 break;
             }
-
-            // Fetch the corresponding header (in yyyy format) for the current column
             String year = external.headers.get(columnIndex);
-
-            // Create a new column in the main Synthese object
             String newColumnName = prefix + " " + year;
 
-            ArrayList<Double> transformedData = new ArrayList<>();
-
-            ColTypes currentColumnType = external.columns.get(columnIndex).getType();
+            ArrayList<Double> targetColumn = new ArrayList<>();
+            ArrayList<Double> externalColumn = external.getColumnByIndex(columnIndex);
 
             for (int i = 0, j = 0; i < anneeCol.size(); i++) {
-                Double value;
-                if (currentColumnType == STR) {
-                    String item = (String) external.getColumnByIndex(columnIndex).get(j);
-                    try {
-                        value = Double.parseDouble(item);
-                    } catch (NumberFormatException e) {
-                        value = 0.0;  // Default to 0 for non-numeric or empty values
-                    }
-                } else {
-                    value = (j < external.getColumnByIndex(columnIndex).size()) ? (Double) external.getColumnByIndex(columnIndex).get(j) : 0.0;
-                }
+                Double value = externalColumn.get(j) == null ? 0.0 : externalColumn.get(j);
 
                 if (anneeCol.get(i).startsWith("Total")) {
-                    transformedData.add(roundToTwoDecimals(currentSum));
+                    targetColumn.add(roundToTwoDecimals(currentSum));
                     totalValues.set(i, totalValues.get(i) + roundToTwoDecimals(currentSum));  // Update totalValues
                     sumOfSums += currentSum;
                     currentSum = 0.0;
                 } else if (contratCol.get(i).startsWith("Total")) {
-                    transformedData.add(roundToTwoDecimals(sumOfSums));
+                    targetColumn.add(roundToTwoDecimals(sumOfSums));
                     totalValues.set(i, totalValues.get(i) + roundToTwoDecimals(sumOfSums));  // Update totalValues
                     currentSum = 0.0;
                     sumOfSums = 0.0;
                 } else {
                     currentSum += value;
-                    transformedData.add(value);
+                    targetColumn.add(value);
                     totalValues.set(i, totalValues.get(i) + value);  // Update totalValues
                     j++; // increment the external data index
                 }
             }
 
-            this.addColumn(newColumnName, transformedData, DBL);
+            this.addColumn(newColumnName, targetColumn, DBL);
         }
 
-        // If total is true, add the "Total" column
-        if (total) {
-            String totalColumnName = "Total " + prefix;
-            this.addColumn(totalColumnName, totalValues, DBL);
-        }
+        String totalColumnName = "Total " + prefix;
+        this.addColumn(totalColumnName, totalValues, DBL);
     }
-    private void populatePrimeEmiseReelle(Synthesenew external, String colToAggregare, boolean avecICI) {
-        ArrayList<Double> montantTotalPrimeAssureurData = external.getColumn("MONTANT TOTAL PRIME ASSUREUR");
-        ArrayList<Double> montantTotalPrime;
-        if (avecICI) {
-            ArrayList<Double> montantTotalComm = external.getColumn("MONTANT TOTAL COMMISSION ICI");
-            montantTotalPrime = new ArrayList<>();
-            for (int i = 0; i < montantTotalComm.size(); i++) {
-                montantTotalPrime.add(montantTotalPrimeAssureurData.get(i) + montantTotalComm.get(i));
+    private void AddDataSummedDBL(String targetColName, String colToAggregare, ArrayList<Double> sourceData) {
+        List<String> anneeCol = this.getColumn("Année");
+        List<String> contratCol = this.getColumn(colToAggregare);
+        ArrayList<Double> targetData = new ArrayList<>(); // to store augmented data
+
+        double currentSum = 0.0;
+        double sumOfSums = 0.0;
+
+        for (int i = 0, j = 0; i < anneeCol.size(); i++) {
+            double currentValue = sourceData.get(j) == null ? 0.0d : sourceData.get(j); // Protect against index out of bounds
+
+            // Check for the "Total" prefix and reset values as needed
+            if (anneeCol.get(i).startsWith("Total")) {
+                targetData.add(currentSum);
+                sumOfSums += currentSum;
+                currentSum = 0.0; // reset current sum
+            } else if (contratCol.get(i).startsWith("Total")) {
+                targetData.add(sumOfSums);
+                currentSum = 0.0; // reset current sum
+                sumOfSums = 0.0;  // reset sum of sums
+            } else {
+                currentSum += currentValue;
+                targetData.add(currentValue);
+                j++; // Increment the iterator for the sourceData
             }
-        } else {
-            montantTotalPrime = montantTotalPrimeAssureurData;
         }
+
+        this.addColumn(targetColName, new ArrayList<>(targetData), DBL);
+    }
+
+    private void calculateEcartSinistres() {
+        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
+        ArrayList<Double> totalSinistreComptableData = this.getColumn("Total Sinistres Comptable");
+        ArrayList<Double> ecartSinistresData = new ArrayList<>();
+
+        for (int i = 0; i < totalSinistreTechniqueData.size(); i++) {
+            ecartSinistresData.add(totalSinistreTechniqueData.get(i) - totalSinistreComptableData.get(i));
+        }
+        this.addColumn("Ecart sinistres Technique - Comptable", ecartSinistresData, DBL);
+    }
+    private void populatePrimeEmiseReelle(String colToAggregare) {
         ArrayList<Double> primeEmiseReelleData = new ArrayList<>();
 
         List<String> anneeCol = this.getColumn("Année");
@@ -988,41 +1017,37 @@ public class Synthesenew extends DFnew {
         double sumOfSums = 0.0;
 
         for (int i = 0, j = 0; i < anneeCol.size(); i++) {
-            double currentValue = (j < montantTotalPrime.size() && bu.get(j)) ? parseObjectToDouble(montantTotalPrime.get(j)) : 0.0;
+            double currentValue = primeColumn.get(j);
 
             if (anneeCol.get(i).startsWith("Total")) {
-                primeEmiseReelleData.add(roundToTwoDecimals(currentSum));
+                primeEmiseReelleData.add(currentSum);
                 sumOfSums += currentSum;
                 currentSum = 0.0; // reset current sum
             } else if (contratCol.get(i).startsWith("Total")) {
-                primeEmiseReelleData.add(roundToTwoDecimals(sumOfSums));
+                primeEmiseReelleData.add(sumOfSums);
                 currentSum = 0.0; // reset current sum
                 sumOfSums = 0.0;  // reset sum of sums
             } else {
                 currentSum += currentValue;
                 primeEmiseReelleData.add(currentValue);
-                j++; // Increment the iterator for the montantTotalPrimeAssureurData
+                j++;
             }
         }
 
         this.addColumn("Prime émise réelle", primeEmiseReelleData, DBL);
     }
-    private void calculateColumnRatio(String columnName, String numeratorColumn, String denominatorColumn) {
-        ArrayList<Double> numeratorData = this.getColumn(numeratorColumn);
-        ArrayList<Double> denominatorData = this.getColumn(denominatorColumn);
+    private void calculatePrimeRatio(String columnName, String numeratorColumn) {
+        ArrayList<Double> numeratorData = getColumn(numeratorColumn);
+        ArrayList<Double> denominatorData = primeColumn;
         ArrayList<Double> ratioData = new ArrayList<>();
 
         for (int i = 0; i < numeratorData.size(); i++) {
-            double value;
-            try {
-                value = numeratorData.get(i) / denominatorData.get(i);
-                if (Double.isNaN(value) || Double.isInfinite(value)) {
-                    value = 0.0;
-                } else if ("Taux d'acquisition des primes".equals(columnName) && value > 1) {
-                    value = 1.0;
-                }
-            } catch (Exception e) {
+            double value = numeratorData.get(i) / denominatorData.get(i);
+            
+            if (Double.isNaN(value) || Double.isInfinite(value)) {
                 value = 0.0;
+            } else if (value > 1) {
+                value = 1.0;
             }
             ratioData.add(Math.round(value * 10000.0) / 10000.0);
         }
@@ -1035,186 +1060,77 @@ public class Synthesenew extends DFnew {
         ArrayList<Double> result = new ArrayList<>();
 
         for (int i = 0; i < participationBeneficesData.size(); i++) {
-            result.add(BigDecimal.valueOf(participationBeneficesData.get(i) * tauxAcquisitionPrimesData.get(i)).setScale(4, RoundingMode.HALF_UP).doubleValue());
+            result.add(participationBeneficesData.get(i) * tauxAcquisitionPrimesData.get(i));
         }
 
         this.addColumn("PB pour S/P acquis", result, DBL);
     }
-    private void calculateSPcomptableEmisYComprisICI() {
-        ArrayList<Double> totalSinistresComptableData = getColumn("Total Sinistres Comptable");
-        ArrayList<Double> montantTotalNetCompagnieData = getColumn("Montant Total Net Compagnie");
-        ArrayList<Double> primeAcquiseAdateData = getColumn("Prime Acquise à date");
-        ArrayList<Double> participationBeneficesData = getColumn("Participation aux Benefices");
+    private void calculateSPSolde() {
+        ArrayList<Double> totalFic = getColumn("Total Sinistres Comptable");
+        ArrayList<Double> totalSin = this.getColumn("Total Sinistres Technique");
+        ArrayList<Double> pb = getColumn("Participation aux Benefices");
+        ArrayList<Double> primeAdate = getColumn("Prime Acquise à date");
+        ArrayList<Double> pbAcquis = getColumn("PB pour S/P acquis");
 
-        ArrayList<Double> result = new ArrayList<>();
+        ArrayList<Double> spFic = new ArrayList<>();
+        ArrayList<Double> soldeFic = new ArrayList<>();
+        ArrayList<Double> spAqFic = new ArrayList<>();
+        ArrayList<Double> soldeAqFic = new ArrayList<>();
+        ArrayList<Double> spSin = new ArrayList<>();
+        ArrayList<Double> soldeSin = new ArrayList<>();
+        ArrayList<Double> spAqSin = new ArrayList<>();
+        ArrayList<Double> soldeAqSin = new ArrayList<>();
 
-        for (int i = 0; i < totalSinistresComptableData.size(); i++) {
-            double denominator = montantTotalNetCompagnieData.get(i) + primeAcquiseAdateData.get(i) + participationBeneficesData.get(i);
-            double value = totalSinistresComptableData.get(i) / denominator;
-            if (Double.isInfinite(value) || Double.isNaN(value)) {
-                result.add(0.0); // or whatever default value you'd like to use
-            } else {
-                result.add(new BigDecimal(value).setScale(4, RoundingMode.HALF_UP).doubleValue());
-            }
+        for (int i = 0; i < totalFic.size(); i++) {
+            spFic.add(safeDivision(totalFic.get(i),primeColumn.get(i) + pb.get(i)));
+            soldeFic.add(primeColumn.get(i) + pb.get(i) - totalFic.get(i));
 
+            spAqFic.add(safeDivision(totalFic.get(i), primeAdate.get(i) + pbAcquis.get(i)));
+            soldeAqFic.add(primeAdate.get(i) + pb.get(i) - totalFic.get(i));
+
+            spSin.add(safeDivision(totalSin.get(i),primeColumn.get(i) + pb.get(i)));
+            soldeSin.add(primeColumn.get(i) + pb.get(i) - totalSin.get(i));
+
+            spAqSin.add(safeDivision(totalSin.get(i), primeAdate.get(i) + pbAcquis.get(i)));
+            soldeAqSin.add(primeAdate.get(i) + pb.get(i) - totalSin.get(i));
         }
-
-        this.addColumn("S/P comptable émis\n" + "yc ICI", result, DBL);
+        
+        this.addColumn("S/P comptable émis", spFic, DBL);
+        this.addColumn("Solde comptable émis", soldeFic, DBL);
+        this.addColumn("S/P comptable acquis", spAqFic, DBL);
+        this.addColumn("Solde comptable acquis", soldeAqFic, DBL);
+        this.addColumn("S/P technique émis", spSin, DBL);
+        this.addColumn("Solde technique émis", soldeSin, DBL);
+        this.addColumn("S/P technique acquis", spAqSin, DBL);
+        this.addColumn("Solde technique acquis", soldeAqSin, DBL);
     }
-    private void calculateSoldeComptableEmisYComprisICI() {
-        ArrayList<Double> montantTotalNetCompagnieData = getColumn("Montant Total Net Compagnie");
-        ArrayList<Double> participationBeneficesData = getColumn("Participation aux Benefices");
-        ArrayList<Double> totalSinistresComptableData = getColumn("Total Sinistres Comptable");
+    private void calculateSPSoldeProv() {
+        ArrayList<Double> totalSin = this.getColumn("Total Sinistres Technique");
+        ArrayList<Double> provSin = this.getColumn("Total Provision Sinistre Connu");
+        ArrayList<Double> pb = this.getColumn("Participation aux Benefices");
+        ArrayList<Double> primeAdate = getColumn("Prime Acquise à date");
+        ArrayList<Double> pbAcquis = this.getColumn("PB pour S/P acquis");
 
-        ArrayList<Double> result = new ArrayList<>();
+        ArrayList<Double> spProv = new ArrayList<>();
+        ArrayList<Double> soldeProv = new ArrayList<>();
+        ArrayList<Double> spAqProv = new ArrayList<>();
+        ArrayList<Double> soldeAqProv = new ArrayList<>();
 
-        for (int i = 0; i < montantTotalNetCompagnieData.size(); i++) {
-            double value = montantTotalNetCompagnieData.get(i) + participationBeneficesData.get(i) - totalSinistresComptableData.get(i);
-            if (Double.isInfinite(value) || Double.isNaN(value)) {
-                result.add(0.0); // or whatever default value you'd like to use
-            } else {
-                result.add(new BigDecimal(value).setScale(4, RoundingMode.HALF_UP).doubleValue());
-            }
+        for (int i = 0; i < totalSin.size(); i++) {
+            double sinProv = totalSin.get(i) + provSin.get(i);
+            double primePb = primeColumn.get(i) + pb.get(i);
+            double primePbAq = primeAdate.get(i) + pbAcquis.get(i);
+
+            spProv.add(safeDivision(sinProv, primePb));
+            soldeProv.add(primePb - sinProv);
+            spAqProv.add(safeDivision(sinProv, primePbAq));
+            soldeAqProv.add(primePbAq - sinProv);
         }
+        this.addColumn("S/P technique provisionné émis", spProv, DBL);
+        this.addColumn("Solde technique provisionné emis", soldeProv, DBL);
+        this.addColumn("S/P technique provisionné acquis", spAqProv, DBL);
+        this.addColumn("Solde technique provisionné acquis", soldeAqProv, DBL);
 
-        this.addColumn("Solde comptable émis\n" + "yc ICI", result, DBL);
-    }
-    private void calculateSPcomptableAcquisYComprisICI() {
-        ArrayList<Double> totalSinistresComptableData = getColumn("Total Sinistres Comptable");
-        ArrayList<Double> primeAcquiseAdateData = getColumn("Prime Acquise à date");
-        ArrayList<Double> pbPourSPacquisData = getColumn("PB pour S/P acquis");
-
-        ArrayList<Double> result = new ArrayList<>();
-
-        for (int i = 0; i < totalSinistresComptableData.size(); i++) {
-            double denominator = primeAcquiseAdateData.get(i) + pbPourSPacquisData.get(i);
-            double value = totalSinistresComptableData.get(i) / denominator;
-            if (Double.isInfinite(value) || Double.isNaN(value)) {
-                result.add(0.0); // or whatever default value you'd like to use
-            } else {
-                result.add(new BigDecimal(value).setScale(4, RoundingMode.HALF_UP).doubleValue());
-            }
-        }
-
-        this.addColumn("S/P comptable acquis\n" + "yc ICI", result, DBL);
-    }
-    private void addSoldeComptableAcquisColumn() {
-        ArrayList<Double> primeAcquiseAdateData = this.getColumn("Prime Acquise à date");
-        ArrayList<Double> participationAuxBeneficesData = this.getColumn("Participation aux Benefices");
-        ArrayList<Double> totalSinistresComptableData = this.getColumn("Total Sinistres Comptable");
-        ArrayList<Double> soldeComptableAcquisData = new ArrayList<>();
-
-        for (int i = 0; i < primeAcquiseAdateData.size(); i++) {
-            double value = primeAcquiseAdateData.get(i) + participationAuxBeneficesData.get(i) - totalSinistresComptableData.get(i);
-            soldeComptableAcquisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("Solde comptable acquis\n" + "yc ICI", soldeComptableAcquisData, DBL);
-    }
-    private void addSPTechniqueEmisColumn() {
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> montantTotalNetCompagnieData = this.getColumn("Montant Total Net Compagnie");
-        ArrayList<Double> participationAuxBeneficesData = this.getColumn("Participation aux Benefices");
-        ArrayList<Double> spTechniqueEmisData = new ArrayList<>();
-
-        for (int i = 0; i < totalSinistreTechniqueData.size(); i++) {
-            double denominator = montantTotalNetCompagnieData.get(i) + participationAuxBeneficesData.get(i);
-            double value = safeDivision(totalSinistreTechniqueData.get(i), denominator);
-            spTechniqueEmisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("S/P technique émis\n" + "yc ICI", spTechniqueEmisData, DBL);
-    }
-    private void addSoldeTechniqueEmisColumn() {
-        ArrayList<Double> montantTotalNetCompagnieData = this.getColumn("Montant Total Net Compagnie");
-        ArrayList<Double> participationAuxBeneficesData = this.getColumn("Participation aux Benefices");
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> soldeTechniqueEmisData = new ArrayList<>();
-
-        for (int i = 0; i < montantTotalNetCompagnieData.size(); i++) {
-            double value = montantTotalNetCompagnieData.get(i) + participationAuxBeneficesData.get(i) - totalSinistreTechniqueData.get(i);
-            soldeTechniqueEmisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("Solde technique émis\n" + "yc ICI", soldeTechniqueEmisData, DBL);
-    }
-    private void addSPTechniqueAcquisColumn() {
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> primeAcquiseAdateData = this.getColumn("Prime Acquise à date");
-        ArrayList<Double> pbPourSPAcquisData = this.getColumn("PB pour S/P acquis");
-        ArrayList<Double> spTechniqueAcquisData = new ArrayList<>();
-
-        for (int i = 0; i < totalSinistreTechniqueData.size(); i++) {
-            double denominator = primeAcquiseAdateData.get(i) + pbPourSPAcquisData.get(i);
-            double value = safeDivision(totalSinistreTechniqueData.get(i), denominator);
-            spTechniqueAcquisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("S/P technique acquis\n" + "yc ICI", spTechniqueAcquisData, DBL);
-    }
-    private void addSoldeTechniqueAcquisColumn() {
-        ArrayList<Double> primeAcquiseAdateData = this.getColumn("Prime Acquise à date");
-        ArrayList<Double> participationAuxBeneficesData = this.getColumn("Participation aux Benefices");
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> soldeTechniqueAcquisData = new ArrayList<>();
-
-        for (int i = 0; i < primeAcquiseAdateData.size(); i++) {
-            double value = primeAcquiseAdateData.get(i) + participationAuxBeneficesData.get(i) - totalSinistreTechniqueData.get(i);
-            soldeTechniqueAcquisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("Solde technique acquis\n" + "yc ICI", soldeTechniqueAcquisData, DBL);
-    }
-    private void addSPTechniqueProvisionneEmisColumn() {
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> provisionSinistreConnuData = this.getColumn("Total Provision Sinistre Connu");
-        ArrayList<Double> montantTotalNetCompagnieData = this.getColumn("Montant Total Net Compagnie");
-        ArrayList<Double> participationAuxBeneficesData = this.getColumn("Participation aux Benefices");
-        ArrayList<Double> spTechniqueProvisionneEmisData = new ArrayList<>();
-
-        for (int i = 0; i < totalSinistreTechniqueData.size(); i++) {
-            double numerator = totalSinistreTechniqueData.get(i) + provisionSinistreConnuData.get(i);
-            double denominator = montantTotalNetCompagnieData.get(i) + participationAuxBeneficesData.get(i);
-            double value = safeDivision(numerator, denominator);
-            spTechniqueProvisionneEmisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("S/P technique provisionné émis\n" + "yc ICI", spTechniqueProvisionneEmisData, DBL);
-    }
-    private void addSoldeTechniqueProvisionneEmisColumn() {
-        ArrayList<Double> montantTotalNetCompagnieData = this.getColumn("Montant Total Net Compagnie");
-        ArrayList<Double> participationAuxBeneficesData = this.getColumn("Participation aux Benefices");
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> provisionSinistreConnuData = this.getColumn("Total Provision Sinistre Connu");
-        ArrayList<Double> soldeTechniqueProvisionneEmisData = new ArrayList<>();
-
-        for (int i = 0; i < montantTotalNetCompagnieData.size(); i++) {
-            double value = montantTotalNetCompagnieData.get(i) + participationAuxBeneficesData.get(i) - totalSinistreTechniqueData.get(i) - provisionSinistreConnuData.get(i);
-            soldeTechniqueProvisionneEmisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("Solde technique provisionné emis\n" + "yc ICI", soldeTechniqueProvisionneEmisData, DBL);
-    }
-    private void addSPTechniqueProvisionneAcquisColumn() {
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> provisionSinistreConnuData = this.getColumn("Total Provision Sinistre Connu");
-        ArrayList<Double> montantTotalNetCompagnieData = this.getColumn("Montant Total Net Compagnie");
-        ArrayList<Double> pbPourSPAcquisData = this.getColumn("PB pour S/P acquis");
-        ArrayList<Double> spTechniqueProvisionneAcquisData = new ArrayList<>();
-
-        for (int i = 0; i < totalSinistreTechniqueData.size(); i++) {
-            double numerator = totalSinistreTechniqueData.get(i) + provisionSinistreConnuData.get(i);
-            double denominator = montantTotalNetCompagnieData.get(i) + pbPourSPAcquisData.get(i);
-            double value = safeDivision(numerator, denominator);
-            spTechniqueProvisionneAcquisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("S/P technique provisionné acquis\n" + "yc ICI", spTechniqueProvisionneAcquisData, DBL);
-    }
-    private void addSoldeTechniqueProvisionneAcquisColumn() {
-        ArrayList<Double> montantTotalNetCompagnieData = this.getColumn("Montant Total Net Compagnie");
-        ArrayList<Double> pbPourSPAcquisData = this.getColumn("PB pour S/P acquis");
-        ArrayList<Double> totalSinistreTechniqueData = this.getColumn("Total Sinistres Technique");
-        ArrayList<Double> provisionSinistreConnuData = this.getColumn("Total Provision Sinistre Connu");
-        ArrayList<Double> soldeTechniqueProvisionneAcquisData = new ArrayList<>();
-
-        for (int i = 0; i < montantTotalNetCompagnieData.size(); i++) {
-            double value = montantTotalNetCompagnieData.get(i) + pbPourSPAcquisData.get(i) - totalSinistreTechniqueData.get(i) - provisionSinistreConnuData.get(i);
-            soldeTechniqueProvisionneAcquisData.add(roundToFourDecimals(value));
-        }
-        this.addColumn("Solde technique provisionné acquis\n" + "yc ICI", soldeTechniqueProvisionneAcquisData, DBL);
     }
     private void addSPComptableUltimateColumn() {
         ArrayList<Double> sinistreUltimeData = this.getColumn("Sinistre Ultime");
@@ -1228,7 +1144,7 @@ public class Synthesenew extends DFnew {
             double value = safeDivision(numerator, denominator);
             spComptableUltimateData.add(roundToFourDecimals(value));
         }
-        this.addColumn("S/P Comptable à l'ultime\n" + "yc ICI", spComptableUltimateData, DBL);
+        this.addColumn("S/P Comptable à l'ultime", spComptableUltimateData, DBL);
     }
     private ArrayList<Integer> mapThisToExtern(Synthesenew extern) {
         ArrayList<String> thisKeys = new ArrayList<>();
@@ -1258,16 +1174,7 @@ public class Synthesenew extends DFnew {
 
     private void compareColumns(Synthesenew extern, String externColName, String thisColName, String newColName, boolean percentage) {
         ArrayList<Double> thisColumn = this.getColumn(thisColName);
-        ArrayList<String> externColumnStr = extern.getColumn(externColName);
-
-        ArrayList<Double> externColumn = new ArrayList<>();
-        for (String val : externColumnStr) {
-            try {
-                externColumn.add(Double.parseDouble(val.replace(',', '.')));
-            } catch (NumberFormatException e) {
-                externColumn.add(0.0);
-            }
-        }
+        ArrayList<Double> externColumn = extern.getColumn(externColName);
 
         ArrayList<String> deltaColumn = new ArrayList<>();
 
@@ -1286,7 +1193,7 @@ public class Synthesenew extends DFnew {
                     }
                 } else {
                     if (diff > 0) {
-                        deltaColumn.add("+" + Double.toString(roundToTwoDecimals(diff)));
+                        deltaColumn.add("+" + roundToTwoDecimals(diff));
                     } else if (diff < 0) {
                         deltaColumn.add(Double.toString(roundToTwoDecimals(diff)));
                     } else {
@@ -1296,6 +1203,29 @@ public class Synthesenew extends DFnew {
             }
         }
 
+        this.addColumn(newColName, deltaColumn, STR);
+    }
+    private void compareColumns(Synthesenew extern, String externColName, String thisColName, String newColName) {
+        ArrayList<Integer> thisColumn = this.getColumn(thisColName);
+        ArrayList<Integer> externColumn = extern.getColumn(externColName);
+        ArrayList<String> deltaColumn = new ArrayList<>();
+
+        for (int i = 0; i < thisColumn.size(); i++) {
+            int externIndex = mapToAncien.get(i);
+            if (externIndex == -1) {
+                deltaColumn.add("-");
+            } else {
+                int diff = thisColumn.get(i) - externColumn.get(externIndex);
+
+                if (diff > 0) {
+                    deltaColumn.add("+" + diff);
+                } else if (diff < 0) {
+                    deltaColumn.add(String.valueOf(diff));
+                } else {
+                    deltaColumn.add("0");
+                }
+            }
+        }
 
         this.addColumn(newColName, deltaColumn, STR);
     }
@@ -1312,12 +1242,12 @@ public class Synthesenew extends DFnew {
 
         // Populate newColumnData based on the header and its type
         if (Arrays.asList(INTEGER_COLUMNS).contains(header)) {
-            ArrayList<Double> colData = (ArrayList<Double>) oldColumn.getData();
-            for (Double value : colData) {
+            ArrayList<Integer> colData = (ArrayList<Integer>) oldColumn.getData();
+            for (Integer value : colData) {
                 if (value == null) {
                     newColumnData.add("");
                 } else {
-                    newColumnData.add(String.valueOf(Math.round(value)));
+                    newColumnData.add(String.valueOf(value));
                 }
             }
         } else if (Arrays.asList(DOUBLE_COLUMNS).contains(header)) {
@@ -1349,10 +1279,9 @@ public class Synthesenew extends DFnew {
         }
 
         // Replace old column with new formatted column
-        Column<String> newColumn = new Column<>(newColumnData, ColTypes.STR);
+        Column<String> newColumn = new Column<>(newColumnData, STR);
         columns.set(index, newColumn);
     }
-
     public void formatAllColumns() {
         for (String header : headers) {
             formatAndReplaceColumn(header);
@@ -1430,12 +1359,67 @@ public class Synthesenew extends DFnew {
         // Assuming you have a method to set a column, you can replace the old column with the reformatted one
         this.setColumn("Date Periode", reformattedDates,STR);
     }
-    public <T> void setColumn(String header, ArrayList<T> newData, ColTypes newType) {
-        int index = headers.indexOf(header);
-        if (index != -1) {
-            columns.set(index, new Column<T>(newData, newType));
-        } else {
-            throw new IllegalArgumentException("Column with header: " + header + " not found.");
+    @SuppressWarnings("unchecked")
+    public void generalSort(List<String> sortOrder) {
+        ArrayList<Integer> indices = IntStream.range(0, columns.get(0).getData().size()).boxed().sorted(new Comparator<Integer>() {
+            @Override
+            public int compare(Integer index1, Integer index2) {
+                for (String colName : sortOrder) {
+                    int colIndex = headers.indexOf(colName);
+                    if (colIndex == -1) continue;
+
+                    ColTypes colType = columns.get(colIndex).getType();
+
+                    if ("Année".equals(colName) && colType == STR) {
+                        Integer year1 = Integer.parseInt((String) getColumnByIndex(colIndex).get(index1));
+                        Integer year2 = Integer.parseInt((String) getColumnByIndex(colIndex).get(index2));
+                        int result = year1.compareTo(year2);
+                        if (result != 0) return result;
+                    } else if ("Date Periode".equals(colName) && colType == STR) {
+                        try {
+                            Date date1 = new SimpleDateFormat("MM-yyyy").parse((String) getColumnByIndex(colIndex).get(index1));
+                            Date date2 = new SimpleDateFormat("MM-yyyy").parse((String) getColumnByIndex(colIndex).get(index2));
+                            int result = date1.compareTo(date2);
+                            if (result != 0) return result;
+                        } catch (ParseException e) {
+                            e.printStackTrace();
+                        }
+                    } else if (colType == STR) {
+                        String val1 = (String) getColumnByIndex(colIndex).get(index1);
+                        String val2 = (String) getColumnByIndex(colIndex).get(index2);
+                        int result = val1.compareTo(val2);
+                        if (result != 0) return result;
+                    }
+                }
+                return 0;
+            }
+        }).collect(Collectors.toCollection(ArrayList::new));
+
+// Sort the indices
+
+        // Reorder the data in all columns using the sorted order of indices
+        for (Column<?> column : columns) {
+            ArrayList<Object> originalData = new ArrayList<>(column.getData());
+            for (int i = 0; i < indices.size(); i++) {
+                ((ArrayList<Object>) column.getData()).set(i, originalData.get(indices.get(i)));
+            }
         }
+
+    }
+
+    // MATH
+    private double safeDivision(double numerator, double denominator) {
+        double result = numerator / denominator;
+        if (Double.isNaN(result) || Double.isInfinite(result)) {
+            return 0.0;
+        }
+        return result;
+    }
+    // Helper to round values to 4 decimal places
+    static double roundToFourDecimals(double value) {
+        return new BigDecimal(value).setScale(4, RoundingMode.HALF_UP).doubleValue();
+    }
+    static double roundToTwoDecimals(double value) {
+        return new BigDecimal(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 }

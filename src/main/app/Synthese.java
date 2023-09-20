@@ -24,7 +24,6 @@ import static java.lang.Math.min;
 import static java.lang.Math.round;
 import static main.app.App.*;
 import static main.app.App.NA_DAT;
-import static main.app.Estimate.parseObjectToDouble;
 import static main.app.Synthese.ColTypes.*;
 
 
@@ -1884,7 +1883,7 @@ public class Synthese {
         double sumOfSums = 0.0;
 
         for (int i = 0, j = 0; i < anneeCol.size(); i++) {
-            Double currentValue = (j < sourceData.size()) ? parseObjectToDouble(sourceData.get(j)) : 0.0; // Protect against index out of bounds
+            Double currentValue = (j < sourceData.size()) ? (sourceData.get(j)) : 0.0; // Protect against index out of bounds
 
             // Check for the "Total" prefix and reset values as needed
             if (anneeCol.get(i).startsWith("Total")) {
@@ -2127,7 +2126,7 @@ public class Synthese {
         double sumOfSums = 0.0;
 
         for (int i = 0, j = 0; i < anneeCol.size(); i++) {
-            Double currentValue = (j < montantTotalPrimeAssureurData.size() && bu.get(j)) ? parseObjectToDouble(montantTotalPrimeAssureurData.get(j)) : 0.0;
+            Double currentValue = (j < montantTotalPrimeAssureurData.size() && bu.get(j)) ? (montantTotalPrimeAssureurData.get(j)) : 0.0;
 
             if (anneeCol.get(i).startsWith("Total")) {
                 primeEmiseReelleData.add(roundToTwoDecimals(currentSum));

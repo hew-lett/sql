@@ -323,7 +323,7 @@ public class DFnew {
                 }
                 case INT -> {
                     try {
-                        yield (int) Double.parseDouble(cell);
+                        yield Integer.parseInt(cell);
                     } catch (NumberFormatException e) {
                         yield 0;  // Return default for Int
                     }
@@ -427,6 +427,14 @@ public class DFnew {
     }
 
     // SETTERS
+    public <T> void setColumn(String header, ArrayList<T> newData, ColTypes newType) {
+        int index = headers.indexOf(header);
+        if (index != -1) {
+            columns.set(index, new Column<>(newData, newType));
+        } else {
+            throw new IllegalArgumentException("Column with header: " + header + " not found.");
+        }
+    }
     protected void setColumns(ArrayList<Column<?>> columns) {
         this.columns = columns;
     }
@@ -1311,6 +1319,20 @@ public class DFnew {
         // If "000" is not found in the string, return the input as is (or you can return null or any default value)
         return input;
     }
+    public static double parseObjectToDouble(Object value) {
+        if (value == null) {
+            return 0.0;
+        }
+
+        String stringValue = value.toString();
+
+        try {
+            return Double.parseDouble(stringValue.replace(',', '.'));
+        } catch (NumberFormatException e) {
+            // You can choose to log this exception or just return a default value
+            return 0.0;
+        }
+    }
 
     // CSV WRITER
     protected void saveToCsvWithSuffix(String suffix) throws IOException {
@@ -1350,8 +1372,6 @@ public class DFnew {
             }
         }
     }
-
-
     private void writeLine(BufferedWriter writer, List<?> values) throws IOException {
         StringBuilder sb = new StringBuilder();
 
