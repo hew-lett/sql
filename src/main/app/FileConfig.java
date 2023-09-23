@@ -1,6 +1,5 @@
 package main.app;
 
-import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -14,13 +13,13 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.*;
 
-import static main.app.App.wd;
+import static main.app.App.refFolder;
 
 public class FileConfig {
-    private static final String CONFIG_FILE_PATH = wd + "ref_Fichiers.xlsx";
+    private static final String CONFIG_FILE_PATH = refFolder + "ref_Fichiers.xlsx";
 
     private final Map<String, Map<Integer, String>> columnNamesToRead = new HashMap<>();
-    private final Map<String, Map<Integer, DFnew.ColTypes>> columnTypes = new HashMap<>();
+    private final Map<String, Map<Integer, DF.ColTypes>> columnTypes = new HashMap<>();
     private final Map<String, Map<Integer, String>> columnNamesAttributed = new HashMap<>();
 
     private FileConfig() throws IOException {
@@ -38,9 +37,9 @@ public class FileConfig {
                 switch (type) {
                     case "name" -> columnNamesToRead.put(reference, extractData(currentRow));
                     case "type" -> {
-                        Map<Integer, DFnew.ColTypes> colTypesMap = new HashMap<>();
+                        Map<Integer, DF.ColTypes> colTypesMap = new HashMap<>();
                         for (Map.Entry<Integer, String> entry : extractData(currentRow).entrySet()) {
-                            colTypesMap.put(entry.getKey(), DFnew.ColTypes.valueOf(entry.getValue()));
+                            colTypesMap.put(entry.getKey(), DF.ColTypes.valueOf(entry.getValue()));
                         }
                         columnTypes.put(reference, colTypesMap);
                     }
@@ -104,15 +103,15 @@ public class FileConfig {
         return getValues(refFichier, columnNamesToRead);
     }
 
-    public ArrayList<DFnew.ColTypes> getColumnTypes(String refFichier) {
-        Map<Integer, DFnew.ColTypes> colTypes = columnTypes.get(refFichier);
+    public ArrayList<DF.ColTypes> getColumnTypes(String refFichier) {
+        Map<Integer, DF.ColTypes> colTypes = columnTypes.get(refFichier);
         if (colTypes == null || colTypes.isEmpty()) {
             return null;
         }
 
         List<Integer> sortedKeys = new ArrayList<>(colTypes.keySet());
         Collections.sort(sortedKeys);
-        ArrayList<DFnew.ColTypes> sortedValues = new ArrayList<>();
+        ArrayList<DF.ColTypes> sortedValues = new ArrayList<>();
         for(Integer key : sortedKeys) {
             sortedValues.add(colTypes.get(key));
         }

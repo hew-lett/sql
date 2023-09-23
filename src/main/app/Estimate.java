@@ -1,1024 +1,230 @@
 package main.app;
 
-import com.monitorjbl.xlsx.StreamingReader;
-import org.apache.poi.ss.usermodel.*;
+import com.univocity.parsers.csv.CsvParser;
+import com.univocity.parsers.csv.CsvParserSettings;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.sql.SQLException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
-
-import java.util.Date;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static java.lang.Math.max;
+import static java.lang.Math.min;
 import static main.app.App.*;
 import static main.app.Base.STATUT_FICTIF_FIC;
-import static main.app.DFnew.parseObjectToDouble;
+import static main.app.Base.MAX_PREVI_DATE;
+import static main.app.Base.MIN_PREVI_DATE;
+import static main.app.Base.MAX_ANNEE;
+import static main.app.Base.MIN_ANNEE;
+import static main.app.Base.yearN;
+import static main.app.DF.ColTypes.*;
 
 public class Estimate extends DF {
-    String key;
-    public List<Date> headerCalcul;
-
-    public String[] subheader;
-
-    int baseNcol = 0;
-    int lastAppendSize = 0;
-    String[] totalPA;
-    String[] totalPAaDate;
-    String[] tauxAcquisition;
-    Double[] colSPprevi;
-    Double[] colPB;
-    Double[] colSinUltime;
-
-    boolean[] mask_col;
-    protected Stopwatch stopwatch = new Stopwatch();
-    public Set<String> uniqueStatutsEstimate;
-    public Set<String> uniqueNumPoliceEstimate = new HashSet<>();
     public static Map<String, Map<String, Date>> minMaxDateSousMapEstimate = new HashMap<>();
-
-    public static final HashMap<String, Integer> monthMap = new HashMap<>() {{
-        put("jan.", Calendar.JANUARY);
-        put("feb.", Calendar.FEBRUARY);
-        put("mar.", Calendar.MARCH);
-        put("apr.", Calendar.APRIL);
-        put("may.", Calendar.MAY);
-        put("jun.", Calendar.JUNE);
-        put("jul.", Calendar.JULY);
-        put("aug.", Calendar.AUGUST);
-        put("sep.", Calendar.SEPTEMBER);
-        put("oct.", Calendar.OCTOBER);
-        put("nov.", Calendar.NOVEMBER);
-        put("dec.", Calendar.DECEMBER);
-    }};
-    public static void main(String[] args) throws IOException, SQLException {
-
+    private static final List<String> allDateHeaders = new ArrayList<>();
+    private static final List<String> allYearHeaders = new ArrayList<>();
+    private static final List<Date> allDates = generateAllDatesAndHeaders();
+    private static final List<Integer> allYears = generateAllYearsAndHeaders();
+    public static final Map<String, Map<Date, Integer>> gapsMap = new HashMap<>();
+    private final ArrayList<Double> plusComm = new ArrayList<>();
+    private final ArrayList<Boolean> avecICImask = new ArrayList<>();
+    private final ArrayList<Boolean> sansICImask = new ArrayList<>();
+    public static void main(String[] args) throws Exception {
     }
-    public Estimate(String path) throws IOException {
-        this.fullPath = path;
-        fileName = new File(path).getName();
-        key = fileName.replace(".xlsx", "").toLowerCase();
+    public Estimate(String csvFilePath, char delim, String refFichier) throws IOException, ParseException {
+        path = csvFilePath;
+        FileConfig config = FileConfig.getInstance();
+        columnNamesToRead = config.getColumnNamesToRead(refFichier);
+        columnTypes = config.getColumnTypes(refFichier);
+        columnNamesAttributed = config.getColumnNamesAttributed(refFichier);
+        validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
 
-        InputStream is = Files.newInputStream(new File(path).toPath());
-        Workbook workbook = StreamingReader.builder()
-                .rowCacheSize(1)
-                .bufferSize(4096)
-                .open(is);
+        columns = new ArrayList<>();
+        headers = new ArrayList<>();
 
-        String sheet_name = workbook.getSheetName(0);
-        Sheet sheet = workbook.getSheet(sheet_name);
-        Iterator<Row> rowIter = sheet.rowIterator();
-        Row row = rowIter.next();
-        nrow = sheet.getLastRowNum();
-        ncol = row.getLastCellNum();
-        header = new String[ncol];
-        subheader = new String[ncol];
-        int i = 0;
-        for (Cell c : row) {
-            header[i] = c.getStringCellValue();
-            subheader[i] = "";
-            i++;
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true, delim);
+        CsvParser parser = new CsvParser(settings);
+
+        List<String[]> allRows = parser.parseAll(new FileReader(csvFilePath, encodingDefault));
+        nrow = allRows.size() - 1;
+
+        if (allRows.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is empty!");
         }
 
-        coltypes = new Col_types[ncol];
-        for (i = 0; i < ncol; i++) {
-            if (header[i].contains("Date Periode")) {
-                coltypes[i] = Col_types.DAT;
+        String[] headerRow = allRows.get(0);
+        for (int i = 0; i < headerRow.length; i++) {
+            if (headerRow[i] == null) {
+                headerRow[i] = "";
+            }
+        }
+
+        for (int i = 0; i < columnNamesToRead.size(); i++) { // Iterate over the configuration list
+            String expectedHeader = columnNamesToRead.get(i);
+            int actualIndex = Arrays.asList(headerRow).indexOf(expectedHeader);
+
+            if (actualIndex != -1) { // If the header exists in the actual data
+                String header = headerRow[actualIndex];
+                headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
+
+                ArrayList<Object> colData = new ArrayList<>();
+                ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
+
+                for (int j = 1; j < allRows.size(); j++) {
+                    String cell = allRows.get(j)[actualIndex];
+                    colData.add(getCell(cell, colType));
+                }
+                columns.add(new Column<>(colData, colType));
             } else {
-                coltypes[i] = Col_types.STR;
+                throw new RuntimeException("column " + expectedHeader + " not found for Estimate");
             }
         }
 
-        df = new ArrayList<>(ncol);
-        this.df_populate(coltypes);
-
-        format = new SimpleDateFormat("dd-MM-yyyy");
-
-        int col_iterator;
-        int row_number = 0;
-        while(rowIter.hasNext()) {
-            row = rowIter.next();
-            col_iterator = 0;
-
-            for (int c = 0; c < ncol; c++) {
-                if (coltypes[c] != Col_types.SKP) {
-                    Cell cell_i = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
-                    if (cell_i == null) {
-                        switch(coltypes[c]) {
-                            case STR -> df.get(col_iterator)[row_number] = "";
-                            case DBL -> df.get(col_iterator)[row_number] = NA_DBL;
-                            case DAT -> df.get(col_iterator)[row_number] = NA_DAT;
-                        }
-                        col_iterator++;
-                        continue;
-                    }
-                    //System.out.println(cell_i);
-                    df.get(col_iterator)[row_number] = parseCell(cell_i, coltypes[c], format);
-                    col_iterator++;
-                }
-            }
-            row_number++;
-        }
-        headerAndColtypesDropSKP();
+        subheaders = new ArrayList<>(Collections.nCopies(headers.size(), null));
+        trimNullDatePeriodeRows_cleanHeader();
+        transformDatePeriodeColumn(refFichier);
         generateMinMaxDateSousMap();
-        formatDP();
-        deleteRegul();
-        if (path.contains("France")) {
-            deleteDBP();
-        }
-        baseNcol = ncol;
-        mask_col = new boolean[ncol];
-        Arrays.fill(mask_col, true);
-    } //file_sin
-
-    public void getUniqueStatutsFromMap() {
-        List<String> sortedStatuts = new ArrayList<>(globalStatutDateRangeMap.keySet());
-
-        // Add the required strings if they are not present in the list
-        List<String> requiredStatuts = Arrays.asList("en cours", "en cours - accepté", "en attente de prescription");
-        for (String reqStatut : requiredStatuts) {
-            if (!sortedStatuts.contains(reqStatut)) {
-                sortedStatuts.add(reqStatut);
-            }
-        }
-
-        // Sort the list so that "terminé - accepté" is at the beginning and others as required
-        sortedStatuts.sort((statut1, statut2) -> {
-            if (statut1.equalsIgnoreCase("terminé - accepté")) {
-                return -1;
-            } else if (statut2.equalsIgnoreCase("terminé - accepté")) {
-                return 1;
-            }
-            // You can add additional sorting rules for "en cours", "en cours - accepté",
-            // and "en attente de prescription" if required
-            return statut1.compareTo(statut2);
-        });
-
-        this.uniqueStatutsEstimate = new LinkedHashSet<>(sortedStatuts);
+        mergeRegul();
+        mergeDBP();
+        sortTableByContractAndDate();
+        findDateGapsFromLastAvailable();
+        addComm();
+//        saveUniqueCombinationsToXlsx(outputFolder+"casPrime.xlsx");
     }
+    void beginSplit() {
+        for (String s : headers) {
+            avecICImask.add(true);
+            sansICImask.add(true);
+        }
+    }
+    public void saveUniqueCombinationsToXlsx(String outputPath) throws IOException {
+        ArrayList<String> fluxColumn = getColumn("Flux");
+        ArrayList<Double> montantTotalNetCompagnieColumn = getColumn("MONTANT TOTAL NET COMPAGNIE");
+        ArrayList<Double> montantTotalPrimeAssureurColumn = getColumn("MONTANT TOTAL PRIME ASSUREUR");
 
-    public void getUniqueNumPoliceEstimate() {
-        int contratIndex = find_in_arr_first_index(header, "Contrat");
+        // Holds a unique set of row combinations
+        Set<String> uniqueCombinations = new HashSet<>();
+
+        // Collecting rows with unique combinations
+        ArrayList<ArrayList<Object>> collectedRows = new ArrayList<>();
+
         for (int i = 0; i < nrow; i++) {
-            Object[] row = r(i);
-            String contratValue = (String) row[contratIndex];
-            if (contratValue != null && !contratValue.trim().isEmpty()) {
-                uniqueNumPoliceEstimate.add(contratValue);
-            }
-        }
-    }
-
-    public void populateMonthSin(List<Base> bases, String statut) throws ParseException {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-        Date defaultDate = sdf.parse("1/11/2013");
-
-        List<Date> interMap = globalStatutDateRangeMap.getOrDefault(statut, Arrays.asList(defaultDate, defaultDate));
-
-        Date minDateForStatus = interMap.get(0) != null ? interMap.get(0) : defaultDate;
-        Date maxDateForStatus = interMap.get(1) != null ? interMap.get(1) : defaultDate;
-
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], maxDateForStatus, "MM-yyyy") ||
-                    isEarlierSvD(this.header[col], minDateForStatus, "MM-yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            List<Date> minmax = policeStatutDateRangeMap.get(police).get(statut);
-            if(minmax == null) continue;
-            minDateForStatus = minmax.get(0);
-            maxDateForStatus = minmax.get(1);
-
-            Map<String, Map<String, Double>> currentPivotTable = base.pivotTable.get(statut);
-
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], maxDateForStatus, "MM-yyyy") ||
-                        isEarlierSvD(this.header[col], minDateForStatus, "MM-yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSum(currentPivotTable, datePeriode, this.header[col]); // getSum method should be modified to work with both Double and Integer types
-                }
-            }
-        }
-    }
-    public void populateYearSin(List<Base> bases, String statut) throws ParseException {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-        Date defaultDate = sdf.parse("1/11/2013");
-
-        List<Date> interMap = globalStatutDateRangeMap.getOrDefault(statut, Arrays.asList(defaultDate, defaultDate));
-
-        Date minDateForStatus = interMap.get(0) != null ? interMap.get(0) : defaultDate;
-        Date maxDateForStatus = interMap.get(1) != null ? interMap.get(1) : defaultDate;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], maxDateForStatus, "yyyy") ||
-                isEarlierSvD(this.header[col], minDateForStatus, "yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            List<Date> minmax = policeStatutDateRangeMap.get(police).get(statut);
-            if (minmax == null) continue;
-            minDateForStatus = minmax.get(0);
-            maxDateForStatus = minmax.get(1);
-
-            Map<String, Map<String, Double>> currentPivotTable = base.pivotTableYearly.get(statut);
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], maxDateForStatus, "yyyy") ||
-                    isEarlierSvD(this.header[col], minDateForStatus, "yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSum(currentPivotTable, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateTotalSin(List<Base> bases, String statut) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - 1;
-
-        this.mask_col[begin] = true;
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            Map<String, Double> currentPivotTable = base.pivotTableTotal.get(statut);
-            if (currentPivotTable == null) continue;
-//            System.out.println(police + statut);
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                this.df.get(begin)[row] = getTotal(currentPivotTable, datePeriode);
-            }
-        }
-    }
-
-    public void populateMonthSinN(List<Base> bases, String statut) throws ParseException {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-        Date defaultDate = sdf.parse("1/11/2013");
-
-        List<Date> interMap = globalStatutDateRangeMap.getOrDefault(statut, Arrays.asList(defaultDate, defaultDate));
-
-        Date minDateForStatus = interMap.get(0) != null ? interMap.get(0) : defaultDate;
-        Date maxDateForStatus = interMap.get(1) != null ? interMap.get(1) : defaultDate;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], maxDateForStatus, "MM-yyyy") ||
-                    isEarlierSvD(this.header[col], minDateForStatus, "MM-yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            List<Date> minmax = policeStatutDateRangeMap.get(police).get(statut);
-            if(minmax == null) continue;
-            minDateForStatus = minmax.get(0);
-            maxDateForStatus = minmax.get(1);
-
-            // Notice the difference here. We're accessing pivotTableN instead of pivotTable
-            Map<String, Map<String, Integer>> currentPivotTableN = base.pivotTableN.get(statut);
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], maxDateForStatus, "MM-yyyy") ||
-                        isEarlierSvD(this.header[col], minDateForStatus, "MM-yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    // Calling the new getSumN method for the Integer type
-                    this.df.get(col)[row] = getSumN(currentPivotTableN, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateYearSinN(List<Base> bases, String statut) throws ParseException {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-        Date defaultDate = sdf.parse("1/11/2013");
-
-        List<Date> interMap = globalStatutDateRangeMap.getOrDefault(statut, Arrays.asList(defaultDate, defaultDate));
-
-        Date minDateForStatus = interMap.get(0) != null ? interMap.get(0) : defaultDate;
-        Date maxDateForStatus = interMap.get(1) != null ? interMap.get(1) : defaultDate;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], maxDateForStatus, "yyyy") ||
-                    isEarlierSvD(this.header[col], minDateForStatus, "yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            List<Date> minmax = policeStatutDateRangeMap.get(police).get(statut);
-            if (minmax == null) continue;
-            minDateForStatus = minmax.get(0);
-            maxDateForStatus = minmax.get(1);
-
-            Map<String, Map<String, Integer>> currentPivotTableN = base.pivotTableYearlyN.get(statut);
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], maxDateForStatus, "yyyy") ||
-                        isEarlierSvD(this.header[col], minDateForStatus, "yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSumN(currentPivotTableN, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateTotalSinN(List<Base> bases, String statut) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - 1;
-
-        this.mask_col[begin] = true;
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            Map<String, Integer> currentPivotTableN = base.pivotTableTotalN.get(statut);
-            if (currentPivotTableN == null) continue;
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                this.df.get(begin)[row] = getTotalN(currentPivotTableN, datePeriode);
-            }
-        }
-    }
-
-    public void populateMonthSinAllStatuts(List<Base> bases) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-        Stopwatch stopwatch = new Stopwatch();
-        stopwatch.start();
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], globalMaxDate, "MM-yyyy") ||
-                    isEarlierSvD(this.header[col], globalMinDate, "MM-yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], globalMaxDate, "MM-yyyy") ||
-                    isEarlierSvD(this.header[col], globalMinDate, "MM-yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSum(base.pivotTableAllStatuts, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateYearSinAllStatuts(List<Base> bases) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], globalMaxDate, "yyyy") ||
-                isEarlierSvD(this.header[col], globalMinDate, "yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], globalMaxDate, "yyyy") ||
-                    isEarlierSvD(this.header[col], globalMinDate, "yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSum(base.pivotTableAllStatutsYearly, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateTotalSinAllStatuts(List<Base> bases) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - 1;
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                this.df.get(begin)[row] = getTotal(base.pivotTableAllStatutsTotal, datePeriode);
-            }
-        }
-    }
-
-    public void populateMonthSinAllStatutsN(List<Base> bases) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], globalMaxDate, "MM-yyyy") ||
-                    isEarlierSvD(this.header[col], globalMinDate, "MM-yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], globalMaxDate, "MM-yyyy") ||
-                        isEarlierSvD(this.header[col], globalMinDate, "MM-yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSumN(base.pivotTableAllStatutsN, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateYearSinAllStatutsN(List<Base> bases) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], globalMaxDate, "yyyy") ||
-                    isEarlierSvD(this.header[col], globalMinDate, "yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], globalMaxDate, "yyyy") ||
-                        isEarlierSvD(this.header[col], globalMinDate, "yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSumN(base.pivotTableAllStatutsYearlyN, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateTotalSinAllStatutsN(List<Base> bases) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - 1;
-
-        for (Base base : bases) {
-            String police = base.numPolice;
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                this.df.get(begin)[row] = getTotalN(base.pivotTableAllStatutsTotalN, datePeriode);
-            }
-        }
-    }
-
-
-    public void populateMonthFic(Base base) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], base.globalMaxDateFic,"MM-yyyy") ||
-                isEarlierSvD(this.header[col], base.globalMinDateFic,"MM-yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (String police : base.uniqueNumPoliceValues) {
-            Date minDateForPolice = base.numPoliceDateRangeMap.get(police).get(0);
-            Date maxDateForPolice = base.numPoliceDateRangeMap.get(police).get(1);
-            Map<String, Map<String, Double>> pivotForPolice = base.pivotTableFic.get(police).get(STATUT_FICTIF_FIC);
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], maxDateForPolice,"MM-yyyy") ||
-                    isEarlierSvD(this.header[col], minDateForPolice,"MM-yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSumFic(pivotForPolice, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateYearFic(Base base) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], base.globalMaxDateFic,"yyyy") ||
-                isEarlierSvD(this.header[col], base.globalMinDateFic,"yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (String police : base.uniqueNumPoliceValues) {
-            Date minDateForPolice = base.numPoliceDateRangeMap.get(police).get(0);
-            Date maxDateForPolice = base.numPoliceDateRangeMap.get(police).get(1);
-            Map<String, Map<String, Double>> pivotForPolice = base.pivotTableYearlyFic.get(police).get(STATUT_FICTIF_FIC);
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], maxDateForPolice,"yyyy") ||
-                    isEarlierSvD(this.header[col], minDateForPolice,"yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSumFic(pivotForPolice, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateTotalFic(Base base) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int totalCol = ncol - 1;
-
-        this.mask_col[totalCol] = true;
-
-
-        for (String police : base.uniqueNumPoliceValues) {
-
-            Map<String, Double> pivotForPolice = base.pivotTableTotalFic.get(police).get(STATUT_FICTIF_FIC);
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                this.df.get(totalCol)[row] = getTotal(pivotForPolice, datePeriode);
-            }
-        }
-    }
-    public void populateMonthFicN(Base base) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], base.globalMaxDateFic,"MM-yyyy") ||
-                    isEarlierSvD(this.header[col], base.globalMinDateFic,"MM-yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (String police : base.uniqueNumPoliceValues) {
-            Date minDateForPolice = base.numPoliceDateRangeMap.get(police).get(0);
-            Date maxDateForPolice = base.numPoliceDateRangeMap.get(police).get(1);
-            Map<String, Map<String, Integer>> pivotForPolice = base.pivotTableFicN.get(police).get(STATUT_FICTIF_FIC);
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], maxDateForPolice,"MM-yyyy") ||
-                        isEarlierSvD(this.header[col], minDateForPolice,"MM-yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSumFicN(pivotForPolice, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateYearFicN(Base base) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int begin = ncol - lastAppendSize;
-
-        for (int col = begin; col < ncol; col++) {
-            if (!(isLaterSvD(this.header[col], base.globalMaxDateFic,"yyyy") ||
-                    isEarlierSvD(this.header[col], base.globalMinDateFic,"yyyy"))) {
-                this.mask_col[col] = true;
-            }
-        } // showing mask
-
-        for (String police : base.uniqueNumPoliceValues) {
-            Date minDateForPolice = base.numPoliceDateRangeMap.get(police).get(0);
-            Date maxDateForPolice = base.numPoliceDateRangeMap.get(police).get(1);
-            Map<String, Map<String, Integer>> pivotForPolice = base.pivotTableFicYearlyN.get(police).get(STATUT_FICTIF_FIC);
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            boolean[] calc_mask = new boolean[lastAppendSize];
-            for (int col = begin; col < ncol; col++) {
-                if (!(isLaterSvD(this.header[col], maxDateForPolice,"yyyy") ||
-                        isEarlierSvD(this.header[col], minDateForPolice,"yyyy"))) {
-                    calc_mask[col-begin] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                for (int col = begin; col < ncol; col++) {
-                    if (!calc_mask[col-begin]) continue;
-
-                    String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                    this.df.get(col)[row] = getSumFicN(pivotForPolice, datePeriode, this.header[col]);
-                }
-            }
-        }
-    }
-    public void populateTotalFicN(Base base) {
-        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-        int totalCol = ncol - 1;
-
-        this.mask_col[totalCol] = true;
-
-        for (String police : base.uniqueNumPoliceValues) {
-
-            Map<String, Integer> pivotForPolice = base.pivotTableFicTotalN.get(police).get(STATUT_FICTIF_FIC);
-
-            boolean[] mask_row = new boolean[this.nrow];
-            for (int row = 0; row < this.nrow; row++) {
-                if (police.equalsIgnoreCase((String) this.c("Contrat")[row])) {
-                    mask_row[row] = true;
-                }
-            }
-
-            for (int row = 0; row < this.nrow; row++) {
-                if (!mask_row[row]) continue;
-
-                String datePeriode = (String) this.df.get(ind_datePeriode)[row];
-                this.df.get(totalCol)[row] = getTotalN(pivotForPolice, datePeriode);
-            }
-        }
-    }
-    public Map<String, ArrayList<String>> getFilteredHeadersAndSubheaders() {
-        Map<String, ArrayList<String>> result = new LinkedHashMap<>();
-        result.put("base", new ArrayList<>());
-        for (int i = 0; i < baseNcol; i++) {
-            result.get("base").add(header[i]);
-        }
-        String currentSubheader = null;
-
-        for (int i = baseNcol; i < subheader.length; i++) {
-            if (!subheader[i].isEmpty()) {
-                currentSubheader = subheader[i];
-                result.put(currentSubheader, new ArrayList<>());
-            }
-
-            if (mask_col[i-baseNcol]) {
-                result.get(currentSubheader).add(header[i]);
+            String fluxValue = fluxColumn.get(i);
+            String montantTotalNetCompagnieValue = classifyValue(montantTotalNetCompagnieColumn.get(i));
+            String montantTotalPrimeAssureurValue = classifyValue(montantTotalPrimeAssureurColumn.get(i));
+
+            String combinationKey = fluxValue + "_" + montantTotalNetCompagnieValue + "_" + montantTotalPrimeAssureurValue;
+
+            if (!uniqueCombinations.contains(combinationKey)) {
+                uniqueCombinations.add(combinationKey);
+                collectedRows.add(getRow(i));
             }
         }
 
-        return result;
-    }
-    public void printFilteredHeadersAndSubheaders() {
-        Map<String, ArrayList<String>> filteredHeadersAndSubheaders = getFilteredHeadersAndSubheaders();
+        // Save to XLSX
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Unique Combinations");
 
-        for (Map.Entry<String, ArrayList<String>> entry : filteredHeadersAndSubheaders.entrySet()) {
-            String subheader = entry.getKey();
-            ArrayList<String> headers = entry.getValue();
+            // Header Row
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers.get(i));
+            }
 
-            String headersString = String.join(", ", headers);
-            System.out.println(subheader + ": " + headersString);
-        }
-    }
-
-    public void deleteRegul() {
-        Object[] regul = this.c("Régularisation");
-        Object[] contrat = this.c("Contrat");
-        Object[] date = this.c("Date Periode");
-        ArrayList<Integer> rowsToDelete = new ArrayList<>();
-        for (int i = 0; i < this.nrow; i++) {
-            if (regul[i].equals("OUI")) {
-                int origin = -1;
-                if (date[i].equals(date[i-1]) && contrat[i].equals(contrat[i-1])) {
-                    origin = i - 1;
-                } else {
-                    for (int j = 0; j < this.nrow; j++) {
-                        if (date[i].equals(date[j]) && contrat[i].equals(contrat[j])) {
-                            origin = j;
-                            break;
+            // Data Rows
+            for (int i = 0; i < collectedRows.size(); i++) {
+                ArrayList<Object> row = collectedRows.get(i);
+                Row xlsxRow = sheet.createRow(i + 1);
+                for (int j = 0; j < row.size(); j++) {
+                    Cell cell = xlsxRow.createCell(j);
+                    Object value = row.get(j);
+                    if (value instanceof Double) {
+                        cell.setCellValue((Double) value);
+                    } else if (value instanceof Date) {
+                        cell.setCellValue(dateDefault.format((Date) value));
+                    } else {
+                        if (value == null) {
+                            cell.setCellValue("");
+                        } else {
+                            cell.setCellValue(value.toString());
                         }
                     }
                 }
-                if(origin == -1) {
-                    System.out.println("REGUL ERROR");
-                }
-                for (int col = 0; col < this.ncol; col++) {
-                    if (header[col].startsWith("MONTANT") || header[col].startsWith("NOMBRE")) {
-                        double valueI = safeParseDouble(this.c(col)[i].toString());
-                        double valueOrigin = safeParseDouble(this.c(col)[origin].toString());
-                        this.c(col)[origin] = String.valueOf(valueI + valueOrigin);
-                    }
-                }
-                rowsToDelete.add(i);
+            }
+
+            try (FileOutputStream fos = new FileOutputStream(outputPath)) {
+                workbook.write(fos);
             }
         }
-        deleteRows(rowsToDelete);
     }
-    public void deleteDBP() {
-        Object[] contrat = this.c("Contrat");
-        Object[] date = this.c("Date Periode");
-        ArrayList<Integer> rowsToDelete = new ArrayList<>();
-        for (int i = 0; i < this.nrow; i++) {
-            if (contrat[i].equals("ICIDBP17-1") || contrat[i].equals("ICIDBP17-2")) {
-                int origin = -1;
-                for (int j = 0; j < this.nrow; j++) {
-                    if (date[i].equals(date[j]) && "ICIDBP17".equals(contrat[j])) {
-                        origin = j;
-                        break;
-                    }
-                }
-                if (origin == -1) {
-                    contrat[i] = "ICIDBP17";
-                    continue;
-                }
-                for (int col = 0; col < this.ncol; col++) {
-                    if (header[col].startsWith("MONTANT") || header[col].startsWith("NOMBRE")) {
-                        double valueI = safeParseDouble(this.c(col)[i].toString());
-                        double valueOrigin = safeParseDouble(this.c(col)[origin].toString());
-                        this.c(col)[origin] = String.valueOf(valueI + valueOrigin);                    }
-                }
-                rowsToDelete.add(i);
+    private void addComm() {
+        ArrayList<Double> mtpa = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+        ArrayList<Double> comm = getColumn("MONTANT TOTAL COMMISSION ICI");
+        for (int i = 0; i < nrow; i++) {
+            plusComm.add(mtpa.get(i) + comm.get(i));
+        }
+    }
+    public static boolean isComm(String key, Date inputDate) {
+        Date mapDate = policesComm.get(key);
+        return mapDate != null && inputDate.after(mapDate);
+    }
+
+    private String classifyValue(Double value) {
+        if (value == null) {
+            return "null";
+        } else if (value > 0) {
+            return "positive";
+        } else if (value < 0) {
+            return "negative";
+        } else {
+            return "zero";
+        }
+    }
+    private void transformDatePeriodeColumn(String refFichier) {
+        SimpleDateFormat dateFormatter;
+        if (refFichier.equals("estimate")) {
+            dateFormatter = new SimpleDateFormat("dd-MM-yyyy");
+        } else {
+            dateFormatter = dateDefault;
+        }
+
+        ArrayList<String> datePeriodeStrings = getColumn("Date Periode");
+        ArrayList<Date> datePeriodeDates = new ArrayList<>();
+
+        for (String dateString : datePeriodeStrings) {
+            try {
+                Date parsedDate = dateFormatter.parse(dateString);
+                datePeriodeDates.add(parsedDate);
+            } catch (ParseException e) {
+                System.err.println("Failed to parse date: " + dateString);
+                datePeriodeDates.add(null);
             }
         }
-        deleteRows(rowsToDelete);
+
+        int datePeriodeIndex = headers.indexOf("Date Periode");
+        columns.set(datePeriodeIndex, new Column<>(datePeriodeDates, ColTypes.DAT));
     }
-    private double safeParseDouble(String s) {
-        if (s == null || s.isEmpty()) {
-            return 0.0;
-        }
-        try {
-            return Double.parseDouble(s);
-        } catch (NumberFormatException e) {
-            return 0.0;
-        }
-    }
-
-    public void formatDP() {
-        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
-
-        Object[] datePeriodeColumn = c("Date Periode");
-        Object[] datePeriodeColumnOutput = new Object[this.nrow];
-        for (int i = 0; i < datePeriodeColumn.length; i++) {
-            Date date = (Date) datePeriodeColumn[i]; // Cast the object to Date
-            String formattedDate = format.format(date); // Convert Date to String using the format
-            datePeriodeColumnOutput[i] = formattedDate; // Replace the Date with its formatted string
-        }
-
-        // Update the column in the dataframe
-        int index = find_in_arr_first_index(header, "Date Periode");
-        df.set(index, datePeriodeColumnOutput);
-    }
-
     public void generateMinMaxDateSousMap() {
-        // Get "Date Periode" and "Contrat" columns
-        Object[] datePeriodes = c("Date Periode");
-        Object[] contrats = c("Contrat");
+        ArrayList<Date> datePeriodes = getColumn("Date Periode");
+        ArrayList<String> contrats = getColumn("Contrat");
 
         for (int i = 0; i < nrow; i++) {
-            Date date = (Date) datePeriodes[i];
-            String contrat = (String) contrats[i];
+            Date date = datePeriodes.get(i);
+            String contrat = contrats.get(i);
 
-            // Update the map for the "Contrat" value
             minMaxDateSousMapEstimate.putIfAbsent(contrat, new HashMap<>());
             Map<String, Date> currentDateMap = minMaxDateSousMapEstimate.get(contrat);
 
@@ -1040,925 +246,1243 @@ public class Estimate extends DF {
             }
         }
     }
-
-    public String getSum(Map<String, Map<String, Double>> pivotTable, String date_sous, String date_surv) {
-
-        // Check for date_sous existence
-        Map<String, Double> innerMap = pivotTable.get(date_sous);
-        if (innerMap == null) {
-            return "";  // or some default value if date_sous doesn't exist
-        }
-
-        // Check for date_surv existence and get the value
-        Double result = innerMap.get(date_surv);
-        if (result == null) {
-            return "";  // or some default value if date_surv doesn't exist
-        }
-
-        return String.format("%.2f", result);
-    }
-    public String getTotal(Map<String, Double> pivotTable, String date_sous) {
-        Double result = pivotTable.get(date_sous);
-        if (result == null) {
-            return "";
-        }
-
-        return String.format("%.2f", result);
-    }
-    public String getSumN(Map<String, Map<String, Integer>> pivotTableN, String date_sous, String date_surv) {
-
-        // Check for date_sous existence
-        Map<String, Integer> innerMap = pivotTableN.get(date_sous);
-        if (innerMap == null) {
-            return "";  // or some default value if date_sous doesn't exist
-        }
-
-        // Check for date_surv existence and get the value
-        Integer result = innerMap.get(date_surv);
-        if (result == null) {
-            return "";  // or some default value if date_surv doesn't exist
-        }
-
-        return String.valueOf(result);
-    }
-    public String getTotalN(Map<String, Integer> pivotTableN, String date_sous) {
-        Integer result = pivotTableN.get(date_sous);
-        if (result == null) {
-            return "";  // or some default value if date_sous doesn't exist
-        }
-        return String.valueOf(result);
-    }
-    public String getSumFic(Map<String, Map<String, Double>> pivotTable, String date_sous, String date_surv) {
-        // Check for date_sous existence
-        Map<String, Double> innerMap = pivotTable.get(date_sous);
-        if (innerMap == null) {
-            return "";  // or some default value if date_sous doesn't exist
-        }
-
-        // Check for date_surv existence and get the value
-        Double result = innerMap.get(date_surv);
-        if (result == null) {
-            return "";  // or some default value if date_surv doesn't exist
-        }
-
-        return String.format("%.2f", result);
-    }
-    public String getSumFicN(Map<String, Map<String, Integer>> pivotTable, String date_sous, String date_surv) {
-        // Check for date_sous existence
-        Map<String, Integer> innerMap = pivotTable.get(date_sous);
-        if (innerMap == null) {
-            return "";  // or some default value if date_sous doesn't exist
-        }
-
-        // Check for date_surv existence and get the value
-        Integer result = innerMap.get(date_surv);
-        if (result == null) {
-            return "";  // or some default value if date_surv doesn't exist
-        }
-
-        return String.valueOf(result);
-    }
-    public void appendTable(ArrayList<String> columnNames, String tableName) {
-        appendMultipleTables(columnNames, new ArrayList<>(Collections.singletonList(tableName)));
-    }
-    public void appendMultipleTables(ArrayList<String> columnNames, ArrayList<String> tableNames) {
-        int nNewColumns = columnNames.size() * tableNames.size();
-        int newNcol = ncol + nNewColumns;
-
-        String[] newHeader = new String[newNcol];
-        String[] newSubheader = new String[newNcol];
-        Col_types[] newColtypes = new Col_types[newNcol];
-        ArrayList<Object[]> newDf = new ArrayList<>(newNcol);
-
-        // Copy old values
-        System.arraycopy(header, 0, newHeader, 0, ncol);
-        System.arraycopy(subheader, 0, newSubheader, 0, ncol);
-//        System.arraycopy(coltypes, 0, newColtypes, 0, ncol);
-        newDf.addAll(df);
-
-        // Initialize new values
-        for (int i = ncol, k = 0; i < newNcol; i += columnNames.size(), k++) {
-            for (int j = 0; j < columnNames.size(); j++) {
-                if(j == 0) {
-                    newSubheader[i + j] = tableNames.get(k); // name of the table
+    public void mergeRegul() {
+        ArrayList<String> regul = getColumn("Régularisation");
+        ArrayList<String> contrat = getColumn("Contrat");
+        ArrayList<Date> date = getColumn("Date Periode");
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+        for (int i = 0; i < this.nrow; i++) {
+            if (regul.get(i).equals("OUI")) {
+                int origin = -1;
+                if (date.get(i).equals(date.get(i-1)) && contrat.get(i).equals(contrat.get(i-1))) {
+                    origin = i - 1;
                 } else {
-                    newSubheader[i + j] = ""; // blank for others
+                    for (int j = 0; j < this.nrow; j++) {
+                        if (date.get(i).equals(date.get(j)) && contrat.get(i).equals(contrat.get(j))) {
+                            origin = j;
+                            break;
+                        }
+                    }
                 }
-                newHeader[i + j] = columnNames.get(j); // name of the columns
-                newColtypes[i + j] = Col_types.STR; // assign STR type
-                newDf.add(new Object[nrow]); // Initialize column data
+                if(origin == -1) {
+                    System.out.println("REGUL ERROR");
+                }
+                mergeRows(rowsToDelete, i, origin);
+            }
+        }
+        deleteRows(rowsToDelete);
+    }
+    public void mergeDBP() {
+        ArrayList<String> contrat = getColumn("Contrat");
+        ArrayList<Date> date = getColumn("Date Periode");
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+        for (int i = 0; i < nrow; i++) {
+            if (contrat.get(i).equals("ICIDBP17-1") || contrat.get(i).equals("ICIDBP17-2")) {
+                int origin = -1;
+                for (int j = 0; j < this.nrow; j++) {
+                    if (date.get(i).equals(date.get(j)) && "ICIDBP17".equals(contrat.get(j))) {
+                        origin = j;
+                        break;
+                    }
+                }
+                if (origin == -1) {
+                    contrat.set(i, "ICIDBP17");
+                    continue;
+                }
+                mergeRows(rowsToDelete, i, origin);
+            }
+        }
+        deleteRows(rowsToDelete);
+    }
+
+    // This is a static method to generate all dates between MIN_PREVI_DATE and MAX_PREVI_DATE and their corresponding headers
+    private static List<Date> generateAllDatesAndHeaders() {
+        SimpleDateFormat dateFormatter = new SimpleDateFormat("MM-yyyy");
+        Calendar calendar = Calendar.getInstance();
+        List<Date> dates = new ArrayList<>();
+
+        calendar.setTime(MIN_PREVI_DATE);
+        while (!calendar.getTime().after(MAX_PREVI_DATE)) {
+            Date currentDate = calendar.getTime();
+            dates.add(currentDate);
+            allDateHeaders.add(dateFormatter.format(currentDate));
+            calendar.add(Calendar.MONTH, 1); // move to next month
+        }
+        return dates;
+    }
+    // Generate a range of years and their corresponding headers
+    private static List<Integer> generateAllYearsAndHeaders() {
+        List<Integer> years = new ArrayList<>();
+
+        for (int year = MIN_ANNEE; year <= MAX_ANNEE; year++) {
+            years.add(year);
+            allYearHeaders.add(String.valueOf(year));  // For now, the headers are just the year as a string.
+        }
+
+        return years;
+    }
+    public void appendPivotTable(Map<Date, Map<Date, Double>> pivotTable, String label, String contrat) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label); // Find the index of the label in the subheaders
+
+        // If the label is not found in the subheaders, append the new columns
+        if (columnIndex == -1) {
+            headers.addAll(allDateHeaders);
+
+            for (int i = 0; i < allDateHeaders.size(); i++) {
+                ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+                columns.add(new Column<>(columnData, ColTypes.DBL));
+            }
+
+            subheaders.add(label);
+            subheaders.addAll(Collections.nCopies(allDateHeaders.size() - 1, null));
+
+            columnIndex = headers.size() - allDates.size(); // Start index for the new columns
+        }
+
+        populatePivotMensuel(pivotTable, contrat, datePeriodeColumn, contratColumn, columnIndex);
+    }
+    public void appendPivotTableYearly(Map<Date, Map<Integer, Double>> pivotTable, String label, String contrat) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label);
+
+        // If label is not found, append new columns
+        if (columnIndex == -1) {
+            headers.addAll(allYearHeaders);
+
+            for (int i = 0; i < allYearHeaders.size(); i++) {
+                ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+                columns.add(new Column<>(columnData, ColTypes.DBL));
+            }
+
+            subheaders.add(label);
+            subheaders.addAll(Collections.nCopies(allYearHeaders.size() - 1, null));
+
+            columnIndex = headers.size() - allYears.size(); // Update columnIndex for new columns
+        }
+
+        populatePivotAnnuel(pivotTable, contrat, datePeriodeColumn, contratColumn, columnIndex);
+    }
+    public void appendPivotTableTotal(Map<Date, Double> pivotTable, String label, String contrat) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label);
+
+        // If "Total" is not in headers, append new column
+        if (columnIndex == -1) {
+            headers.add("Total");
+
+            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, ColTypes.DBL));
+
+            subheaders.add(label);
+
+            columnIndex = headers.size() - 1; // Update columnIndex for new column
+        }
+
+        populatePivotTotal(pivotTable, contrat, datePeriodeColumn, contratColumn, columnIndex);
+    }
+
+    public void appendPivotTableN(Map<Date, Map<Date, Integer>> pivotTable, String label, String contrat) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label);
+
+        if (columnIndex == -1) {
+            headers.addAll(allDateHeaders);
+
+            for (int i = 0; i < allDateHeaders.size(); i++) {
+                ArrayList<Integer> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+                columns.add(new Column<>(columnData, ColTypes.INT));
+            }
+
+            subheaders.add(label);
+            subheaders.addAll(Collections.nCopies(allDateHeaders.size() - 1, null));
+
+            columnIndex = headers.size() - allDates.size();
+        }
+
+        populatePivotMensuelN(pivotTable, contrat, datePeriodeColumn, contratColumn, columnIndex);
+    }
+    public void appendPivotTableYearlyN(Map<Date, Map<Integer, Integer>> pivotTable, String label, String contrat) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label);
+
+        if (columnIndex == -1) {
+            headers.addAll(allYearHeaders);
+
+            for (int i = 0; i < allYearHeaders.size(); i++) {
+                ArrayList<Integer> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+                columns.add(new Column<>(columnData, ColTypes.INT));
+            }
+
+            subheaders.add(label);
+            subheaders.addAll(Collections.nCopies(allYearHeaders.size() - 1, null));
+
+            columnIndex = headers.size() - allYears.size();
+        }
+
+        populatePivotAnnuelN(pivotTable, contrat, datePeriodeColumn, contratColumn, columnIndex);
+    }
+    public void appendPivotTableTotalN(Map<Date, Integer> pivotTable, String label, String contrat) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label);
+
+        if (columnIndex == -1) {
+            headers.add("Total");
+
+            ArrayList<Integer> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, ColTypes.INT));
+
+            subheaders.add(label);
+
+            columnIndex = headers.size() - 1;
+        }
+
+        populatePivotTotalN(pivotTable, contrat, datePeriodeColumn, contratColumn, columnIndex);
+    }
+
+    public void appendPivotTableFic(Base baseFic, String label) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label); // Find the index of the label in the subheaders
+
+        if (columnIndex == -1) {
+            headers.addAll(allDateHeaders);
+
+            for (int i = 0; i < allDateHeaders.size(); i++) {
+                ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+                columns.add(new Column<>(columnData, ColTypes.DBL));
+            }
+
+            subheaders.add(label);
+            subheaders.addAll(Collections.nCopies(allDateHeaders.size() - 1, null));
+
+            columnIndex = headers.size() - allDates.size();
+        }
+
+        for (Map.Entry<String, Map<String, Map<Date, Map<Date, Double>>>> entry : baseFic.pivotTableFic.entrySet()) {
+            String currentContrat = entry.getKey();
+            Map<String, Map<Date, Map<Date, Double>>> statutMap = entry.getValue();
+
+            Map<Date, Map<Date, Double>> innerPivot = statutMap.get(STATUT_FICTIF_FIC);  // Extracting the actual pivot for the current contrat
+
+            // Go through all rows
+            populatePivotMensuel(innerPivot, currentContrat, datePeriodeColumn, contratColumn, columnIndex);
+        }
+    }
+    public void appendPivotTableYearlyFic(Base baseFic, String label) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label); // Find the index of the label in the subheaders
+
+        if (columnIndex == -1) {
+            headers.addAll(allYearHeaders);
+
+            for (int i = 0; i < allYearHeaders.size(); i++) {
+                ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+                columns.add(new Column<>(columnData, ColTypes.DBL));
+            }
+
+            subheaders.add(label);
+            subheaders.addAll(Collections.nCopies(allYearHeaders.size() - 1, null));
+
+            columnIndex = headers.size() - allYears.size();
+        }
+
+        for (Map.Entry<String, Map<String, Map<Date, Map<Integer, Double>>>> entry : baseFic.pivotTableYearlyFic.entrySet()) {
+            String currentContrat = entry.getKey();
+            Map<String, Map<Date, Map<Integer, Double>>> statutMap = entry.getValue();
+
+            Map<Date, Map<Integer, Double>> innerPivot = statutMap.get(STATUT_FICTIF_FIC);  // Extracting the actual pivot for the current contrat
+
+            populatePivotAnnuel(innerPivot, currentContrat, datePeriodeColumn, contratColumn, columnIndex);
+        }
+    }
+    public void appendPivotTableTotalFic(Base baseFic, String label) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label); // Find the index of the label in the subheaders
+
+        if (columnIndex == -1) {
+            headers.add("Total");
+            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, ColTypes.DBL));
+
+            subheaders.add(label);
+
+            columnIndex = headers.size() - 1;
+        }
+
+        for (Map.Entry<String, Map<String, Map<Date, Double>>> entry : baseFic.pivotTableTotalFic.entrySet()) {
+            String currentContrat = entry.getKey();
+            Map<String, Map<Date, Double>> statutMap = entry.getValue();
+
+            Map<Date, Double> innerPivot = statutMap.get(STATUT_FICTIF_FIC);  // Extracting the actual pivot for the current contrat
+
+            populatePivotTotal(innerPivot, currentContrat, datePeriodeColumn, contratColumn, columnIndex);
+        }
+    }
+
+    public void appendPivotTableFicN(Base baseFic, String label) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label); // Find the index of the label in the subheaders
+
+        if (columnIndex == -1) {
+            headers.addAll(allDateHeaders);
+
+            for (int i = 0; i < allDateHeaders.size(); i++) {
+                ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+                columns.add(new Column<>(columnData, ColTypes.INT));
+            }
+
+            subheaders.add(label);
+            subheaders.addAll(Collections.nCopies(allDateHeaders.size() - 1, null));
+
+            columnIndex = headers.size() - allDates.size();
+        }
+
+        for (Map.Entry<String, Map<String, Map<Date, Map<Date, Integer>>>> entry : baseFic.pivotTableFicN.entrySet()) {
+            String currentContrat = entry.getKey();
+            Map<String, Map<Date, Map<Date, Integer>>> statutMap = entry.getValue();
+
+            Map<Date, Map<Date, Integer>> innerPivot = statutMap.get(STATUT_FICTIF_FIC);  // Extracting the actual pivot for the current contrat
+
+            // Go through all rows
+            populatePivotMensuelN(innerPivot, currentContrat, datePeriodeColumn, contratColumn, columnIndex);
+        }
+    }
+    public void appendPivotTableYearlyFicN(Base baseFic, String label) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label); // Find the index of the label in the subheaders
+
+        if (columnIndex == -1) {
+            headers.addAll(allYearHeaders);
+
+            for (int i = 0; i < allYearHeaders.size(); i++) {
+                ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+                columns.add(new Column<>(columnData, ColTypes.INT));
+            }
+
+            subheaders.add(label);
+            subheaders.addAll(Collections.nCopies(allYearHeaders.size() - 1, null));
+
+            columnIndex = headers.size() - allYears.size();
+        }
+
+        for (Map.Entry<String, Map<String, Map<Date, Map<Integer, Integer>>>> entry : baseFic.pivotTableFicYearlyN.entrySet()) {
+            String currentContrat = entry.getKey();
+            Map<String, Map<Date, Map<Integer, Integer>>> statutMap = entry.getValue();
+
+            Map<Date, Map<Integer, Integer>> innerPivot = statutMap.get(STATUT_FICTIF_FIC);  // Extracting the actual pivot for the current contrat
+
+            populatePivotAnnuelN(innerPivot, currentContrat, datePeriodeColumn, contratColumn, columnIndex);
+        }
+    }
+    public void appendPivotTableTotalFicN(Base baseFic, String label) {
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+
+        int columnIndex = subheaders.indexOf(label); // Find the index of the label in the subheaders
+
+        if (columnIndex == -1) {
+            headers.add("Total");
+
+            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, ColTypes.INT));
+
+            subheaders.add(label);
+
+            columnIndex = headers.size() - 1;
+        }
+
+        for (Map.Entry<String, Map<String, Map<Date, Integer>>> entry : baseFic.pivotTableFicTotalN.entrySet()) {
+            String currentContrat = entry.getKey();
+            Map<String, Map<Date, Integer>> statutMap = entry.getValue();
+
+            Map<Date, Integer> innerPivot = statutMap.get(STATUT_FICTIF_FIC);  // Extracting the actual pivot for the current contrat
+
+            populatePivotTotalN(innerPivot, currentContrat, datePeriodeColumn, contratColumn, columnIndex);
+        }
+    }
+
+    private void populatePivotMensuel(Map<Date, Map<Date, Double>> pivotTable, String contrat, ArrayList<Date> datePeriodeColumn, ArrayList<String> contratColumn, int columnIndex) {
+        for (int i = 0; i < nrow; i++) {
+            String currentContrat = contratColumn.get(i);
+
+            if (currentContrat.equals(contrat)) {
+                Date datePeriode = datePeriodeColumn.get(i);
+                Map<Date, Double> innerMap = pivotTable.get(datePeriode);
+
+                int currentColumnIndex = columnIndex;
+                for (Date date : allDates) {
+                    Double value = (innerMap != null) ? innerMap.get(date) : null;
+                    if (value != null) {
+                        getColumnByIndex(currentColumnIndex).set(i, value);
+                    }
+                    currentColumnIndex++;
+                }
+            }
+        }
+    }
+    private void populatePivotAnnuel(Map<Date, Map<Integer, Double>> pivotTable, String contrat, ArrayList<Date> datePeriodeColumn, ArrayList<String> contratColumn, int columnIndex) {
+        for (int i = 0; i < nrow; i++) {
+            String currentContrat = contratColumn.get(i);
+
+            if (currentContrat.equals(contrat)) {
+                Date datePeriode = datePeriodeColumn.get(i);
+                Map<Integer, Double> innerMap = pivotTable.get(datePeriode);
+
+                int currentColumnIndex = columnIndex;
+                for (Integer year : allYears) {
+                    Double value = (innerMap != null) ? innerMap.get(year) : null;
+                    if (value != null) {
+                        getColumnByIndex(currentColumnIndex).set(i, value);
+                    }
+                    currentColumnIndex++;
+                }
+            }
+        }
+    }
+    private void populatePivotTotal(Map<Date, Double> pivotTable, String contrat, ArrayList<Date> datePeriodeColumn, ArrayList<String> contratColumn, int columnIndex) {
+        for (int i = 0; i < nrow; i++) {
+            String currentContrat = contratColumn.get(i);
+
+            if (currentContrat.equals(contrat)) {
+                Date datePeriode = datePeriodeColumn.get(i);
+                Double value = pivotTable.get(datePeriode);
+                if (value != null) {
+                    getColumnByIndex(columnIndex).set(i, value);
+                }
+            }
+        }
+    }
+    private void populatePivotMensuelN(Map<Date, Map<Date, Integer>> pivotTable, String contrat, ArrayList<Date> datePeriodeColumn, ArrayList<String> contratColumn, int columnIndex) {
+        for (int i = 0; i < nrow; i++) {
+            String currentContrat = contratColumn.get(i);
+
+            if (currentContrat.equals(contrat)) {
+                Date datePeriode = datePeriodeColumn.get(i);
+                Map<Date, Integer> innerMap = pivotTable.get(datePeriode);
+
+                int currentColumnIndex = columnIndex;
+                for (Date date : allDates) {
+                    Integer value = (innerMap != null) ? innerMap.get(date) : null;
+                    if (value != null) {
+                        getColumnByIndex(currentColumnIndex).set(i, value);
+                    }
+                    currentColumnIndex++;
+                }
+            }
+        }
+    }
+    private void populatePivotAnnuelN(Map<Date, Map<Integer, Integer>> pivotTable, String contrat, ArrayList<Date> datePeriodeColumn, ArrayList<String> contratColumn, int columnIndex) {
+        for (int i = 0; i < nrow; i++) {
+            String currentContrat = contratColumn.get(i);
+
+            if (currentContrat.equals(contrat)) {
+                Date datePeriode = datePeriodeColumn.get(i);
+                Map<Integer, Integer> innerMap = pivotTable.get(datePeriode);
+
+                int currentColumnIndex = columnIndex;
+                for (Integer year : allYears) {
+                    Integer value = (innerMap != null) ? innerMap.get(year) : null;
+                    if (value != null) {
+                        getColumnByIndex(currentColumnIndex).set(i, value);
+                    }
+                    currentColumnIndex++;
+                }
+            }
+        }
+    }
+    private void populatePivotTotalN(Map<Date, Integer> pivotTable, String contrat, ArrayList<Date> datePeriodeColumn, ArrayList<String> contratColumn, int columnIndex) {
+        for (int i = 0; i < nrow; i++) {
+            String currentContrat = contratColumn.get(i);
+
+            if (currentContrat.equals(contrat)) {
+                Date datePeriode = datePeriodeColumn.get(i);
+                Integer value = pivotTable.get(datePeriode);
+                if (value != null) {
+                    getColumnByIndex(columnIndex).set(i, value);
+                }
+            }
+        }
+    }
+
+    public void appendAllPivotsSin() {
+        for (Base baseSin : baseMapNew.values()) {
+            // Append the double-typed pivot tables
+            appendPivotTable(baseSin.pivotTableAllStatuts, "Charge sinistre mensuelle", baseSin.numPolice);
+            appendPivotTableYearly(baseSin.pivotTableAllStatutsYearly, "Charge sinistre annuelle", baseSin.numPolice);
+            appendPivotTableTotal(baseSin.pivotTableAllStatutsTotal, "Charge sinistre totale", baseSin.numPolice);
+
+            // Append the integer-typed pivot tables
+            appendPivotTableN(baseSin.pivotTableAllStatutsN, "Nombre sinistre mensuel", baseSin.numPolice);
+            appendPivotTableYearlyN(baseSin.pivotTableAllStatutsYearlyN, "Nombre sinistre annuel", baseSin.numPolice);
+            appendPivotTableTotalN(baseSin.pivotTableAllStatutsTotalN, "Nombre sinistre total", baseSin.numPolice);
+
+            for (String statut : baseSin.uniqueStatuts) {
+                if (statut.isEmpty()) continue;  // Skip if statut is an empty string
+                if (statut.equals("Total")) continue;  // Skip faux statut
+
+                // Replace "sinistre" with the value of statut for the labels
+                String monthlyLabel = "Charge " + statut + " mensuel";
+                String yearlyLabel = "Charge " + statut + " annuel";
+                String totalLabel = "Charge " + statut + " total";
+                String monthlyLabelN = "Nombre " + statut + " mensuel";
+                String yearlyLabelN = "Nombre " + statut + " annuel";
+                String totalLabelN = "Nombre " + statut + " total";
+
+                // Append the double-typed pivot tables
+                appendPivotTable(baseSin.pivotTable.get(statut), monthlyLabel, baseSin.numPolice);
+                appendPivotTableYearly(baseSin.pivotTableYearly.get(statut), yearlyLabel, baseSin.numPolice);
+                appendPivotTableTotal(baseSin.pivotTableTotal.get(statut), totalLabel, baseSin.numPolice);
+
+                // Append the integer-typed pivot tables
+                appendPivotTableN(baseSin.pivotTableN.get(statut), monthlyLabelN, baseSin.numPolice);
+                appendPivotTableYearlyN(baseSin.pivotTableYearlyN.get(statut), yearlyLabelN, baseSin.numPolice);
+                appendPivotTableTotalN(baseSin.pivotTableTotalN.get(statut), totalLabelN, baseSin.numPolice);
+            }
+        }
+    }
+    public void appendAllPivotsFic() {
+        for (Base baseFic : ficMapNew.values()) {
+            String statut = STATUT_FICTIF_FIC;
+            // Replace "sinistre" with the value of statut for the labels
+            String monthlyLabel = "Charge " + statut + " mensuelle";
+            String yearlyLabel = "Charge " + statut + " annuelle";
+            String totalLabel = "Charge " + statut + " totale";
+            String monthlyLabelN = "Nombre " + statut + " mensuel";
+            String yearlyLabelN = "Nombre " + statut + " annuel";
+            String totalLabelN = "Nombre " + statut + " total";
+
+            // Append the double-typed pivot tables for Fic
+            appendPivotTableFic(baseFic, monthlyLabel);
+            appendPivotTableYearlyFic(baseFic, yearlyLabel);
+            appendPivotTableTotalFic(baseFic, totalLabel);
+
+            // Append the integer-typed pivot tables for Fic
+            appendPivotTableFicN(baseFic, monthlyLabelN);
+            appendPivotTableYearlyFicN(baseFic, yearlyLabelN);
+            appendPivotTableTotalFicN(baseFic, totalLabelN);
+        }
+    }
+    private void populateColumnsFromMaps(String label, Map<String, Double> coutMoyenMap,Map<String, Map<Date, List<Integer>>> nMap,
+                                         ArrayList<String> contratColumn,ArrayList<Date> datePeriodeColumn,ArrayList<Double> totalProvisionColumn) {
+        // 1. Populate "Cout moyen" column
+        ArrayList<Double> coutMoyenColumn = new ArrayList<>();
+        for (int i = 0; i < nrow; i++) {
+            String contratValue = contratColumn.get(i);
+            Double coutMoyenValue = coutMoyenMap.getOrDefault(contratValue, null);
+            coutMoyenColumn.add(coutMoyenValue);
+        }
+        addColumn("Cout moyen " + label, coutMoyenColumn, ColTypes.DBL);
+
+        // 2. Populate the annual distribution columns
+        List<ArrayList<Double>> distributionColumns = new ArrayList<>();
+        for (int j = 0; j < yearN; j++) {
+            distributionColumns.add(new ArrayList<>());
+        }
+        for (int i = 0; i < nrow; i++) {
+            String contrat = contratColumn.get(i);
+            Date datePeriode = datePeriodeColumn.get(i);
+
+            // Check if contrat exists in the nMap
+            if(nMap.containsKey(contrat)) {
+                List<Integer> nForDate = nMap.get(contrat).get(datePeriode);
+
+                // Additionally, check if the datePeriode exists for that contrat
+                if (nForDate != null) {
+                    Double coutMoyen = coutMoyenColumn.get(i);
+                    for (int j = 0; j < yearN; j++) {
+                        distributionColumns.get(j).add(nForDate.get(j) * coutMoyen);
+                    }
+                } else {
+                    // Handle cases where datePeriode doesn't exist for a contrat
+                    for (int j = 0; j < yearN; j++) {
+                        distributionColumns.get(j).add(0.0); // or any default value you want
+                    }
+                }
+            } else {
+                // Handle cases where contrat doesn't exist in the map
+                for (int j = 0; j < yearN; j++) {
+                    distributionColumns.get(j).add(0.0); // or any default value you want
+                }
             }
         }
 
-        // Update class properties
-        header = newHeader;
-        subheader = newSubheader;
-        coltypes = newColtypes;
-        df = newDf;
-        ncol = newNcol;
-    }
-    public void addTotal() {
-        ArrayList<String> columnNames = new ArrayList<>(Collections.singletonList("Total"));
-        appendTable(columnNames, "Total");
-    }
-    public void addAnnees() {
-        ArrayList<String> columnNames = new ArrayList<>();
-        ArrayList<String> subHeaderNames = new ArrayList<>();
-        for (int year = 2013; year <= 2026; year++) {
-            columnNames.add(String.valueOf(year));
-        }
-        subHeaderNames.add(""); // bequille
-        appendMultipleTables(columnNames, subHeaderNames);
-    }
-    public void addMois() {
-        ArrayList<String> columnNames = new ArrayList<>();
-        SimpleDateFormat format = new SimpleDateFormat("MM-yyyy");
-
-        // Define the months and years
-        String[] months = {"01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"};
-
-        // Manually adding November and December for 2013
-        columnNames.add("11-2013");
-        columnNames.add("12-2013");
-
-        // Now loop through all months for the subsequent years
-        for (int year = 2014; year <= 2026; year++) {
-            for (String month : months) {
-                columnNames.add(month + "-" + year);
+        for (int j = 0; j < yearN; j++) {
+            int year = MIN_ANNEE + j;
+            if (j == 0) {
+                addColumnWithSubheader(String.valueOf(year), "Provision " + label, distributionColumns.get(j), ColTypes.DBL);
+            } else {
+                addColumn(String.valueOf(year), distributionColumns.get(j), ColTypes.DBL);
             }
         }
-        appendMultipleTables(columnNames, new ArrayList<>(Collections.singletonList("Monthly")));
-    }
-    public void addFicMAT(Base baseFic) {
-        String status = STATUT_FICTIF_FIC;
-        int begin;
-        int tableName_ind;
 
-        begin = ncol;
-        tableName_ind = header.length;
-        addMois();
-        subheader[tableName_ind] = status + " mensuel";
-        appendUpdate(begin);
-        populateMonthFic(baseFic);
+        // 3. Add the "Total" column
+        ArrayList<Double> totalColumn = new ArrayList<>();
+        for (int i = 0; i < nrow; i++) {
+            double total = 0;
+            for (ArrayList<Double> yearly : distributionColumns) {
+                total += yearly.get(i);
+            }
+            totalColumn.add(total);
 
-        begin = ncol;
-        tableName_ind = header.length;
-        addAnnees();
-        subheader[tableName_ind] = status + " annuel";
-        appendUpdate(begin);
-        populateYearFic(baseFic);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addTotal();
-        subheader[tableName_ind] = status + " total";
-        appendUpdate(begin);
-        populateTotalFic(baseFic);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addMois();
-        subheader[tableName_ind] = status + " mensuel nombre";
-        appendUpdate(begin);
-        populateMonthFicN(baseFic);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addAnnees();
-        subheader[tableName_ind] = status + " annuel nombre";
-        appendUpdate(begin);
-        populateYearFicN(baseFic);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addTotal();
-        subheader[tableName_ind] = status + " total nombre";
-        appendUpdate(begin);
-        populateTotalFicN(baseFic);
-
-    }
-    public void addSinMAT(List<Base> bases) throws ParseException {
-        String statut = "Sinistre";
-        int begin;
-        int tableName_ind;
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addMois();
-        subheader[tableName_ind] = statut + " mensuel";
-        appendUpdate(begin);
-        populateMonthSinAllStatuts(bases);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addAnnees();
-        subheader[tableName_ind] = statut + " annuel";
-        appendUpdate(begin);
-        populateYearSinAllStatuts(bases);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addTotal();
-        subheader[tableName_ind] = statut + " total";
-        appendUpdate(begin);
-        populateTotalSinAllStatuts(bases);
-
-        for (String statutEs : uniqueStatutsEstimate) {
-            if (statutEs.isEmpty()) continue;
-            begin = ncol;
-            tableName_ind = header.length;
-            addMois();
-            subheader[tableName_ind] = "Statut " + statutEs + " mensuel";
-            appendUpdate(begin);
-            populateMonthSin(bases, statutEs);
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addAnnees();
-            subheader[tableName_ind] = "Statut " + statutEs + " annuel";
-            appendUpdate(begin);
-            populateYearSin(bases, statutEs);
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addTotal();
-            subheader[tableName_ind] = "Statut " + statutEs + " total";
-            appendUpdate(begin);
-            populateTotalSin(bases, statutEs);
+            if (i < totalProvisionColumn.size()) {
+                totalProvisionColumn.set(i, totalProvisionColumn.get(i) + total);
+            } else {
+                totalProvisionColumn.add(total);
+            }
         }
-
-        statut = "Sinistre Nombre";
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addMois();
-        subheader[tableName_ind] = statut + " mensuel";
-        appendUpdate(begin);
-        populateMonthSinAllStatutsN(bases);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addAnnees();
-        subheader[tableName_ind] = statut + " annuel";
-        appendUpdate(begin);
-        populateYearSinAllStatutsN(bases);
-
-        begin = ncol;
-        tableName_ind = header.length;
-        addTotal();
-        subheader[tableName_ind] = statut + " total";
-        appendUpdate(begin);
-        populateTotalSinAllStatutsN(bases);
-
-        for (String statutEs : uniqueStatutsEstimate) {
-            if (statutEs.isEmpty()) continue;
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addMois();
-            subheader[tableName_ind] = "Nombre " + statutEs + " mensuel";
-            appendUpdate(begin);
-            populateMonthSinN(bases, statutEs);
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addAnnees();
-            subheader[tableName_ind] = "Nombre " + statutEs + " annuel";
-            appendUpdate(begin);
-            populateYearSinN(bases, statutEs);
-
-            begin = ncol;
-            tableName_ind = header.length;
-            addTotal();
-            subheader[tableName_ind] = "Nombre " + statutEs + " total";
-            appendUpdate(begin);
-            populateTotalSinN(bases, statutEs);
-        }
+        addColumn("Total", totalColumn, ColTypes.DBL);
     }
-    public void addProvisions(List<Base> bases) {
-        int begin = ncol;
-        double[] total = new double[nrow];
 
-        Map<String, Double> coutMoyEnCoursMap = new HashMap<>();
-        Map<String, Double> coutMoyEnCoursAccepteMap = new HashMap<>();
-        Map<String, Map<String, List<Integer>>> nEnCoursMap = new HashMap<>();
-        Map<String, Map<String, List<Integer>>> nEnCoursAccepteMap = new HashMap<>();
-        for (Base base : bases) {
+    public void addProvisions() {
+        Map<String, Double> coutMoyenEnCoursMap = new HashMap<>();
+        Map<String, Double> coutMoyenEnCoursAccepteMap = new HashMap<>();
+        Map<String, Map<Date, List<Integer>>> nEnCoursMap = new HashMap<>();
+        Map<String, Map<Date, List<Integer>>> nEnCoursAccepteMap = new HashMap<>();
+        for (Base base : baseMapNew.values()) {
             nEnCoursMap.put(base.numPolice, base.nEnCours);
             nEnCoursAccepteMap.put(base.numPolice, base.nEnCoursAccepte);
-            coutMoyEnCoursMap.put(base.numPolice, base.coutMoyenEnCours);
-            coutMoyEnCoursAccepteMap.put(base.numPolice, base.coutMoyenEnCoursAccepte);
+            coutMoyenEnCoursMap.put(base.numPolice, base.coutMoyenEnCours);
+            coutMoyenEnCoursAccepteMap.put(base.numPolice, base.coutMoyenEnCoursAccepte);
         }
 
-        Object[] contratColumn = this.c("Contrat");
-        Object[] datePeriodeColumn = this.c("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
+        ArrayList<Date> datePeriodeColumn = getColumn("Date Periode");
 
-        populateCoutMoyenColumn(contratColumn, coutMoyEnCoursMap, total, "En cours");
-        populateProvisionsColumns(contratColumn, datePeriodeColumn, nEnCoursMap, coutMoyEnCoursMap, total,"En cours");
-
-        populateCoutMoyenColumn(contratColumn, coutMoyEnCoursAccepteMap, total,"En cours - accepté");
-        populateProvisionsColumns(contratColumn, datePeriodeColumn, nEnCoursAccepteMap, coutMoyEnCoursAccepteMap, total,"En cours - accepté");
-
-        // Add total column
-        this.df.add(Arrays.stream(total).mapToObj(val -> String.format("%.2f", val)).toArray(String[]::new));
-        this.addCol("","Total provisions");
-
-        for (int col = begin; col < ncol; col++) {
-            if (subheader[col] == null) subheader[col] = "";
-        }
-        appendUpdateKeepAll(begin);
+        ArrayList<Double> totalProvisionColumn = new ArrayList<>();
+        populateColumnsFromMaps("En Cours", coutMoyenEnCoursMap, nEnCoursMap, contratColumn, datePeriodeColumn,totalProvisionColumn);
+        populateColumnsFromMaps("En Cours Accepté", coutMoyenEnCoursAccepteMap, nEnCoursAccepteMap, contratColumn, datePeriodeColumn,totalProvisionColumn);
+        addColumn("Total Provision", totalProvisionColumn, ColTypes.DBL);
     }
+
     public void addPrimesAcquises() {
-        int begin = ncol;
-        addMois();
-        subheader[begin] = "Primes acquises mensuel";
-        appendUpdateKeepAll(begin);
-//        populatePrimesAcquisesMonthTotal();
+        appendPAmensuel(true);
+        appendPAsums(true);
 
-        begin = ncol;
-        addAnnees();
-        subheader[begin] = "Primes acquises annuel";
-        appendUpdateKeepAll(begin);
-//        populatePrimesAcquisesYearly();
-
-        begin = ncol;
-        this.df.add(totalPA);
-        this.df.add(totalPAaDate);
-        ncol+=2;
-        // Extend and populate header and subheader
-        header = Arrays.copyOf(header, ncol);
-        subheader = Arrays.copyOf(subheader, ncol);
-        subheader[ncol - 2] = "Total primes acquises";
-        subheader[ncol - 1] = "Total PA à date";
-        header[ncol - 2] = ""; header[ncol - 1] = "";
-        appendUpdateKeepAll(begin);
-
+        appendPAmensuel(false);
+        appendPAsums(false);
     }
-//    public void populatePrimesAcquisesMonthTotal() {
-//        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-//        int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
-//        int begin = ncol - lastAppendSize;
-//        int monthBegin;
-//        double[] total = new double[nrow];
-//        double[] total_aDate = new double[nrow];
-//        double[] taux = new double[nrow];
-//
-//        // Create a map to store contractKey and its corresponding count of missing dateKeys.
-//        Map<String, Integer> warningMap = new HashMap<>();
-//
-//        // Get today's month and year
-//        Calendar today = Calendar.getInstance();
-//        int currentYear = today.get(Calendar.YEAR);
-//        int currentMonth = today.get(Calendar.MONTH) + 1;  // Calendar.MONTH is zero-based
-//
-//        for (int i = 0; i < nrow; i++) {
-//            String contractKey = (String) this.c(ind_contrat)[i];
-//            String dateKey = (String) this.c(ind_datePeriode)[i];
-//            String combinedKey = contractKey + "_" + dateKey;
-//
-//            List<Object> values = coefAQmap.get(combinedKey.toLowerCase());
-//            if (values == null) {
-//                // Update the count for the contractKey in the warning map.
-//                warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
-//                System.out.println("didnt find coef acquis for " + combinedKey);
-//                continue;
-//            }
-//
-//            Double prime = (Double) values.get(1);
-//            float[] coefs = (float[]) values.get(2);
-//
-//            // Extract the year and month from the dateKey which is in "MM-yyyy" format.
-//            String[] parts = dateKey.split("-");
-//            int month = Integer.parseInt(parts[0]);
-//            int year = Integer.parseInt(parts[1]);
-//
-//            monthBegin = -1;
-//            for (int col = begin; col < ncol; col++) {
-//                if (header[col].equals(dateKey)) {
-//                    monthBegin = col; break;
-//                }
-//            }
-//
-//            for (int col = monthBegin, coefInd = 0; col < ncol && coefInd < coefs.length; col++, coefInd++) {
-//                double value = prime * coefs[coefInd];
-//                this.c(col)[i] = String.format("%.2f", value);
-//
-//                // Add to the total
-//                total[i] += value;
-//
-//                // If the date is less than or equal to today's month/year, add to totalsToToday
-//                if (year < currentYear || (year == currentYear && month <= currentMonth)) {
-//                    total_aDate[i] += value;
-//                }
-//
-//                // Adjust the month and year for the next iteration
-//                month++;
-//                if (month > 12) {
-//                    month = 1;
-//                    year++;
-//                }
-//            }
-//        }
-//
-//        totalPA = convertToStringArrayWithTwoDecimals(total);
-//        totalPAaDate = convertToStringArrayWithTwoDecimals(total_aDate);
-//        for (int i = 0; i < nrow; i++) {
-//            taux[i] = total_aDate[i] / total[i];
-//        }
-//        tauxAcquisition = convertToStringArrayWithTwoDecimals(taux);
-//
-//        // Print out the warning messages after iterating through all rows.
-//        for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
-//            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " mois.");
-//        }
-//    }
-//    public void populatePrimesAcquisesYearly() {
-//        int ind_datePeriode = find_in_arr_first_index(this.header, "Date Periode");
-//        int ind_contrat = find_in_arr_first_index(this.header, "Contrat");
-//        int begin = ncol - lastAppendSize;
-//
-//        // Create a map to store contractKey and its corresponding count of missing dateKeys.
-//        Map<String, Integer> warningMap = new HashMap<>();
-//
-//        for (int i = 0; i < nrow; i++) {
-//            String contractKey = (String) this.c(ind_contrat)[i];
-//            String dateKey = (String) this.c(ind_datePeriode)[i];
-//            String combinedKey = contractKey + "_" + dateKey;
-//
-//            // Extract the year and month from the dateKey which is in "MM-yyyy" format.
-//            String[] parts = dateKey.split("-");
-//            int month = Integer.parseInt(parts[0]);
-//            String yearKey = parts[1];
-//
-//            List<Object> values = coefAQmap.get(combinedKey.toLowerCase());
-//            if (values == null) {
-//                // Update the count for the contractKey in the warning map.
-//                warningMap.put(contractKey, warningMap.getOrDefault(contractKey, 0) + 1);
-//                continue;
-//            }
-//
-//            Double prime = (Double) values.get(1);
-//            float[] coefs = (float[]) values.get(2);
-//
-//            int coefIndex = 0;
-//            while (coefIndex < coefs.length) {
-//                int monthsRemaining = 12 - month + 1;  // Including the current month
-//                float accumulatedCoefficient = 0f;
-//                for (int j = 0; j < monthsRemaining && coefIndex < coefs.length; j++) {
-//                    accumulatedCoefficient += coefs[coefIndex];
-//                    coefIndex++;
-//                }
-//
-//                int yearColumnIndex = -1;
-//                for (int col = begin; col < ncol; col++) {
-//                    if (header[col].equals(yearKey)) {
-//                        yearColumnIndex = col;
-//                        break;
-//                    }
-//                }
-//
-//                if (yearColumnIndex == -1) {
-////                    System.out.println("Error: No column found for year " + yearKey);
-////                    break;
-//                    continue;
-//                }
-//
-//                double value = prime * accumulatedCoefficient;
-//                this.c(yearColumnIndex)[i] = String.format("%.2f", value);
-//
-//                // Reset for the next year
-//                yearKey = String.valueOf(Integer.parseInt(yearKey) + 1);
-//                month = 1;
-//            }
-//        }
-//
-//        // Print out the warning messages after iterating through all rows.
-//        for (Map.Entry<String, Integer> entry : warningMap.entrySet()) {
-//            System.out.println("Warning pour Police " + entry.getKey() + ": coef non trouvé pour " + entry.getValue() + " annees");
-//        }
-//    }
-/*    S/P previ hors PB
-    S/P si pas réel acquis avec provision
-    S/P si pas reel ultime avant PB
-    S/P si pas reel ultime apres PB
-            LastTriangle*/
+    public void appendPAmensuel(boolean avecICI) {
+        String label;
+        if (avecICI) {
+            label = "Primes Acquises mensuel ";
+        } else {
+            label = "Primes Acquises mensuel";
+        }
+        ArrayList<Date> dateColumn = getColumn("Date Periode");
+        ArrayList<String> contratColumn = getColumn("Contrat");
 
-    public void addSP() {
-        int begin = ncol;
-
-        String[] colsToAdd = new String[] {"PB","S/P previ hors PB","S/P si pas réel acquis avec provision",
-                "S/P si pas reel ultime avant PB","S/P si pas reel ultime apres PB", "Sinistre Ultime"};
-        addColumnsString(colsToAdd);
-        int startTriangle = ncol;
-        addMois();
-        appendUpdateKeepAll(begin);
-        subheader[startTriangle] = "SINISTRES PREVISIONNEL SI PAS REEL comptable";
-
-        populatePBetSPprevi();
-        populateLT(startTriangle);
-        populateCoefsSP();
-    }
-    private void populateLT (int startCol) {
-        int trianglePAindex = find_in_arr_first_index(subheader, "Primes acquises mensuel");
-        int triangleComptaIndex = find_in_arr_first_index(subheader, "Comptable mensuel");
-        int cmEncours = find_in_arr_first_index(subheader, "Cout Moyen: En cours");
-        int cmEncoursAcc = find_in_arr_first_index(subheader, "Cout Moyen: En cours - accepté");
-        int nEnCours = find_in_arr_first_index(subheader, "Statut en cours mensuel");
-        int nEnAttente = find_in_arr_first_index(subheader, "Statut en attente de prescription mensuel");
-        int nEnCoursAcc = find_in_arr_first_index(subheader, "Statut en cours - accepté mensuel");
-        int regulIndex = find_in_arr_first_index(header, "Régularisation");
-
-        int[] indexes = {trianglePAindex,triangleComptaIndex,cmEncours,cmEncoursAcc,nEnCours,nEnAttente,nEnCoursAcc,regulIndex};
-
-        for (int index : indexes) {
-            if (index == -1) {
-                throw new RuntimeException("Impossible de calculer SP, une des colonnes absente");
-            }
+        ArrayList<Double> primeColumn = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+        if (avecICI) {
+            primeColumn = plusComm;
         }
 
-        colSinUltime = new Double[nrow]; // Initialize the SinUltime array to store the sums.
+        addLabeledBlock(allDateHeaders, label, DBL, avecICI);
 
-        boolean regul;
+        int tableBegin = headers.size() - allDates.size();
+
+        // Create a map to store contractKey and its corresponding count of missing dateKeys.
+        ArrayList<Float> defaultCoefs = new ArrayList<>();
+        defaultCoefs.add(1f);
+
+        Map<String, List<Date>> warningMap = new HashMap<>();
         for (int i = 0; i < nrow; i++) {
-            double rowSum = 0.0; // To keep track of the sum for the current row.
+            String contrat = contratColumn.get(i);
+            Date date = dateColumn.get(i);
 
-            regul = "oui".equalsIgnoreCase((String) this.c(regulIndex)[i]);
-            if (regul) {
-                for (int col = startCol; col < ncol; col++) {
-                    this.c(col)[i] = 0;
-                }
-            } else {
-                for (int col = startCol, offset = 0; col < ncol; col++, offset++) {
-                    double currentCellValue;
+            Double prime = primeColumn.get(i);
+            if (prime == 0d) continue;
 
-                    if (isMonthAfterOrEQCurrent(header[col])) {
-                        currentCellValue = colSPprevi[i] * parseValueAt(trianglePAindex + offset, i);
-                    } else {
-                        double triangleComptaValue = parseValueAt(triangleComptaIndex + offset, i);
-                        double cmEncoursValue = parseValueAt(cmEncours, i);
-                        double nEnCoursValue = parseValueAt(nEnCours + offset, i);
-                        double nEnAttenteValue = parseValueAt(nEnAttente + offset, i);
-                        double cmEncoursAccValue = parseValueAt(cmEncoursAcc, i);
-                        double nEnCoursAccValue = parseValueAt(nEnCoursAcc + offset, i);
-
-                        currentCellValue = triangleComptaValue + cmEncoursValue * (nEnCoursValue + nEnAttenteValue) + cmEncoursAccValue * nEnCoursAccValue;
-                    }
-
-                    this.c(col)[i] = String.format("%.2f", currentCellValue);  // Assigning the computed value to the cell.
-                    rowSum += currentCellValue; // Add the current cell's value to the row's running sum.
+            ArrayList<Float> coefs = mapCoefAQ.get(i);
+            if (coefs == null) {
+                coefs = defaultCoefs;
+                if (prime > 0 && isComm(contrat,date)) {
+                    warningMap.computeIfAbsent(contrat, k -> new ArrayList<>()).add(date);
                 }
             }
 
-            colSinUltime[i] = rowSum; // Store the sum for the current row in the SinUltime array.
-        }
-
-    }
-    private void populateCoefsSP () {
-        int indSinUltime = find_in_arr_first_index(subheader,"Sinistre Ultime");
-        int indSPprevi = find_in_arr_first_index(subheader,"S/P previ hors PB");
-        int indSPAaP = find_in_arr_first_index(subheader,"S/P si pas réel acquis avec provision");
-        int indSPUavantPB = find_in_arr_first_index(subheader,"S/P si pas reel ultime avant PB");
-        int indSPUapresPB = find_in_arr_first_index(subheader,"S/P si pas reel ultime apres PB");
-        int indexPAaDate = find_in_arr_first_index(subheader, "Total PA à date");
-        int indexPB = find_in_arr_first_index(subheader, "PB");
-
-        int indexCMenCours = find_in_arr_first_index(subheader, "Cout Moyen: En cours");
-        int indexEncours = find_in_arr_first_index(subheader, "Nombre en cours total");
-        int indexEnAttente = find_in_arr_first_index(subheader, "Nombre en attente de prescription total");
-        int indexSumFic = find_in_arr_first_index(subheader, "Comptable total");
-
-        int indexMTPA = find_in_arr_first_index(header, "MONTANT TOTAL PRIME ASSUREUR");
-
-        for (int i = 0; i < nrow; i++) {
-            this.c(indSPprevi)[i] = String.format("%.2f", colSPprevi[i]);
-            this.c(indexPB)[i] = String.format("%.2f", colPB[i]);
-            this.c(indSinUltime)[i] = String.format("%.2f", colSinUltime[i]);
-
-            double sumFic = parseObjectToDouble(this.c(indexSumFic)[i]);
-            double enAttente = parseObjectToDouble(this.c(indexEnAttente)[i]);
-            double enCours = parseObjectToDouble(this.c(indexEncours)[i]);
-            double cMenCours = parseObjectToDouble(this.c(indexCMenCours)[i]);
-            double pAaDate = parseObjectToDouble(this.c(indexPAaDate)[i]);
-            double tauxAcq = parseObjectToDouble(tauxAcquisition[i]);
-
-            double calculatedValue = max((sumFic + (enAttente + enCours) * cMenCours) +
-                    (pAaDate + colPB[i] * tauxAcq), 0.0);
-            this.c(indSPAaP)[i] = Double.isNaN(calculatedValue) ? "0.00" : String.format("%.2f", calculatedValue);
-
-
-            Double mtpa = parseObjectToDouble(this.c(indexMTPA)[i]);
-            this.c(indSPUavantPB)[i] = String.format("%.2f", mtpa.equals(0.0) ? 0 : colSinUltime[i] / mtpa);
-            this.c(indSPUapresPB)[i] = String.format("%.2f", mtpa.equals(0.0) ? 0 : colSinUltime[i] / (mtpa + colPB[i]));
-        }
-    }
-    private double parseValueAt(int col, int row) {
-        Object value = this.c(col)[row];
-        if (value == null) {
-            return 0.0;
-        }
-
-        try {
-            return Double.parseDouble(((String) value).replace(',','.'));
-        } catch (NumberFormatException e) {
-            // You can choose to log this exception or just return a default value
-            return 0.0;
-        }
-    }
-    private void populatePBetSPprevi() {
-        int indexContrat = find_in_arr_first_index(header, "Contrat");
-        int indexDP = find_in_arr_first_index(header, "Date Periode");
-        colSPprevi = new Double[nrow];
-        colPB = new Double[nrow];
-        String contrat; String date;
-        for (int i = 0; i < nrow; i++) {
-            contrat = ((String) this.c(indexContrat)[i]).toLowerCase();
-            date = (String) this.c(indexDP)[i];
-
-            // Extract year from the date
-            String[] dateParts = date.split("-");
-            double year = Integer.parseInt(dateParts[1]);
-
-            Map<Integer, Double> spPreviMap = mapSPprevi.get(contrat);
-            if (spPreviMap != null) {
-                colSPprevi[i] = spPreviMap.getOrDefault(year, 0.0);
-            } else {
-                // Handle or set default value if not found
-                colSPprevi[i] = 0.0;  // or any default value
-            }
-
-            Map<String, Double> pbMap = mapPB.get(contrat);
-            if (pbMap != null) {
-                colPB[i] = pbMap.getOrDefault(year, 0.0);
-            } else {
-                // Handle or set default value if not found
-                colPB[i] = 0.0;  // or any default value
-            }
-        }
-    }
-
-    private void populateProvisionsColumns(Object[] contratColumn, Object[] datePeriodeColumn,
-                                           Map<String, Map<String, List<Integer>>> dataMap,
-                                           Map<String, Double> coutMoyenMap,
-                                           double[] total, String label) {
-        int yearDif = 2026 - 2013;
-        for (int year = 0; year <= yearDif; year++) {
-            this.df.add(new String[nrow]);
-        }
-
-        for (int i = 0; i < nrow; i++) {
-            String contratValue = (String) contratColumn[i];
-            String datePeriodeValue = (String) datePeriodeColumn[i];
-
-            // Fetch the data list for the current contract and date
-            Map<String, List<Integer>> dateMap = dataMap.get(contratValue);
-            if (dateMap != null && dateMap.containsKey(datePeriodeValue)) {
-                List<Integer> yearlyCounts = dateMap.get(datePeriodeValue);
-
-                // Fetch and compute the provision value for each year
-                for (int yearNum = 0; yearNum <= yearDif; yearNum++) {
-                    int countForYear = (yearNum < yearlyCounts.size()) ? yearlyCounts.get(yearNum) : 0;
-                    double provisionValue = countForYear * coutMoyenMap.get(contratValue);
-                    this.c(this.ncol + yearNum)[i] = String.format("%.2f", provisionValue);
-                    total[i] += provisionValue;
-                }
-            } else {
-                // If there's no data for this contract and date, fill the columns with 0s
-                for (int yearNum = 0; yearNum <= yearDif; yearNum++) {
-                    this.c(this.ncol + yearNum)[i] = "0";
-                }
-            }
-        }
-        this.ncol += yearDif + 1; // add 1 for year difference
-        updateHeaderForProvisions(label);
-    }
-    private void populateCoutMoyenColumn(Object[] contratColumn, Map<String, Double> coutMoyenMap, double[] total, String label) {
-        this.df.add(new String[nrow]);
-        for (int i = 0; i < nrow; i++) {
-            Double value = coutMoyenMap.get((String) contratColumn[i]);
-            if(value == null) continue;
-            this.c(ncol)[i] = String.format("%.2f", value);
-        }
-        this.addCol("","Cout Moyen: " + label);
-    }
-
-    private void updateHeaderForProvisions(String statut) {
-        List<String> newHeaders = new ArrayList<>(Arrays.asList(header));
-        for (int year = 2013; year <= 2026; year++) {
-            newHeaders.add(String.valueOf(year));
-        }
-        header = newHeaders.toArray(new String[0]);
-
-        int index = subheader.length;
-        subheader = Arrays.copyOf(subheader, header.length);
-        subheader[index] = "Provisions: " + statut;
-    }
-
-    private void appendUpdate(int begin) {
-        int end;
-        boolean[] newMaskCol;
-        end = ncol;
-        lastAppendSize = end - begin;
-        newMaskCol = new boolean[ncol];
-        System.arraycopy(mask_col, 0, newMaskCol, 0, mask_col.length);
-        mask_col = newMaskCol;
-        for (int i = begin; i < end; i++) {
-            if(!subheader[i].isEmpty()) {
-                mask_col[i] = true;
-            }
-        }
-    }
-    private void appendUpdateKeepAll(int begin) {
-        int end;
-        boolean[] newMaskCol;
-
-        end = ncol;
-        lastAppendSize = end - begin;
-
-        newMaskCol = new boolean[ncol];
-        System.arraycopy(mask_col, 0, newMaskCol, 0, mask_col.length);
-        mask_col = newMaskCol;
-
-        Arrays.fill(mask_col, begin, end, true);
-    }
-    public void saveToCSVFile(boolean applyMask) throws IOException {
-        Path path = Paths.get(fullPath);
-        String newPath = outputFolder + path.getFileName().toString();
-        String filePath = newPath.replace(".xlsx", "_fichier_de_travail.csv");
-
-        // Create a FileWriter and a BufferedWriter to write text to the file in UTF-8 encoding
-        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-                new FileOutputStream(filePath), StandardCharsets.UTF_8))) {
-
-            // Write BOM for UTF-8
-            writer.write('\ufeff');
-            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-
-            if (applyMask) {
-                // Determine which columns to include in the CSV
-                boolean[] includeColumn = new boolean[ncol];
-                for (int colIndex = 0; colIndex < ncol; colIndex++) {
-                    if (mask_col[colIndex]) {
-                        includeColumn[colIndex] = true;
+            int coefBegin = allDates.indexOf(date);
+            if (coefBegin >= 0) {
+                int reste = min(allDates.size() - coefBegin, coefs.size());
+                coefBegin += tableBegin;
+                for (int iterCoef = 0; iterCoef < reste; iterCoef++) {
+                    Float coef = coefs.get(iterCoef);
+                    if (coef != null) {
+                        if (coef == 0f) {
+                            System.out.println("ERROR in row " + i);
+                        }
+                        getColumnByIndex(coefBegin + iterCoef).set(i, prime * coef);
                     }
                 }
-                // Write header row
-                writeRow(writer, header, includeColumn);
-                // Write subheader row
-                writeRow(writer, subheader, includeColumn);
-                // Write data rows
-                for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
-                    boolean firstCol = true;
-                    for (int colIndex = 0; colIndex < ncol; colIndex++) {
-                        if (!includeColumn[colIndex]) {
-                            continue; // Skip this column
-                        }
-                        if (!firstCol) {
-                            writer.write(";");
-                        }
-                        Object value = df.get(colIndex)[rowIndex];
-                        if (value != null) {
-                            if (value instanceof Date) {
-                                writer.write(sdf.format((Date) value));
-                            } else {
-                                writer.write(value.toString());
-                            }
-                        }
-                        firstCol = false;
-                    }
-                    writer.newLine(); // Move to the next line
+            }
+        }
+        if (!avecICI) {
+            // print warnings
+            for (Map.Entry<String, List<Date>> entry : warningMap.entrySet()) {
+                String contrat = entry.getKey();
+                List<Date> missingDates = entry.getValue();
+
+                System.out.println("Contrat: " + contrat);
+                System.out.println("CoefAcquisition non trouvé pour:");
+                for (Date date : missingDates) {
+                    System.out.println(dateDefault.format(date));
                 }
-            } else {
-                // Write header row
-                writeRow(writer, header);
-                // Write subheader row
-                writeRow(writer, subheader);
-                // Write data rows
-                for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
-                    boolean firstCol = true;
-                    for (int colIndex = 0; colIndex < ncol; colIndex++) {
-                        if (!firstCol) {
-                            writer.write(";");
-                        }
-                        Object value = df.get(colIndex)[rowIndex];
-                        if (value != null) {
-                            if (value instanceof Date) {
-                                writer.write(sdf.format((Date) value));
-                            } else {
-                                writer.write(value.toString());
-                            }
-                        }
-                        firstCol = false;
-                    }
-                    writer.newLine(); // Move to the next line
-                }
+                System.out.println("-------------"); // Separator for clarity
             }
         }
     }
-    //    public void addColumnByType(char type, boolean dispatchByStatus, Set<String> uniqueStatuts) {
-//        int begin = ncol;
-//        if (dispatchByStatus) {
-//            for (String status : uniqueStatuts) {
-//                // Assuming the status is to be added to the header, just once
-//                int tableName_ind = header.length;
-//                byMonth();
-//                subheader[tableName_ind] = status + " mensuel";
-//                tableName_ind = header.length;
-//                addAnnees();
-//                this.populateYearFic(baseFic);
-//                subheader[tableName_ind] = status + " annuel";
-//                tableName_ind = header.length;
-//                addTotal();
-//                subheader[tableName_ind] = status + " total";
-//            }
-//        } else {
-////            int status_ind = header.length;
-//            switch (type) {
-//                case 'T' -> addTotal();
-//                case 'Y' -> addAnnees();
-//                case 'M' -> byMonth();
-//            }
-////            subheader[status_ind] = STATUT_FICTIF_FIC;
-//        }
-//        int end = ncol;
-//        this.lastAppendSize = end - begin;
-//        boolean[] newMaskCol = new boolean[ncol];
-//        System.arraycopy(this.mask_col, 0, newMaskCol, 0, this.mask_col.length);
-//        this.mask_col = newMaskCol;
-//        for (int i = begin; i < end; i++) {
-//            if(!this.subheader[i].isEmpty()) {
-//                this.mask_col[i] = true;
-//            }
-//        }
-//    }
-    private void writeRow(BufferedWriter writer, String[] row, boolean[] includeColumn) throws IOException {
-        boolean firstCol = true;
-        for (int colIndex = 0; colIndex < row.length; colIndex++) {
-            if (!includeColumn[colIndex]) {
+    public void appendPAsums(boolean avecICI) {
+        String label; String labelPA;
+        if (avecICI) {
+            label = "Primes Acquises annuel ";
+            labelPA = "Prime Acquise à date ";
+        } else {
+            label = "Primes Acquises annuel";
+            labelPA = "Prime Acquise à date";
+        }
+        int tableBegin = columns.size();
+        addLabeledBlock(allYearHeaders,label,DBL,avecICI);
+        addEmptyColumn("Total",DBL);
+        avecICImask.add(avecICI);
+        sansICImask.add(!avecICI);
+        addEmptyColumn(labelPA,DBL);
+        avecICImask.add(avecICI);
+        sansICImask.add(!avecICI);
+
+        // Step 1: Create a map to store the number of months for each year
+        Map<Integer, Integer> monthsPerYear = new HashMap<>();
+
+        Date thisMonth = thisMonth();
+
+        // Step 2: Iterate over all dates
+        int totalMonthsTillNow = 0;
+        for (Date date : allDates) {
+            int year = getYearFromDate(date);
+            monthsPerYear.put(year, monthsPerYear.getOrDefault(year, 0) + 1);
+
+            if (!date.after(thisMonth)) {
+                totalMonthsTillNow++;
+            }
+        }
+        // For each row
+        for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+            double rowTotal = 0;
+            double primeToDate = 0;
+            int monthColumnsBegin = tableBegin - allDates.size();
+            int processedMonths = 0; // Track the number of months processed
+
+            for (int yearIndex = 0; yearIndex < allYears.size(); yearIndex++) {
+                int yearStart = monthColumnsBegin + processedMonths; // Adjust the year start based on the number of months processed
+
+                int monthsInThisYear = monthsPerYear.get(allYears.get(yearIndex));
+                double yearlyTotal = 0;
+
+                for (int monthOffset = 0; monthOffset < monthsInThisYear; monthOffset++) {
+                    Double monthlyValue = (Double) getColumnByIndex(yearStart + monthOffset).get(rowIndex);
+                    if (monthlyValue != null) {
+                        yearlyTotal += monthlyValue;
+                        if (processedMonths < totalMonthsTillNow) {
+                            primeToDate += monthlyValue;
+                        }
+                    }
+                    processedMonths++;
+                }
+
+                getColumnByIndex(tableBegin + yearIndex).set(rowIndex, yearlyTotal);
+                rowTotal += yearlyTotal;
+            }
+
+            // Set the totals for this row
+            getColumnByIndex(headers.size() - 2).set(rowIndex, rowTotal); // -2 because we added a new column
+            getColumnByIndex(headers.size() - 1).set(rowIndex, primeToDate); // "Prime Acquise à date"
+        }
+    }
+
+    // DATE HELPERS
+    public int getYearFromDate(Date date) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        return cal.get(Calendar.YEAR);
+    }
+    public Date thisMonth() {
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.DAY_OF_MONTH, 1);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+       return cal.getTime();
+    }
+    public void findDateGaps() {
+
+        List<String> contractColumn = getColumn("Contrat");
+        List<Date> dateColumn = getColumn("Date Periode");
+
+        String currentContract = null;
+        Date previousDate = null;
+
+        for (int i = 0; i < nrow; i++) {
+            String contract = contractColumn.get(i);
+            Date date = dateColumn.get(i);
+
+            if (currentContract == null || !currentContract.equals(contract)) {
+                // New contract group
+                currentContract = contract;
+                previousDate = date;
                 continue;
             }
 
-            if (!firstCol) {
-                writer.write(";");
+            long differenceInMonths = monthsBetweenDates(previousDate, date);
+            if (differenceInMonths > 1) {
+                // Found a gap
+                if (!gapsMap.containsKey(contract)) {
+                    gapsMap.put(contract, new HashMap<>());
+                }
+
+                Calendar cal = Calendar.getInstance();
+                cal.setTime(previousDate);
+
+                // Populate the gaps
+                for (int j = 1; j < differenceInMonths; j++) {
+                    cal.add(Calendar.MONTH, 1);  // Increment by 1 month
+                    Date missingDate = cal.getTime();
+                    gapsMap.get(contract).put(missingDate, (int) differenceInMonths - j);
+                }
             }
-            try {
-                writer.write(row[colIndex]);
-            } catch (NullPointerException npe) {
-                writer.write("NOTHINGGGGGGGGGGGGGG");
+
+            previousDate = date;
+        }
+    }
+    public void findDateGapsFromLastAvailable() {
+        List<String> contractColumn = getColumn("Contrat");
+        List<Date> dateColumn = getColumn("Date Periode");
+
+        String currentContract = null;
+        Date previousDate = null;
+
+        for (int i = 0; i < nrow; i++) {
+            String contract = contractColumn.get(i);
+            Date date = dateColumn.get(i);
+
+            if (currentContract == null || !currentContract.equals(contract)) {
+                // New contract group
+                currentContract = contract;
+                previousDate = date;
+                continue;
             }
-            firstCol = false;
-        }
-        writer.newLine();
-    }
-    private void writeRow(BufferedWriter writer, String[] row) throws IOException {
-        boolean firstCol = true;
-        for (String s : row) {
-            if (!firstCol) {
-                writer.write(";");
+
+            long differenceInMonths = monthsBetweenDates(previousDate, date);
+            if (differenceInMonths > 1) {
+                // Found a gap
+                if (!gapsMap.containsKey(contract)) {
+                    gapsMap.put(contract, new HashMap<>());
+                }
+
+                Calendar cal = Calendar.getInstance();
+                cal.setTime(previousDate);
+
+                // Populate the gaps
+                for (int j = 1; j < differenceInMonths; j++) {
+                    cal.add(Calendar.MONTH, 1);  // Increment by 1 month
+                    Date missingDate = cal.getTime();
+                    gapsMap.get(contract).put(missingDate, j);  // Using 'j' to count months since the last available date
+                }
             }
-            writer.write(s);
-            firstCol = false;
-        }
-        writer.newLine();
-    }
-    public static String[] subarray(String[] array, int begin) {
-        if (array == null || begin >= array.length) {
-            return new String[0];
-        }
 
-        return Arrays.copyOfRange(array, begin, array.length);
-    }
-    public void addCol(String newHeader, String newSubheader) {
-        // Increment the column count
-        ncol++;
-
-        // Extend and populate header and subheader
-        header = Arrays.copyOf(header, ncol);
-        subheader = Arrays.copyOf(subheader, ncol);
-        header[ncol - 1] = newHeader;
-        subheader[ncol - 1] = newSubheader;
-
-    }
-    public void addColumnsString(String[] colsToAdd) {
-        // Extend the header and subheader
-        int ncols = colsToAdd.length;
-        ncol += ncols;
-        header = Arrays.copyOf(header, ncol);
-        subheader = Arrays.copyOf(subheader, ncol);
-
-        // Initialize the new columns in the dataframe
-        for (int cta = 0; cta < colsToAdd.length; cta++) {
-            this.df.add(new String[nrow]);
-            header[ncol - ncols + cta] = "";
-            subheader[ncol - ncols + cta] = colsToAdd[cta];
+            previousDate = date;
         }
     }
-    public static String[] convertToStringArrayWithTwoDecimals(double[] input) {
-        String[] result = new String[input.length];
-        for (int i = 0; i < input.length; i++) {
-            result[i] = String.format("%.2f", input[i]);
+    // Helper method to compute the difference in months between two dates
+    private static long monthsBetweenDates(Date date1, Date date2) {
+        Calendar startCalendar = new GregorianCalendar();
+        startCalendar.setTime(date1);
+        Calendar endCalendar = new GregorianCalendar();
+        endCalendar.setTime(date2);
+
+        long monthsBetween = 0;
+        while (startCalendar.before(endCalendar)) {
+            startCalendar.add(Calendar.MONTH, 1);
+            monthsBetween++;
         }
-        return result;
+
+        return monthsBetween;
     }
 
+    // SP
+    public void addSP () {
+        ArrayList<String> colsToAdd = new ArrayList<>(Arrays.asList(
+                "Taux acquisition","Taux acquisition ",
+                "PB", "S/P previ hors PB",
+                "S/P si pas réel acquis avec provision","S/P si pas réel acquis avec provision ",
+                "S/P si pas reel ultime avant PB","S/P si pas reel ultime avant PB ",
+                "S/P si pas reel ultime apres PB","S/P si pas reel ultime apres PB ",
+                "Sinistre Ultime", "Sinistre Ultime "));
+        ArrayList<Boolean> avecICIcolumns = new ArrayList<>(Arrays.asList(false,true,true,true,false,true,false,true,false,true,false,true));
+        ArrayList<Boolean> sansICIcolumns = new ArrayList<>(Arrays.asList(true,false,true,true,true,false,true,false,true,false,true,false));
+        avecICImask.addAll(avecICIcolumns);
+        sansICImask.addAll(sansICIcolumns);
 
+        for (String header : colsToAdd) {
+            addEmptyColumn(header,DBL);
+        }
+
+        populateSPPreviHorsPB();
+        populatePBColumn();
+
+        calculateTauxAcquisition(true);
+        calculateTauxAcquisition(false);
+
+        populateSPPasReelAcquisAvecProvision(true);
+        populateSPPasReelAcquisAvecProvision(false);
+
+        addTriangleUltime(true);
+        addTriangleUltime(false);
+
+        populateSPColumns(true);
+        populateSPColumns(false);
+    }
+    public void populateSPPreviHorsPB() {
+        // Get the required columns from the current table
+        List<String> contrats = getColumn("Contrat");
+        List<Date> datePeriodes = getColumn("Date Periode");
+
+        // Create or get the "S/P previ hors PB" column (assuming it exists)
+        ArrayList<Double> spPreviHorsPB = getColumn("S/P previ hors PB");
+
+        // Prepare the mapping from the SPprevi external table
+        Map<String, Map<Integer, Double>> externMap = new HashMap<>();
+
+        List<String> externContrats = SPprevi.getColumn("IDENTIFIANT CONTRAT");
+        List<Integer> externAnnees = SPprevi.getColumn("ANNEES");
+        List<Double> externSPPreviSansICI = SPprevi.getColumn("S/P PREVI SANS ICI");
+
+        // Populate the hashmap with values from the external SPprevi table
+        for (int i = 0; i < externContrats.size(); i++) {
+            String externContract = externContrats.get(i);
+            Integer externYear = externAnnees.get(i);
+            Double spValue = externSPPreviSansICI.get(i);
+
+            if (!externMap.containsKey(externContract)) {
+                externMap.put(externContract, new HashMap<>());
+            }
+
+            externMap.get(externContract).put(externYear, spValue);
+        }
+
+        // Iterate through the rows of the current table and populate the "S/P previ hors PB" column
+        for (int i = 0; i < contrats.size(); i++) {
+            String contract = contrats.get(i);
+            Date datePeriode = datePeriodes.get(i);
+
+            // Extract the year from the date
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(datePeriode);
+            int year = cal.get(Calendar.YEAR);
+
+            Map<Integer, Double> yearValueMap = externMap.get(contract);
+            if (yearValueMap != null) {
+                Double value = yearValueMap.get(year);
+                spPreviHorsPB.set(i, value == null ? 0.0d : value);
+            } else {
+                spPreviHorsPB.set(i, 0.0d);
+            }
+        }
+    }
+    public void populatePBColumn() {
+        // Get the required columns from the current table
+        List<String> contrats = getColumn("Contrat");
+        List<Date> datePeriodes = getColumn("Date Periode");
+
+        // Create or get the "PB" column (assuming it exists)
+        ArrayList<Double> pbColumn = getColumn("PB");
+
+        // Prepare the mapping from the PB external table
+        Map<String, Map<Date, Double>> externMap = new HashMap<>();
+
+        List<String> externContrats = PB.getColumn("Contrat");
+        List<Date> externDates = PB.getColumn("Date");
+        List<Double> externPBValues = PB.getColumn("PB");
+
+        // Populate the hashmap with values from the external PB table
+        for (int i = 0; i < externContrats.size(); i++) {
+            String externContract = externContrats.get(i);
+            Date externDate = externDates.get(i);
+            Double pbValue = externPBValues.get(i);
+
+            if (!externMap.containsKey(externContract)) {
+                externMap.put(externContract, new HashMap<>());
+            }
+
+            externMap.get(externContract).put(externDate, pbValue);
+        }
+
+        // Iterate through the rows of the current table and populate the PB column
+        for (int i = 0; i < contrats.size(); i++) {
+            String contract = contrats.get(i);
+            Date datePeriode = datePeriodes.get(i);
+
+            Map<Date, Double> dateValueMap = externMap.get(contract);
+            if (dateValueMap != null) {
+                Double value = dateValueMap.get(datePeriode);
+                pbColumn.set(i, value == null ? 0.0d : value);
+            } else {
+                pbColumn.set(i, 0.0d);
+            }
+        }
+    }
+    public void calculateTauxAcquisition(boolean avecICI) {
+        ArrayList<Double> primeAcquise; ArrayList<Double> montantTotal; ArrayList<Double> tauxAcquisitionColumn;
+        if (avecICI) {
+            primeAcquise = getColumn("Prime Acquise à date ");
+            montantTotal = plusComm;
+            tauxAcquisitionColumn = getColumn("Taux acquisition ");
+        } else {
+            primeAcquise = getColumn("Prime Acquise à date");
+            montantTotal = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+            tauxAcquisitionColumn = getColumn("Taux acquisition");
+        }
+
+        for (int i = 0; i < primeAcquise.size(); i++) {
+            Double prime = primeAcquise.get(i);
+            Double montant = montantTotal.get(i);
+
+            if (prime == null || montant == null) {
+                tauxAcquisitionColumn.set(i, null); // Set null if any of the values are null
+                System.out.println("Warning: Found null value at row " + (i+1) + ". Column 'Taux acquisition' set to null.");
+                continue;
+            }
+
+            if (montant == 0.0) {
+                tauxAcquisitionColumn.set(i, 0.0); // Avoid division by zero
+            } else {
+                double taux = prime / montant;
+
+                if (Double.isNaN(taux)) {
+                    tauxAcquisitionColumn.set(i, 0.0);
+                } else {
+                    tauxAcquisitionColumn.set(i, taux);
+                }
+            }
+        }
+    }
+    public void populateSPPasReelAcquisAvecProvision(boolean avecICI) {
+        ArrayList<Double> primeAcquise; ArrayList<Double> tauxAcquisitionColumn; ArrayList<Double> resultColumn;
+        if (avecICI) {
+            primeAcquise = getColumn("Prime Acquise à date ");
+            tauxAcquisitionColumn = getColumn("Taux acquisition ");
+            resultColumn = getColumn("S/P si pas réel acquis avec provision ");
+        } else {
+            primeAcquise = getColumn("Prime Acquise à date");
+            tauxAcquisitionColumn = getColumn("Taux acquisition");
+            resultColumn = getColumn("S/P si pas réel acquis avec provision");
+        }
+        // Fetch all the required columns
+        ArrayList<Double> chargeComptable = getColumnSubheader("Charge Comptable totale");
+        ArrayList<Double> provisionEnCours = getColumnByDoubleNotation("Provision En Cours", "Total");
+        ArrayList<Double> PB = getColumn("PB");
+
+        for (int i = 0; i < chargeComptable.size(); i++) {
+            double numerator = (chargeComptable.get(i) == null ? 0 : chargeComptable.get(i)) + provisionEnCours.get(i);
+            double denominator = primeAcquise.get(i) + (PB.get(i) * tauxAcquisitionColumn.get(i));
+
+            if (denominator == 0) {
+                resultColumn.set(i, 0.0);
+            } else {
+                resultColumn.set(i, max(numerator / denominator, 0.0));
+            }
+        }
+    }
+    public void addTriangleUltime(boolean avecICI) {
+        String labelTriangle; int paFirstIndex; int sinUltimeIndex;
+        if (avecICI) {
+            labelTriangle = "Sinistres Previ si pas Reel comptable ";
+            paFirstIndex = subheaders.indexOf("Primes Acquises mensuel ");
+            sinUltimeIndex = headers.indexOf("Sinistre Ultime ");
+        } else {
+            labelTriangle = "Sinistres Previ si pas Reel comptable";
+            paFirstIndex = subheaders.indexOf("Primes Acquises mensuel");
+            sinUltimeIndex = headers.indexOf("Sinistre Ultime");
+        }
+
+        headers.addAll(allDateHeaders);
+
+        for (int i = 0; i < allDateHeaders.size(); i++) {
+            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, ColTypes.DBL));
+            avecICImask.add(avecICI);
+            sansICImask.add(!avecICI);
+        }
+
+        subheaders.add(labelTriangle);
+        subheaders.addAll(Collections.nCopies(allDateHeaders.size() - 1, null));
+
+        int beginIndex = headers.size() - allDates.size();
+
+        int comptaFirstIndex = subheaders.indexOf("Charge Comptable mensuelle");
+        ArrayList<Double> spColumn = getColumn("S/P previ hors PB");
+        ArrayList<Double> provisionColumn = getColumn("Total Provision");
+
+        ArrayList<Double> sinistreUltimeColumn = new ArrayList<>(Collections.nCopies(nrow, 0.0));
+
+        int offset = 0;
+        for (int col = beginIndex; col < headers.size(); col++) {
+            if (allDates.get(col-beginIndex).before(TODAY_01)) {
+                ArrayList<Double> comptaColumn = getColumnByIndex(comptaFirstIndex + offset);
+                for (int row = 0; row < nrow; row++) {
+                    Double compta = comptaColumn.get(row);
+                    Double value = (compta == null ? 0.0 : compta) + provisionColumn.get(row);
+                    getColumnByIndex(col).set(row,value);
+                    sinistreUltimeColumn.set(row, sinistreUltimeColumn.get(row) + value);
+                }
+                offset++;
+            } else {
+                ArrayList<Double> paColumn = getColumnByIndex(paFirstIndex + offset);
+                for (int row = 0; row < nrow; row++) {
+                    Double pa = paColumn.get(row);
+                    if (pa == null) {
+                        getColumnByIndex(col).set(row,0.0);
+                    } else {
+                        Double value = pa * spColumn.get(row);
+                        getColumnByIndex(col).set(row,value);
+                        sinistreUltimeColumn.set(row, sinistreUltimeColumn.get(row) + value);
+                    }
+                }
+                offset++;
+            }
+        }
+        columns.set(sinUltimeIndex,new Column<>(sinistreUltimeColumn, DBL));
+    }
+    public void populateSPColumns(boolean avecICI) {
+        ArrayList<Double> sinistreUltimeColumn; ArrayList<Double> primeColumn; ArrayList<Double> avantPB; ArrayList<Double> apresPB;
+        if (avecICI) {
+            sinistreUltimeColumn = getColumn("Sinistre Ultime ");
+            primeColumn = plusComm;
+            avantPB = getColumn("S/P si pas reel ultime avant PB ");
+            apresPB = getColumn("S/P si pas reel ultime apres PB ");
+        } else {
+            sinistreUltimeColumn = getColumn("Sinistre Ultime");
+            primeColumn = getColumn("MONTANT TOTAL PRIME ASSUREUR");
+            avantPB = getColumn("S/P si pas reel ultime avant PB");
+            apresPB = getColumn("S/P si pas reel ultime apres PB");
+        }
+
+        ArrayList<Double> pbColumn = getColumn("PB");
+
+        for (int i = 0; i < nrow; i++) {
+            Double sinistreValue = sinistreUltimeColumn.get(i);
+            Double pbValue = pbColumn.get(i);
+            Double primeValue = primeColumn.get(i);
+
+            Double denominatorApresPB = primeValue + pbValue;
+
+            // Populate the columns based on the formulas
+            if (primeValue == 0.0) {
+                avantPB.set(i, 0.0);
+            } else {
+                avantPB.set(i, sinistreValue / primeValue);
+            }
+
+            if (denominatorApresPB == 0) {
+                apresPB.set(i, 0.0);
+            } else {
+                apresPB.set(i, sinistreValue / denominatorApresPB);
+            }
+        }
+    }
+
+    protected void addLabeledBlock(List<String> headersToAdd,String label, ColTypes type, boolean avecICI) {
+        headers.addAll(headersToAdd);
+
+        for (int i = 0; i < headersToAdd.size(); i++) {
+            ArrayList<Double> columnData = new ArrayList<>(Collections.nCopies(nrow, null));
+            columns.add(new Column<>(columnData, type));
+            avecICImask.add(avecICI);
+            sansICImask.add(!avecICI);
+        }
+
+        subheaders.add(label);
+        subheaders.addAll(Collections.nCopies(headersToAdd.size() - 1, null));
+    }
+    protected void saveFDT(boolean avecICI) throws IOException {
+        Path originalPath = Paths.get(this.path);
+        String filenameWithoutExtension = originalPath.getFileName().toString().replaceFirst("[.][^.]+$", "");
+        String fileExtension = originalPath.toString().substring(originalPath.toString().lastIndexOf(".") + 1);
+        String newPath;
+        if (avecICI) {
+            newPath = outputFolder + filenameWithoutExtension + "_FDT_avec ICI." + fileExtension;
+        } else {
+            newPath = outputFolder + filenameWithoutExtension + "_FDT." + fileExtension;
+        }
+
+        // Determine which mask to use based on avecICI
+        ArrayList<Boolean> mask = avecICI ? avecICImask : sansICImask;
+
+        try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(newPath), StandardCharsets.UTF_8)) {
+            // Write BOM for UTF-8
+            writer.write('\ufeff');
+
+            // If there are subheaders, write them
+            if (subheaders != null && !subheaders.isEmpty()) {
+                List<String> filteredSubheaders = new ArrayList<>();
+                for (int j = 0; j < subheaders.size(); j++) {
+                    if (mask.get(j)) {
+                        filteredSubheaders.add(subheaders.get(j) != null ? subheaders.get(j).trim() : "");
+                    }
+                }
+                writer.write(String.join(";", filteredSubheaders));
+                writer.newLine();
+            }
+
+            // Write headers applying the mask
+            List<String> filteredHeaders = IntStream.range(0, headers.size())
+                    .filter(mask::get)
+                    .mapToObj(index -> headers.get(index).trim())
+                    .collect(Collectors.toList());
+            writer.write(String.join(";", filteredHeaders));
+            writer.newLine();
+
+            // Write data applying the mask
+            for (int i = 0; i < nrow; i++) {
+                List<String> row = getRow(i).stream()
+                        .map(item -> {
+                            if (item instanceof Date) {
+                                return dateDefault.format((Date) item);
+                            } else if (item instanceof Double) {
+                                return DECIMAL_FORMAT.format(item).replace('.', ','); // Replace period with comma
+                            }
+                            return item != null ? item.toString() : "";
+                        })
+                        .collect(Collectors.toList());
+
+                List<String> filteredRow = IntStream.range(0, row.size())
+                        .filter(mask::get)
+                        .mapToObj(row::get)
+                        .collect(Collectors.toList());
+
+                writer.write(String.join(";", filteredRow));
+                writer.newLine();
+            }
+        }
+    }
 }

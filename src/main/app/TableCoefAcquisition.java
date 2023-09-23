@@ -1,10 +1,7 @@
 package main.app;
 
 import java.io.Serializable;
-import java.text.SimpleDateFormat;
 import java.util.*;
-import static main.app.App.*;
-import static main.app.DF.find_in_arr_first_index;
 
 public class TableCoefAcquisition implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -12,7 +9,7 @@ public class TableCoefAcquisition implements Serializable {
         // Private constructor to prevent instantiation
     }
 
-    public static Map<String, ArrayList<Float>> processDF(DFnew dataframe) {
+    public static Map<String, ArrayList<Float>> processDF(DF dataframe) {
         Map<String, ArrayList<Float>> localResultMap = new HashMap<>();
 
         int identContratIndex = dataframe.headers.indexOf("identifiant_contrat");

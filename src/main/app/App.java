@@ -4,55 +4,34 @@ import com.univocity.parsers.csv.CsvParserSettings;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
-import java.time.YearMonth;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
-import static java.lang.Math.round;
-import static java.util.Arrays.fill;
-import static main.app.Synthese.getCurrentDateTime;
+import static java.lang.Math.abs;
+import static main.app.Base.MIN_PREVI_DATE;
+import static main.app.Base.createStatutMap;
+import static main.app.DF.*;
+import static main.app.DF.ColTypes.DBL;
+import static main.app.Estimate.isComm;
+import static main.app.Synthese.roundToTwoDecimals;
+import static main.app.Synthese.syntAncien;
 
 public class App {
 
-    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
-//    public static final String wd = "E:/202305/wd/";
+//    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
+    public static final String wd = "E:/202305/wd/";
     public static final String outputFolder = wd + "output/";
+    public static final String refFolder = wd + "refs/";
+    public static final String tdbFolder = wd + "TDB/";
+    public static final String basesFolder = wd + "bases/";
     public static String encoding = "UTF-8";
     public static CsvParserSettings csv_settings = new CsvParserSettings();
-    public static final String regex_digits = "[0-9]+";
-    public static final String regex_letters = ".*[a-zA-Z].*";
-    public static final Double NA_DBL = 9999099d;
-    public static final String NA_STR = "n.a.";
-    public static SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
-    public static final Date NA_DAT;
-    static {
-        try {
-            NA_DAT = format.parse("01/01/2100");
-        } catch (ParseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-    public static final LocalDate NA_LDAT = to_Date(NA_DAT);
-    public static ArrayList<ArrayList<String>> Rapport = new ArrayList<>();
-    public static ArrayList<ArrayList<String>> Rapport_temps_exec = new ArrayList<>();
-    public static ArrayList<ArrayList<String>> Log_err = new ArrayList<>();
-    public static String yyyymm = "default";
-    public static DF ref_cols;
-    public static DF ref_source;
-    public static DF ref_prog = new DF(wd+"ref_Programmes.csv", ';', true);
-    public static DF mapping;
-    public static DF grille_tarif = new DF(wd + "Grille_Tarifaire.csv",';',(Integer)0);
-    public static DF tdb2;
-    public static DF tdb2coef;
-    public static DF tdb2fr;
-    public static DF tdb2_ref;
-    public static DF SPprevi;
-    public static DF PB;
     public static Map<String,Map<Integer, Double>> mapSPprevi = new HashMap<>();
     public static Map<String,Map<String, Double>> mapPB = new HashMap<>();
     public static SimpleDateFormat dateDefault = new SimpleDateFormat("dd/MM/yyyy");
@@ -62,7 +41,6 @@ public class App {
     public static Date globalMaxDate = new Date(Long.MIN_VALUE);
     private static final String CURRENT_MONTH;
     private static final String PREVIOUS_MONTH;
-    static final String LOG_FILE_PATH;
     public static final Date TODAY_01;
     static {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMM");
@@ -70,8 +48,8 @@ public class App {
 
         CURRENT_MONTH = now.format(formatter);
         PREVIOUS_MONTH = now.minusMonths(1).format(formatter);
-
-        LOG_FILE_PATH = outputFolder +"logfile_" + getCurrentDateTime() + ".txt";
+//        static final String LOG_FILE_PATH;
+//        LOG_FILE_PATH = outputFolder +"logfile_" + getCurrentDateTime() + ".txt";
 
         Calendar calendar = Calendar.getInstance();
         calendar.set(Calendar.DAY_OF_MONTH, 1);
@@ -83,11 +61,8 @@ public class App {
     }
     private static final LocalDate TODAY = LocalDate.now();
     public static char delim = ';';
-    public static Synthese syntAncien;
-//    public static List<Base> basesSin = new ArrayList<>();
-    public static Map<String, Base> baseMap = new HashMap<>();
-    public static Map<String, Basenew> baseMapNew = new HashMap<>();
-    public static Map<String, Basenew> ficMapNew = new HashMap<>();
+    public static Map<String, Base> baseMapNew = new HashMap<>();
+    public static Map<String, Base> ficMapNew = new HashMap<>();
     public static List<String> statutsForTreatment;
     public static Map<String, String> globalStatutMap = new HashMap<>();
     public static Map<String, String> globalStatutCollect = new HashMap<>();
@@ -98,241 +73,193 @@ public class App {
     public static final String MONTANT = "montant";
     public static final String STATUT = "statut";
     public static final String YEAR_SURV = "ys_added";
+    public static DF PB;
+    public static DF refProg;
+    public static DF refCols;
+    public static DF refSource;
+    public static DF mapping;
+    public static DF SPprevi;
+    public static DF mapStatuts;
+    public static DF grilleTarif;
+    public static DF coefPM;
+    public static final Set<String> aChercherDansCoefPM = new HashSet<>();
+    public static final Map<String,Date> policesComm = new HashMap<>();
+    public static final int lastM;
+    static final Map<Integer, ArrayList<Float>> mapCoefAQ = new HashMap<>();
+    static {
+        aChercherDansCoefPM.add("ICIPMCD15");
+        aChercherDansCoefPM.add("ICIPMCH15");
+        aChercherDansCoefPM.add("ICIPMEG15");
+        aChercherDansCoefPM.add("ICIPMG17");
+        aChercherDansCoefPM.add("ICIPMTT15");
+        aChercherDansCoefPM.add("ICIPMDT15");
+        aChercherDansCoefPM.add("ICIPMDV15");
+        aChercherDansCoefPM.add("ICISMIC19");
+        aChercherDansCoefPM.add("ICIMOPEMPPRO22");
+        aChercherDansCoefPM.add("ICIMOPCKIT22");
+
+        Date lastDateMK;
+        try {
+            lastDateMK = dateDefault.parse("02/07/2022");
+        } catch (ParseException e) {
+            throw new RuntimeException(e);
+        }
+        policesComm.put("Surcommission1", MIN_PREVI_DATE);
+        policesComm.put("Surcommission2", MIN_PREVI_DATE);
+        policesComm.put("PB-2020", MIN_PREVI_DATE);
+        policesComm.put("ICIGSCOM21", MIN_PREVI_DATE);
+        policesComm.put("ICIGSCOM20", MIN_PREVI_DATE);
+        policesComm.put("ICICDREG22", MIN_PREVI_DATE);
+        policesComm.put("ICIMMWB-0719", MIN_PREVI_DATE);
+        policesComm.put("ICIMMWB-0720", MIN_PREVI_DATE);
+        policesComm.put("ICIMMWB-0721", MIN_PREVI_DATE);
+        policesComm.put("ICIMKPA16", lastDateMK);
+        policesComm.put("ICIMKPR16", lastDateMK);
+        policesComm.put("ICIMKTLM22", lastDateMK);
+
+    } //PM
+    static {
+        try {
+            PB = new DF(refFolder + "PB Micromania.csv",';',false,"PB");
+            refProg = new DF(refFolder + "ref_Programmes.csv",';',false,"refProg");
+            refCols = new DF(refFolder + "ref_Renta.xlsx","ref_cols",false,"refCols");
+            refSource = new DF(refFolder + "ref_Renta.xlsx","source",false,"refSource");
+            mapping = new DF(refFolder + "mapping.xlsx","Mapping entrant sinistres",false,"mapping");
+            SPprevi = new DF(refFolder + "S SUR P PREVI 2023_01_18.xlsx","Feuil1",false,"SPprevi");
+            mapStatuts = new DF(refFolder + "statuts.xlsx","Statuts",false,"mapStatuts");
+            grilleTarif = new DF(refFolder + "Grille_Tarifaire.csv",';',false,"grilleTarif");
+            coefPM = new DF(refFolder + "coefPM.csv",';',false,"coefPM");
+            mergeRowsOnContratRefProg();
+            populateGlobalStatutMap();
+            mapPoliceToPB();
+            mapPoliceToSPPrevi();
+            repairReferenceGT();
+            lastM = grilleTarif.findLastNonNullColumnFromM();
+        } catch (IOException | ParseException e) {
+            throw new RuntimeException(e);
+        }
+
+    } //REFS
     public static void main(String[] args) throws Exception {
         printMemoryUsage();
+        Stopwatch st = new Stopwatch();
+        st.start();
+//
+//        Estimate estimate = new Estimate(tdbFolder+"TDB Estimate.csv",';',"estimate12");
+//        getCoefsAcquisition(false,estimate);
+//        st.printElapsedTime();
+//        createFDT(estimate);
+//        st.printElapsedTime();
+//        createSynthese("TDB Estimate_FDT.csv","TDB Part 1 Assureur synthèse 202210.xlsx");
+//        Synthese syntAncien1 = new Synthese(outputFolder + "Synthèse_202309.xlsx", "Synthèse Année-Mois");
+        Synthese fdt = new Synthese(outputFolder + "TDB Estimate_FDT.csv");
+        syntAncien = new Synthese(tdbFolder+"TDB Part 1 Assureur synthèse 202210.xlsx","Synthèse année mois");
+        Synthese syntAncien1 = new Synthese(fdt,"Contrat", syntAncien,false);
 
-        Stopwatch stopwatch = new Stopwatch();
-        stopwatch.start();
-        Synthese mapStatut = new Synthese(wd + "map_statuts.csv",delim,true,false,false);
-        ref_prog = new DF(wd+"Référentiel programmes.csv", ';', true);
-        ref_cols = new DF(wd + "refRenta.xlsx","ref_cols");
-        ref_source = new DF(wd + "refRenta.xlsx","source",true);
-        mapping = new DF(wd + "mapping.xlsx","Mapping entrant sinistres");
-        PB = new DF(wd + "PB Micromania.csv",';','!');
-        PB.mapPoliceToPB();
-        SPprevi = new DF(wd + "S SUR P PREVI 2023_01_18.xlsx","Feuil1");
-        SPprevi.mapPoliceToSPPrevi();
+        Synthese syntAncien2 = new Synthese(tdbFolder + "TDB Part 1 Assureur synthèse 202212.xlsx","Synthèse année mois");
+        compareKeys(syntAncien1,syntAncien2,fdt,false);
+        compareKeys(syntAncien2,syntAncien1,fdt,true);
+        compareKeys(syntAncien1,fdt,false);
+        compareKeys(syntAncien2,fdt,true);
+//        compareSynthese(syntAncien1,syntAncien2);
+//        syntAncien1.print();
+//        syntAncien2.print();
+//
+//        st.printElapsedTime();
 
-        stopwatch.printElapsedTime("refs");
-
-        for (int i = 0; i < ref_source.nrow; i++) {
-            boolean a_faire = (ref_source.c("a faire")[i]).equals("oui");
+    }
+    public static void createFDT(Estimate estimate) throws Exception {
+        for (int i = 0; i < refSource.nrow; i++) {
+            boolean a_faire = !(refSource.getColumn("a faire").get(i)).equals("non");
             if (!a_faire) continue;
-            stopwatch.start();
-            Base.currentHeaderRef = null;
-            String folder = (String) ref_source.c("path")[i];
-            String pays = (String) ref_source.c("pays_filekey")[i];
-            String mapcol = (String) ref_source.c("mapping")[i];
-            String estim = (String) ref_source.c("estimate")[i];
-            String path_fic = (String) ref_source.c("path_fic")[i];
-            String map_fic = (String) ref_source.c("map_fic")[i];
-            Synthese wf = new Synthese(outputFolder+estim + "_fichier_de_travail.csv",delim,false,true,true);
+            String folder = (String) refSource.getColumn("path").get(i);
+            String pays = (String) refSource.getColumn("pays_filekey").get(i);
+            String mapcol = (String) refSource.getColumn("mapping").get(i);
+            String path_fic = (String) refSource.getColumn("path_fic").get(i);
+            String map_fic = (String) refSource.getColumn("map_fic").get(i);
 
-            syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois",false,false,false);
-            Synthese syntPolice = new Synthese(wf,"", syntAncien);
-//            syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse police",false,false,false);
-            Synthese syntPoliceagg = new Synthese(syntPolice,"",true, syntAncien);
-            syntPolice.formatAllColumns();
-            syntPoliceagg.formatAllColumns();
+            System.out.println(pays);
+            File[] fileList = Objects.requireNonNull(new File(basesFolder + folder).listFiles());
 
-//            syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse partenaire",false,false,false);
-            Synthese syntDistrib = new Synthese(wf,1, syntAncien);
-            Synthese syntDistribagg = new Synthese(syntDistrib,1,true);
-            syntDistribagg.formatAllColumns();
-
-//            syntAncien = new Synthese(wd+"TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse génération adhé",false,false,false);
-            Synthese syntGest = new Synthese(wf,1.0, syntAncien);
-            Synthese syntGestagg = new Synthese(syntGest,1.0,true);
-            syntGestagg.formatAllColumns();
-
-            String output = outputFolder + estim + "_output.xlsx";
-            syntPolice.exportToExcel(output, "Detaillé", null);
-            Workbook workbook = new XSSFWorkbook(new FileInputStream(output));
-            syntPoliceagg.exportToExcel(output, "Par Police", workbook);
-            syntDistribagg.exportToExcel(output, "Par Distributeur", workbook);
-            syntGestagg.exportToExcel(output, "Par Gestionnaire", workbook);
-
-            stopwatch.printElapsedTime();
-        }
-
-    }
-    public static void saveObjectToFile(Object obj, String filePath) throws IOException {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filePath))) {
-            oos.writeObject(obj);
-        }
-    }
-
-    public static Object readObjectFromFile(String filePath) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath))) {
-            return ois.readObject();
-        }
-    }
-    public static boolean isMonthAfterOrEQCurrent(String monthYear) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-yyyy");
-        YearMonth inputYearMonth = YearMonth.parse(monthYear, formatter);
-
-        // Extract the current year and month from the TODAY variable
-        YearMonth currentYearMonth = YearMonth.from(TODAY);
-
-        // Check if inputYearMonth is after currentYearMonth
-        return !inputYearMonth.isBefore(currentYearMonth);
-    }
-    public static void updateStatutDates(Base base) {
-        for (Map.Entry<String, List<Date>> entry : base.statutDateRangeMap.entrySet()) {
-            String statut = entry.getKey();
-            List<Date> baseDates = entry.getValue();
-
-            if (!globalStatutDateRangeMap.containsKey(statut)) {
-                // If this statut doesn't exist in the global map, simply put the current base's dates
-                globalStatutDateRangeMap.put(statut, new ArrayList<>(baseDates));
-            } else {
-                // Otherwise, compare and update min and max dates if needed
-                List<Date> globalDates = globalStatutDateRangeMap.get(statut);
-                Date globalMinDate = globalDates.get(0);
-                Date globalMaxDate = globalDates.get(1);
-                Date baseMinDate = baseDates.get(0);
-                Date baseMaxDate = baseDates.get(1);
-
-                if (baseMinDate.before(globalMinDate)) {
-                    globalDates.set(0, baseMinDate);
+            for (File file : fileList) {
+                Base base = new Base(file,pays,mapcol,false);
+                baseMapNew.put(base.numPolice, base);
+                for (String statut : base.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, base.numPolice);
                 }
-                if (baseMaxDate.after(globalMaxDate)) {
-                    globalDates.set(1, baseMaxDate);
+
+            }
+            if (pays.equals("Italie")) {
+                File[] fileListGS = Objects.requireNonNull(new File(basesFolder + "source SIN/Gamestop/").listFiles());
+                for (File file : fileListGS) {
+                    Base base = new Base(file,"Gamestop","SPB Italie Gamestop v1",false);
+                    baseMapNew.put(base.numPolice, base);
+                    for (String statut : base.uniqueStatuts) {
+                        globalStatutCollect.putIfAbsent(statut, base.numPolice);
+                    }
+                }
+                Base baseGPTB = new Base(new File(basesFolder + "aux SIN/SPB Italie_ICIGPTB15.csv"),false);
+                Base baseMITL = new Base(new File(basesFolder + "aux SIN/SPB Italie_ICIMITL16.csv"),false);
+                baseMapNew.put(baseGPTB.numPolice, baseGPTB);
+                baseMapNew.put(baseMITL.numPolice, baseMITL);
+                for (String statut : baseGPTB.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, baseGPTB.numPolice);
+                }
+                for (String statut : baseMITL.uniqueStatuts) {
+                    globalStatutCollect.putIfAbsent(statut, baseMITL.numPolice);
                 }
             }
-        }
-    }
-    public static void updateGlobalDatesFromStatutMap() {
-        for (List<Date> dates : globalStatutDateRangeMap.values()) {
-            Date currentMinDate = dates.get(0);
-            Date currentMaxDate = dates.get(1);
 
-            if (currentMinDate.before(globalMinDate)) {
-                globalMinDate = currentMinDate;
-            }
+            Base baseFic = new Base(basesFolder + path_fic,map_fic,false);
+            ficMapNew.put(path_fic, baseFic);
+        }
+        Base baseGDM = new Base(basesFolder+"aux SIN/Advise.csv");
+        Base baseADV = new Base(basesFolder+"aux SIN/Guy Demarle.csv");
+        Base baseGP = new Base(basesFolder+"aux SIN/Garantie Privée.csv");
+        Base baseSUP = new Base(basesFolder+"aux SIN/Supporter.csv");
+        ficMapNew.put(baseGDM.numPolice,baseGDM);
+        ficMapNew.put(baseADV.numPolice,baseADV);
+        baseMapNew.put(baseGP.numPolice,baseGP);
+        baseMapNew.put(baseSUP.numPolice,baseSUP);
 
-            if (currentMaxDate.after(globalMaxDate)) {
-                globalMaxDate = currentMaxDate;
-            }
-        }
-    }
-    public static ArrayList<DF> loadDataFrames(String filePath) {
-        ArrayList<DF> loadedDataframes = null;
-        try (FileInputStream fis = new FileInputStream(filePath);
-             ObjectInputStream ois = new ObjectInputStream(fis)) {
-            loadedDataframes = (ArrayList<DF>) ois.readObject();
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        return loadedDataframes;
-    }
-    public static boolean  check_in(String what, String[] arr) {
-        for (String where : arr) {
-            if (what.equals(where)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    // VECTORS
-    public static String[] keep_from_array(String[] arr, boolean[] which) {
-        int len = sum_boolean(which);
-        String[] out = new String[len];
-        int j = 0;
-        for (int i = 0; i < which.length; i++) {
-            if (which[i]) {
-                out[j] = arr[i];
-                j++;
-            }
-        }
-        return out;
-    }
-    public static DF.Col_types[] keep_from_array(DF.Col_types[] arr, boolean[] which) {
-        int len = sum_boolean(which);
-        DF.Col_types[] out = new DF.Col_types[len];
+        createStatutMap();
 
-        int j = 0;
-        for (int i = 0; i < which.length; i++) {
-            if (which[i]) {
-                out[j] = arr[i];
-                j++;
-            }
-        }
-        return out;
-    }
-    public static Object[] unique_of(Object[] arr) {
-        if (arr.length == 1) return arr;
-        Set<Object> hash = new LinkedHashSet<>(Arrays.asList(Optional.of(arr).orElse(new Object[0]))); //ofNullable bilo ranshe hz
-        return hash.toArray(new Object[0]);
-    }
-    public static int[] unique_of(int[] arr) {
-        if (arr.length == 1) return arr;
-        HashMap<Integer, Integer> hashmap = new HashMap<Integer, Integer>();
-        for (int j = 0; j < arr.length; j++) {
-            hashmap.put(arr[j], j);
-        }
-        Object[] key_arr = hashmap.keySet().toArray();
-        int[] int_arr = new int[key_arr.length];
-        for (int i = 0; i < key_arr.length; i++) {
-            int_arr[i] = (int) key_arr[i];
-        }
-        return int_arr;
-    }
-    public static int sum_boolean(boolean[] vector_boolean) {
-        int sum = 0;
-        for (boolean b : vector_boolean) {
-            sum += b ? 1 : 0;
-        }
-        return sum;
-    }
-    public static Integer[] arr_concat(Integer[] arr1, Integer[] arr2) {
-        int fal = arr1.length;
-        int sal = arr2.length;
-        Integer[] result = new Integer[fal + sal];
-        System.arraycopy(arr1, 0, result, 0, fal);
-        System.arraycopy(arr2, 0, result, fal, sal);
-        return result;
-    }
-    public static boolean in(Object str, Object[] arr) {
-        for (Object s : arr) {
-            if (s.equals(str)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    public static LocalDate to_Date(Date input) {
-        return input.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-    }
-    public static void write_csv(Integer[] arr) {
-        BufferedWriter br = null;
-        try {
-            br = new BufferedWriter(new FileWriter(wd + "tester.csv"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        StringBuilder sb = new StringBuilder();
+        estimate.appendAllPivotsFic();
+        estimate.appendAllPivotsSin();
+        estimate.addProvisions();
 
-        for (Object element : arr) {
-            sb.append(element);
-            sb.append("\n");
-        }
+        estimate.beginSplit();
+        estimate.addPrimesAcquises();
+        estimate.addSP();
 
-        try {
-            br.write(sb.toString());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            br.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        estimate.saveFDT(false);
     }
-    public static boolean[] logvec(int dim, boolean values) {
-        boolean[] out = new boolean[dim];
-        Arrays.fill(out, values);
-        return out;
+    public static void createSynthese(String syntPath, String syntAncienPath) throws IOException, ParseException {
+        String output = outputFolder + "Synthèse_" + CURRENT_MONTH + ".xlsx";
+        Synthese fdt = new Synthese(outputFolder + syntPath);
+        syntAncien = new Synthese(tdbFolder+syntAncienPath,"Synthèse année mois");
+
+        Synthese parMois = new Synthese(fdt,"Contrat", syntAncien,false);
+        Synthese parAnnee = new Synthese(parMois,"Contrat");
+        parMois.formatAllColumns();
+        parAnnee.formatAllColumns();
+
+        Synthese parDistrib = new Synthese(fdt,"Distributeur", syntAncien,false);
+        Synthese parDistribAgg = new Synthese(parDistrib,"Distributeur");
+        parDistribAgg.formatAllColumns();
+
+        Synthese parGest = new Synthese(fdt,"Gestionnaire", syntAncien,false);
+        Synthese parGestAgg = new Synthese(parGest,"Gestionnaire");
+        parGestAgg.formatAllColumns();
+
+        parMois.exportToExcel(output, "Synthèse Année-Mois", null);
+        try (FileInputStream fileIn = new FileInputStream(output)) {
+            Workbook existingWorkbook = new XSSFWorkbook(fileIn);
+            // Second call: use the loaded workbook to append the data
+            parAnnee.exportToExcel(output, "Synthèse Police", existingWorkbook);
+            parDistribAgg.exportToExcel(output, "Synthèse Partenaire", existingWorkbook);
+            parGestAgg.exportToExcel(output, "Synthèse Gestionnaire", existingWorkbook);
+        }
     }
     public static String formatMemory(long bytes) {
         String[] units = {"B", "KB", "MB", "GB", "TB"};
@@ -355,12 +282,287 @@ public class App {
         System.out.println("Max Heap Size = " + formatMemory(heapMaxSize));
         System.out.println("Free Heap Size = " + formatMemory(heapFreeSize));
     }
-    public static int getPositionOfStringContaining(Object[] array, String x) {
-        for (int i = 0; i < array.length; i++) {
-            if (array[i] != null && array[i].toString().contains(x)) {
-                return i;
+    public static void compareSynthese(Synthese A,Synthese B) {
+        B.headers.replaceAll(s -> s.replace("\n", ""));
+        B.headers.replaceAll(String::trim);
+
+        // Step 1: Create a mapping
+        String[] headersAa = "Gestionnaire;Distributeur;Assureur;Contrat;Date Periode;Année;Nombre Adhésions;Montant Total HT;Montant Total Prime Assureur;Prime Acquise à date;Participation aux Benefices;Total Sinistres Comptable;Total Sinistres Technique;Ecart sinistres Technique - Comptable;Nombre Dossier En Cours;Total Provision Sinistre Connu;Provision Sinistre Connu 2013;Provision Sinistre Connu 2014;Provision Sinistre Connu 2015;Provision Sinistre Connu 2016;Provision Sinistre Connu 2017;Provision Sinistre Connu 2018;Provision Sinistre Connu 2019;Provision Sinistre Connu 2020;Provision Sinistre Connu 2021;Provision Sinistre Connu 2022;Provision Sinistre Connu 2023;Provision Sinistre Connu 2024;Provision Sinistre Connu 2025;Provision Sinistre Connu 2026;Prime émise réelle;Taux primes émise réelle;Taux d'acquisition des primes;PB pour S/P acquis;S/P comptable émis;Solde comptable émis;S/P comptable acquis;Solde comptable acquis;S/P technique émis;Solde technique émis;S/P technique acquis;Solde technique acquis;S/P technique provisionné émis;Solde technique provisionné emis;S/P technique provisionné acquis;Solde technique provisionné acquis;Sinistre Ultime;Prime à l'ultime;S/P Comptable à l'ultime;Variation adhesions comptable;Variation des Primes émises;Variation primes acquises;Variation Taux d'Acquisition;Variation des Sinistres Comptable;Variation des Sinistres Technique;Variation des Provisions sur Sinistre;Variation S/P comptable acquis;Variation S/P technique acquis;Variation S/P technique provisionné acquis;Variation Sinistre Ultime;Variation S/P Comptable à l'ultime".split(";");
+        String[] headersBa = "GESTIONNAIRE;DISTRIBUTEUR;ASSUREUR;CONTRAT;date;Années;ADHESIONS COMPTABLE;MONTANT TOTAL HT;MONTANT TOTAL PRIME ASSUREUR;PRIME ACQUISE A DATE;PARTICIPATION AUX BENEFICES;TOTAL SINISTRES COMPTABLE;TOTAL SINISTRE TECHNIQUE;Ecart Sinistres Technique - Comptable;nb de dossier en cours;Provisions sur sinistres connus;Provision sinsitre connu 2013;Provision sinsitre connu 2014;Provision sinsitre connu 2015;Provision sinsitre connu 2016;Provision sinsitre connu 2017;Provision sinsitre connu 2018;Provision sinsitre connu 2019;Provision sinsitre connu 2020;Provision sinsitre connu 2021;Provision sinsitre connu 2022;Provision sinsitre connu 2023;Provision sinsitre connu 2024;Provision sinsitre connu 2025;Provision sinsitre connu 2026;Primes émise réelle;Taux primes émise réelle;Taux d'acquisition des primes;PB POUR S/P ACQUIS;S/P comptable emis;Solde comptable emis;S/P comptable acquis;Solde comptable acquis;S/P technique emis;Solde technique emis;S/P technique acquis;Solde technique acquis;S/P technique provisionné emis;Solde technique provisionné emis;S/P technique provisionné acquis;Solde technique provisionné acquis;Sinistre Ultime;Prime à l'ultime;S/P Comptable à l'ultime;Variation adhesions comptable;Variation des Primes émise; Variation primes acquise; Variation Taux d'Acquisition;Variation des Sinistre Comptable;Variation des Sinistre Technique;Variation des Provisions sur Sinistre;Variation S/P comptable acquis;Variation S/P technique acquis;Variation S/P technique provisionné acquis;Variation Sinistre Ultime;Variation S/P Comptable à l'ultime".split(";");
+        ArrayList<String> headersA = new ArrayList<>(List.of(headersAa));
+        ArrayList<String> headersB = new ArrayList<>(List.of(headersBa));
+        int nrowA = A.getColumnByIndex(0).size();
+        int nrowB = B.getColumnByIndex(0).size();
+
+        Map<String,Integer> map = new HashMap<>();
+
+        for (int j = 0; j < nrowB; j++) {
+            String keyB = B.getColumn("CONTRAT").get(j) + "-" + B.getColumn("date").get(j);
+            map.put(keyB,j);
+        }
+
+        for (int i = 0; i < nrowA; i++) {
+            String keyA = A.getColumn("Contrat").get(i) + "-" + A.getColumn("Date Periode").get(i);
+            Integer indexB = map.get(keyA);
+            if (indexB == null) {
+                System.out.println("key not found: " + keyA);
+                continue;
+            }
+            for (int j = 0; j < A.headers.size(); j++) {
+                String currentHeader = A.headers.get(j);
+                if (headersA.contains(currentHeader)) {
+                    if (A.columns.get(j).getType().equals(DBL)) {
+                        Double valueA = (Double) A.getColumn(currentHeader).get(i);
+                        Double valueB = (Double) B.getColumn(headersB.get(headersA.indexOf(currentHeader))).get(indexB);
+                        double diff = abs(roundToTwoDecimals(valueA-valueB));
+                        if (diff > 0.01) {
+                            System.out.println("problem in " + currentHeader + " key: " + keyA + " A: " + valueA + " B: " + valueB);
+                        }
+                    }
+//                    if (A.columns.get(i).getType().equals(INT)) {
+//                        Integer valueA = (Integer) A.getColumn(A.headers.get(i)).get(i);
+//                        Integer valueB = (Integer) B.getColumn(headersB.get(headersA.indexOf(A.headers.get(i)))).get(indexB);
+//                        int diff = abs(valueA-valueB);
+//                        if (diff > 0) {
+//                            System.out.println("problem in " + A.headers.get(i) + " key: " + keyA + " diff: " );
+//                        }
+//                    }
+                }
             }
         }
-        return -1; // Return -1 if not found
     }
+    public static void compareKeys(Synthese A, Synthese B, Synthese estimate, boolean inv) throws ParseException {
+        A.headers.replaceAll(s -> s.replace("\n", ""));
+        A.headers.replaceAll(String::trim);
+        B.headers.replaceAll(s -> s.replace("\n", ""));
+        B.headers.replaceAll(String::trim);
+        estimate.headers.replaceAll(s -> s.replace("\n", ""));
+        estimate.headers.replaceAll(String::trim);
+
+        String contratA; String dateA; String contratB; String dateB;
+        if (inv) {
+            contratA = "CONTRAT";
+            dateA = "date";
+            contratB = "Contrat";
+            dateB = "Date Periode";
+        } else {
+            contratB = "CONTRAT";
+            dateB = "date";
+            contratA = "Contrat";
+            dateA = "Date Periode";
+
+        }
+        String dateEstimate = "Date Periode";
+        String contratEstimate = "Contrat";
+
+        SimpleDateFormat sdfA = new SimpleDateFormat("MM-yyyy");
+        SimpleDateFormat sdfEstimate = new SimpleDateFormat("dd/MM/yyyy");
+        Calendar cal = Calendar.getInstance();
+
+        Map<String, Integer> mapA = new HashMap<>();
+        Map<String, Integer> mapB = new HashMap<>();
+        Map<String, Integer> mapEstimate = new HashMap<>();
+
+        int countA = 0;
+        for (int i = 0; i < A.getColumnByIndex(0).size(); i++) {
+            String dateStrA = (String) A.getColumn(dateA).get(i);
+            if (!dateStrA.isEmpty()) {
+                Date parsedDateA = sdfA.parse(dateStrA);
+                String contratAvalue = (String) A.getColumn(contratA).get(i);
+                String keyA = contratAvalue + "_" + dateStrA;
+                if (!isComm(contratAvalue, parsedDateA)) {
+                    mapA.put(keyA, i);
+                    countA++;
+                }
+            }
+        }
+        System.out.println("Number of non-empty dates in A: " + countA);
+
+        int countB = 0;
+        for (int j = 0; j < B.getColumnByIndex(0).size(); j++) {
+            String dateStrB = (String) B.getColumn(dateB).get(j);
+            if (!dateStrB.isEmpty()) {
+                Date parsedDateB = sdfA.parse(dateStrB);
+                String contratBvalue = (String) B.getColumn(contratB).get(j);
+                String keyB = contratBvalue + "_" + dateStrB;
+                if (!isComm(contratBvalue, parsedDateB)) {
+                    mapB.put(keyB, j);
+                    countB++;
+                }
+            }
+        }
+        System.out.println("Number of non-empty dates in B: " + countB);
+
+        int countEstimate = 0;
+        for (int j = 0; j < estimate.getColumnByIndex(0).size(); j++) {
+            try {
+                String dateStrEstimate = (String) estimate.getColumn(dateEstimate).get(j);
+                Date parsedDateEstimate = sdfEstimate.parse(dateStrEstimate);
+                String contratEstimateValue = (String) estimate.getColumn(contratEstimate).get(j);
+                String keyEstimate = contratEstimateValue + "_" + sdfA.format(parsedDateEstimate);
+                if (!isComm(contratEstimateValue, parsedDateEstimate)) {
+                    mapEstimate.put(keyEstimate, j);
+                    countEstimate++;
+                }
+            } catch (ParseException e) {
+                // Ignore dates that couldn't be parsed
+            }
+        }
+        System.out.println("Number of parsable dates in Estimate: " + countEstimate);
+
+        Set<String> combinedKeys = new HashSet<>(mapB.keySet());
+        combinedKeys.addAll(mapEstimate.keySet());
+
+        String currentContract = null;
+        Date currentStartDate = null;
+        Date previousDate = null;
+
+        for (String key : combinedKeys) {
+            if (!mapA.containsKey(key) && mapB.containsKey(key) && mapEstimate.containsKey(key)) {
+                String[] parts = key.split("_");
+                String contract = parts[0];
+                String dateStr = parts[1];
+
+                Date date = sdfA.parse(dateStr);
+
+                if (currentContract == null) {
+                    currentContract = contract;
+                    currentStartDate = date;
+                    previousDate = date;
+                } else if (!contract.equals(currentContract)) {
+                    // New contract, so print the current interval
+                    printInterval(currentContract, currentStartDate, previousDate, sdfA);
+                    currentContract = contract;
+                    currentStartDate = date;
+                    previousDate = date;
+                } else {
+                    cal.setTime(previousDate);
+                    cal.add(Calendar.MONTH, 1);
+                    Date expectedNextDate = cal.getTime();
+                    if (!date.equals(expectedNextDate)) {
+                        // Break in the sequence, print the current interval
+                        printInterval(currentContract, currentStartDate, previousDate, sdfA);
+                        currentStartDate = date;
+                        previousDate = date;
+                    } else {
+                        // Still in sequence; just update the previous date
+                        previousDate = date;
+                    }
+                }
+            }
+        }
+
+        if (currentContract != null && currentStartDate != null) {
+            printInterval(currentContract, currentStartDate, previousDate, sdfA);
+        }
+    }
+    public static void compareKeys(Synthese A, Synthese estimate, boolean inv) throws ParseException {
+        A.headers.replaceAll(s -> s.replace("\n", ""));
+        A.headers.replaceAll(String::trim);
+        estimate.headers.replaceAll(s -> s.replace("\n", ""));
+        estimate.headers.replaceAll(String::trim);
+
+        String contratA;
+        String dateA;
+        if (inv) {
+            contratA = "CONTRAT";
+            dateA = "date";
+        } else {
+            contratA = "Contrat";
+            dateA = "Date Periode";
+        }
+        String dateEstimate = "Date Periode";
+        String contratEstimate = "Contrat";
+
+        SimpleDateFormat sdfA = new SimpleDateFormat("MM-yyyy");
+        SimpleDateFormat sdfEstimate = new SimpleDateFormat("dd/MM/yyyy");
+
+        Map<String, Integer> mapA = new HashMap<>();
+        Map<String, Integer> mapEstimate = new HashMap<>();
+
+        int countA = 0;
+        for (int i = 0; i < A.getColumnByIndex(0).size(); i++) {
+            String dateStrA = (String) A.getColumn(dateA).get(i);
+            if (!dateStrA.isEmpty()) {
+                Date parsedDateA = sdfA.parse(dateStrA);
+                String contratAvalue = (String) A.getColumn(contratA).get(i);
+                String keyA = contratAvalue + "_" + dateStrA;
+                if (!isComm(contratAvalue, parsedDateA)) {
+                    mapA.put(keyA, i);
+                    countA++;
+                }
+            }
+        }
+        System.out.println("Number of non-empty dates in A: " + countA);
+
+        int countEstimate = 0;
+        for (int j = 0; j < estimate.getColumnByIndex(0).size(); j++) {
+            try {
+                String dateStrEstimate = (String) estimate.getColumn(dateEstimate).get(j);
+                Date parsedDateEstimate = sdfEstimate.parse(dateStrEstimate);
+                String contratEstimateValue = (String) estimate.getColumn(contratEstimate).get(j);
+                String keyEstimate = contratEstimateValue + "_" + sdfA.format(parsedDateEstimate);
+                if (!isComm(contratEstimateValue, parsedDateEstimate)) {
+                    mapEstimate.put(keyEstimate, j);
+                    countEstimate++;
+                }
+            } catch (ParseException e) {
+                // Ignore dates that couldn't be parsed
+            }
+        }
+        System.out.println("Number of parsable dates in Estimate: " + countEstimate);
+
+        Set<String> keysInEstimate = new HashSet<>(mapEstimate.keySet());
+
+        String currentContract = null;
+        Date currentStartDate = null;
+        Date previousDate = null;
+        Calendar cal = Calendar.getInstance();
+
+        for (String key : keysInEstimate) {
+            if (!mapA.containsKey(key) && mapEstimate.containsKey(key)) {
+                String[] parts = key.split("_");
+                String contract = parts[0];
+                String dateStr = parts[1];
+
+                Date date = sdfA.parse(dateStr);
+
+                if (currentContract == null) {
+                    currentContract = contract;
+                    currentStartDate = date;
+                    previousDate = date;
+                } else if (!contract.equals(currentContract)) {
+                    printInterval(currentContract, currentStartDate, previousDate, sdfA);
+                    currentContract = contract;
+                    currentStartDate = date;
+                    previousDate = date;
+                } else {
+                    cal.setTime(previousDate);
+                    cal.add(Calendar.MONTH, 1);
+                    Date expectedNextDate = cal.getTime();
+                    if (!date.equals(expectedNextDate)) {
+                        printInterval(currentContract, currentStartDate, previousDate, sdfA);
+                        currentStartDate = date;
+                        previousDate = date;
+                    } else {
+                        previousDate = date;
+                    }
+                }
+            }
+        }
+
+        if (currentContract != null && currentStartDate != null) {
+            printInterval(currentContract, currentStartDate, previousDate, sdfA);
+        }
+    }
+
+    private static void printInterval(String contract, Date start, Date end, SimpleDateFormat sdf) {
+        if (start.equals(end)) {
+            System.out.println("Contract: " + contract + ", date missing - " + sdf.format(start));
+        } else {
+            System.out.println("Contract: " + contract + ", dates missing - " + sdf.format(start) + " - " + sdf.format(end));
+        }
+    }
+
+
 }
