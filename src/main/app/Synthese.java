@@ -106,7 +106,7 @@ public class Synthese extends DF {
         CsvParserSettings settings = new CsvParserSettings();
         settings.setDelimiterDetectionEnabled(true, delim);
         settings.trimValues(false);
-        settings.setMaxColumns(8000);
+        settings.setMaxColumns(9000);
         settings.setMaxCharsPerColumn(256);
         CsvParser parser = new CsvParser(settings);
 
@@ -286,7 +286,7 @@ public class Synthese extends DF {
 
         mapToAncien = mapThisToExtern(syntAncien);
         compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable");
-        compareColumns(syntAncien, "MONTANT TOTAL PRIME ASSUREUR", "Montant Total Prime Assureur", "Variation des Primes émises",false);
+        comparePrimes(syntAncien,avecICI);
         compareColumns(syntAncien, "PRIME ACQUISE A DATE","Prime Acquise à date", "Variation primes acquises", false);
         compareColumns(syntAncien, "Taux d'acquisition des primes","Taux d'acquisition des primes", "Variation Taux d'Acquisition", true);
         compareColumns(syntAncien, "TOTAL SINISTRES COMPTABLE", "Total Sinistres Comptable","Variation des Sinistres Comptable", false);
@@ -365,99 +365,7 @@ public class Synthese extends DF {
     }
 
     // CELL OPERATIONS
-    public Object getCellOfType(String cell, ColTypes type) {
-        Object out = null;
-        switch (type) {
-            case STR -> {
-                if (cell == null) return "";
-                return cell.trim();
-            }
-            case DBL -> {
-                if (cell == null) return 0d;
-                try {
-                    return Double.parseDouble(cell.replace(",", ".").replace(" €", ""));
-                } catch (NumberFormatException ignored) {
-                    return 0d;
-                }
-            }
-            case INT -> {
-                if (cell == null) return 0;
-                try {
-                    return Integer.parseInt(cell.replace(",", ".").replace(".0", ""));
-                } catch (NumberFormatException ignored) {
-                    return 0;
-                }
-            }
-            case DAT -> {
-                if (cell == null) return null;
-                // Purify the cell if the date format is "#yyyy-MM-dd#"
 
-                if (cell.length() == 5) {
-                    try {
-                        // If the purified cell has exactly 5 characters, interpret it as a numeric Excel date
-                        double dateValue = Double.parseDouble(cell);
-                        return DateUtil.getJavaDate(dateValue);
-                    } catch (NumberFormatException ignored) {
-                        return null;
-                    }
-                } else {
-                    try {
-                        // Otherwise, try to parse the date using the specified format
-                        return dateDefault.parse(cell);
-                    } catch (ParseException ignored) {
-                        return null;
-                    }
-                }
-            }
-        }
-        return out;
-    } // EXCEL
-    public Object parseCell(Cell cell_i, ColTypes colType) {
-        if (cell_i == null) return null;
-        switch (cell_i.getCellType()) {
-            case FORMULA -> {
-                return switch (cell_i.getCachedFormulaResultType()) {
-                    case ERROR -> getCellOfType(cell_i.getCellFormula(), colType);
-                    case STRING -> getCellOfType(cell_i.getStringCellValue(), colType);
-                    case BOOLEAN ->
-                            cell_i.getBooleanCellValue();  // or however you want to handle boolean formula results
-                    // ... handle other formula result types if needed ...
-                    default -> null; // or some default value
-                };
-            }
-            case NUMERIC -> {
-                if (DateUtil.isCellDateFormatted(cell_i)) {
-                    if (colType == STR) {
-                        return dateDefault.format(cell_i.getDateCellValue());
-                    }
-                    return cell_i.getDateCellValue();
-                } else if (colType == DBL) {
-                    return cell_i.getNumericCellValue();
-                } else if (colType == STR) {
-                    return Double.toString(cell_i.getNumericCellValue());
-                } else if (colType == INT) {
-                    BigDecimal bd = BigDecimal.valueOf(cell_i.getNumericCellValue());
-                    return bd.intValue();
-                }
-                return null; // or some default value
-            }
-            case STRING -> {
-                return getCellOfType(cell_i.getStringCellValue(), colType);
-            }
-            case BOOLEAN -> {
-                return cell_i.getBooleanCellValue();  // or convert it to string or whatever suits your need
-            }
-            case BLANK -> {
-                return "";  // or whatever your default value for blank cells is
-            }
-            case ERROR -> {
-                return "ERROR";  // or handle in a specific way if needed
-            }
-            default -> {
-                return null; // or some default value
-            }
-        }
-    }
     private void cleanAnnees() {
         ArrayList<String> anneesColumn = this.getColumn("Années");
 
@@ -1117,6 +1025,39 @@ public class Synthese extends DF {
                 deltaColumn.add("-");
             } else {
                 int diff = thisColumn.get(i) - externColumn.get(externIndex);
+
+                if (diff > 0) {
+                    deltaColumn.add("+" + diff);
+                } else if (diff < 0) {
+                    deltaColumn.add(String.valueOf(diff));
+                } else {
+                    deltaColumn.add("0");
+                }
+            }
+        }
+
+        this.addColumn(newColName, deltaColumn, STR);
+    }
+    private void comparePrimes(Synthese extern, boolean avecICI) {
+        ArrayList<Double> thisColumn;
+        ArrayList<Double> externColumn;
+        if (avecICI) {
+            thisColumn = primeColumn;
+            externColumn = extern.getColumn("MONTANT TOTAL NET COMPAGNIE");
+        } else {
+            thisColumn = this.getColumn("Montant Total Prime Assureur");
+            externColumn = extern.getColumn("MONTANT TOTAL PRIME ASSUREUR");
+        }
+        String newColName = "Variation des Primes émises";
+
+        ArrayList<String> deltaColumn = new ArrayList<>();
+
+        for (int i = 0; i < thisColumn.size(); i++) {
+            int externIndex = mapToAncien.get(i);
+            if (externIndex == -1) {
+                deltaColumn.add("-");
+            } else {
+                double diff = thisColumn.get(i) - externColumn.get(externIndex);
 
                 if (diff > 0) {
                     deltaColumn.add("+" + diff);

@@ -1,5 +1,6 @@
 package main.app;
 
+import java.math.BigDecimal;
 import java.nio.charset.Charset;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
@@ -182,12 +183,72 @@ public class DF {
         }
         trimNullFirstCol();
     }
+    public DF(String xlsxFilePath, String sheetName, String refFichier) throws IOException, ParseException {
+        FileConfig config = FileConfig.getInstance();
+        if (refFichier != null) {
+            columnNamesToRead = config.getColumnNamesToRead(refFichier);
+            columnTypes = config.getColumnTypes(refFichier);
+            columnNamesAttributed = config.getColumnNamesAttributed(refFichier);
+        }
+        validateColumnInputs(columnNamesToRead, columnTypes, columnNamesAttributed);
+
+        columns = new ArrayList<>();
+        headers = new ArrayList<>();
+
+        // Use Apache POI to open the workbook
+        InputStream is = Files.newInputStream(new File(xlsxFilePath).toPath());
+        Workbook workbook = new XSSFWorkbook(is);
+        Sheet sheet = workbook.getSheet(sheetName);
+        if (sheet == null) {
+            throw new IllegalArgumentException("Sheet " + sheetName + " not found in the XLSX file!");
+        }
+        nrow = sheet.getLastRowNum();
+
+        Row headerRowPOI = sheet.getRow(0);
+        if (headerRowPOI == null) {
+            throw new IllegalArgumentException("XLSX sheet is empty or missing header row!");
+        }
+
+        List<String> headerList = new ArrayList<>();
+        headerRowPOI.forEach(cell -> headerList.add(cell.toString().trim()));
+
+        for (int colIndex = 0; colIndex < headerList.size(); colIndex++) {
+            String header = headerList.get(colIndex);
+            if (columnNamesToRead == null || columnNamesToRead.contains(header)) {
+                int i = Objects.requireNonNull(columnNamesToRead).indexOf(header);
+                headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
+
+                ArrayList<Object> colData = new ArrayList<>();
+                ColTypes colType = (columnTypes == null) ? ColTypes.STR : columnTypes.get(i);
+
+                for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+//                    if (rowIndex == 374) {
+//                        System.out.println("here");
+//                    }
+                    Row currentRow = sheet.getRow(rowIndex);
+                    if (currentRow != null) {
+                        Object formattedCell = parseCell(currentRow.getCell(colIndex), colType);
+                        colData.add(formattedCell);
+                    }
+                }
+
+                columns.add(new Column<>(colData, colType));
+            }
+        }
+
+        workbook.close();  // Don't forget to close the workbook to release resources
+
+        if (columnNamesToRead != null && columnTypes != null && columnNamesToRead.size() != columnTypes.size()) {
+            throw new IllegalArgumentException("Mismatch between column names to read and column types provided.");
+        }
+        trimNullFirstCol();
+    }
     public static void getCoefsAcquisition(boolean populateTDB, Estimate estimate) throws IOException, ParseException {
 
         if(populateTDB) {
             DF TDB2 = new DF(tdbFolder + "TDB part 2.csv",';',false,"TDB2");
             TDB2.populateTDB2();
-            TDB2.fill0();
+            TDB2.fill0("DATE DEBUT PERIODE SOUSCRIPTION","IDENTIFIANT CONTRAT");
             TDB2.saveTDBtoCSVprecision(tdbFolder + "TDB part 2_populated.csv");
         }
 
@@ -233,7 +294,6 @@ public class DF {
         }
         return formatCell(cell, type);
     }
-
     public Object getLowerCell(String cell, ColTypes type) {
         if (cell == null) {
             return null;
@@ -278,7 +338,101 @@ public class DF {
             return null;
         }
     }
+    public Object getCellOfType(String cell, ColTypes type) {
+        Object out = null;
+        switch (type) {
+            case STR -> {
+                if (cell == null) return "";
+                return cell.trim();
+            }
+            case DBL -> {
+                if (cell == null) return 0d;
+                try {
+                    return Double.parseDouble(cell.replace(",", ".").replace(" €", ""));
+                } catch (NumberFormatException ignored) {
+                    return 0d;
+                }
+            }
+            case INT -> {
+                if (cell == null) return 0;
+                try {
+                    return Integer.parseInt(cell.replace(",", ".").replace(".0", ""));
+                } catch (NumberFormatException ignored) {
+                    return 0;
+                }
+            }
+            case DAT -> {
+                if (cell == null) return null;
+                // Purify the cell if the date format is "#yyyy-MM-dd#"
 
+                if (cell.length() == 5) {
+                    try {
+                        // If the purified cell has exactly 5 characters, interpret it as a numeric Excel date
+                        double dateValue = Double.parseDouble(cell);
+                        return DateUtil.getJavaDate(dateValue);
+                    } catch (NumberFormatException ignored) {
+                        return null;
+                    }
+                } else {
+                    try {
+                        // Otherwise, try to parse the date using the specified format
+                        return dateDefault.parse(cell);
+                    } catch (ParseException ignored) {
+                        return null;
+                    }
+                }
+            }
+        }
+        return out;
+    } // EXCEL
+    public Object parseCell(Cell cell_i, ColTypes colType) {
+        if (cell_i == null) return null;
+        switch (cell_i.getCellType()) {
+            case FORMULA -> {
+                return switch (cell_i.getCachedFormulaResultType()) {
+                    case ERROR -> getCellOfType(cell_i.getCellFormula(), colType);
+                    case STRING -> getCellOfType(cell_i.getStringCellValue(), colType);
+                    case BOOLEAN ->
+                            cell_i.getBooleanCellValue();  // or however you want to handle boolean formula results
+                    // ... handle other formula result types if needed ...
+                    default -> null; // or some default value
+                };
+            }
+            case NUMERIC -> {
+                if (DateUtil.isCellDateFormatted(cell_i)) {
+                    if (colType == STR) {
+                        return dateDefault.format(cell_i.getDateCellValue());
+                    }
+                    return cell_i.getDateCellValue();
+                } else if (colType == DBL ) {
+                    return cell_i.getNumericCellValue();
+                } else if (colType == FLT || colType == FLTNULL) {
+                    return (float) cell_i.getNumericCellValue();
+                } else if (colType == STR) {
+                    return Double.toString(cell_i.getNumericCellValue());
+                } else if (colType == INT) {
+                    BigDecimal bd = BigDecimal.valueOf(cell_i.getNumericCellValue());
+                    return bd.intValue();
+                }
+                return null; // or some default value
+            }
+            case STRING -> {
+                return getCellOfType(cell_i.getStringCellValue(), colType);
+            }
+            case BOOLEAN -> {
+                return cell_i.getBooleanCellValue();  // or convert it to string or whatever suits your need
+            }
+            case BLANK -> {
+                return null;  // or whatever your default value for blank cells is
+            }
+            case ERROR -> {
+                return "ERROR";  // or handle in a specific way if needed
+            }
+            default -> {
+                return null; // or some default value
+            }
+        }
+    } // EXCEL
 
     // GETTERS
     @SuppressWarnings("unchecked")
@@ -647,7 +801,68 @@ public class DF {
         }
         return obj.toString();
     }
+    public void printMatchingRows(String contratInput, String dateInput) {
+        // Define the date format
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+        Date inputDate;
 
+        // Parse the date from the string input
+        try {
+            inputDate = sdf.parse(dateInput);
+        } catch (ParseException e) {
+            System.out.println("Error parsing the date input: " + dateInput);
+            return;
+        }
+
+        // Get the columns
+        List<String> contratColumn = this.getColumn("Contrat");
+        List<Date> datePeriodeColumn = this.getColumn("Date Periode");
+
+        // Loop through the rows and print matching ones
+        for (int i = 0; i < contratColumn.size(); i++) {
+            String currentContrat = (String) contratColumn.get(i);
+            if(!currentContrat.startsWith(contratInput)) continue;
+            Date currentDate = datePeriodeColumn.get(i);
+            if (inputDate.equals(currentDate)) {
+                // This row matches, print it
+                System.out.println(this.getRow(i));
+            }
+
+        }
+    }
+    public void printMatchingRowsFic(String contratInput, String dateInput1, String dateInput2) {
+        // Define the date format
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+        Date inputDate1;
+        Date inputDate2;
+
+        // Parse the date from the string input
+        try {
+            inputDate1 = sdf.parse(dateInput1);
+            inputDate2 = sdf.parse(dateInput2);
+        } catch (ParseException e) {
+            System.out.println("Error parsing the date input: " + dateInput1 + " " + dateInput2);
+            return;
+        }
+
+        // Get the columns
+        List<String> contratColumn = this.getColumn(POLICE);
+        List<Date> datePeriodeColumn = this.getColumn(DATE_SOUS);
+        List<Date> dateSurvColumn = this.getColumn(DATE_SURV);
+
+        // Loop through the rows and print matching ones
+        for (int i = 0; i < contratColumn.size(); i++) {
+            String currentContrat = (String) contratColumn.get(i);
+            if(!currentContrat.startsWith(contratInput)) continue;
+            Date currentDateSous = datePeriodeColumn.get(i);
+            Date currentDateSurv = dateSurvColumn.get(i);
+            if (inputDate1.equals(currentDateSous) && inputDate2.equals(currentDateSurv)) {
+                // This row matches, print it
+                System.out.println(this.getRow(i));
+            }
+
+        }
+    }
     // REF
     public static void populateGlobalStatutMap() {
         ArrayList<String> statuts = mapStatuts.getColumn("Statut");
@@ -845,11 +1060,11 @@ public class DF {
         addColumn("aFaire",rowsToTreat,INT);
         removeColumn("REFERENCE");
     }
-    public void fill0() {
+    public void fill0(String dateCol, String contratCol) {
         // Step 1: Find the column named "M"
         int columnIndexM = headers.indexOf("M");
-        ArrayList<Date> columnDate = getColumn("DATE DEBUT PERIODE SOUSCRIPTION");
-        ArrayList<String> columnContrat = getColumn("IDENTIFIANT CONTRAT");
+        ArrayList<Date> columnDate = getColumn(dateCol);
+        ArrayList<String> columnContrat = getColumn(contratCol);
 
         Date currentGroupDate = null;
         String currentContract = null;
@@ -893,6 +1108,35 @@ public class DF {
             }
         }
     }
+    public void fill0coef() {
+        int columnIndexM = headers.indexOf("M");
+        for (int col = columnIndexM; col < headers.size(); col++) {
+            ArrayList<Float> column = getColumnByIndex(col);
+            for (int rowIndex = 0; rowIndex < nrow; rowIndex++) {
+                Float value = column.get(rowIndex);
+                if (value != null && value == 0.0f) {
+                    getColumnByIndex(col).set(rowIndex, null);
+                }
+            }
+        }
+    }
+
+
+    private void processGroup(int start, int end, int columnIndexM, int maxIndexForCurrentGroup) {
+        for (int i = start; i < end; i++) {
+            for (int col = columnIndexM; col <= maxIndexForCurrentGroup; col++) {
+                Float value = (Float) getColumnByIndex(col).get(i);
+                if (value == null) {
+                    getColumnByIndex(col).set(i, 0.0f);
+                }
+            }
+            // Set cells after the max to null
+            for (int col = maxIndexForCurrentGroup + 1; col < headers.size()-1; col++) {
+                getColumnByIndex(col).set(i, null);
+            }
+        }
+    }
+
     public int findLastNonNullColumnFromM() {
         // Find the column named "M"
         int columnIndexM = headers.indexOf("M");
@@ -1096,15 +1340,12 @@ public class DF {
                 }
             }
 
-            // Calculate the difference from 1
-            float difference = 1 - sum;
-
-            // Add the difference to the first coefficient
-            if (!coefficients.isEmpty() && difference < 0.0001f) {
+            // If sum is not already 1 (within a small threshold), adjust all coefficients
+            if (Math.abs(sum - 1.0f) > 0.000001f) {
+                float factor = 1.0f / sum;
                 for (int i = 0; i < coefficients.size(); i++) {
                     if (coefficients.get(i) != null) {
-                        coefficients.set(i, coefficients.get(i) + difference);
-                        break;  // Once we've added the difference, exit the loop
+                        coefficients.set(i, coefficients.get(i) * factor);
                     }
                 }
             }
@@ -1113,6 +1354,7 @@ public class DF {
             mapCoefAQ.put(entry.getKey(), coefficients);
         }
     }
+
 
     public static class Pair<K, V> {
         private final K key;
@@ -1133,7 +1375,7 @@ public class DF {
     }
     public static void writeMapAndEstimateToCSV(Map<Integer, ArrayList<Float>> mapCoefAQ, DF estimate, String outputPath) throws IOException {
         SimpleDateFormat dateFormatter = new SimpleDateFormat("dd/MM/yyyy");
-        DecimalFormat floatFormatter = new DecimalFormat("0.#######"); // Up to 7 decimals
+        DecimalFormat floatFormatter = new DecimalFormat("0.#########"); // Up to 7 decimals
 
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(outputPath), StandardCharsets.UTF_8))) {
             // Write BOM (Byte Order Mark) for UTF-8 Encoding
@@ -1293,6 +1535,8 @@ public class DF {
                         return dateDefault.format((Date) item);
                     } else if (item instanceof Double) {
                         return DECIMAL_FORMAT.format(item).replace('.', ','); // Replace period with comma
+                    } else if (item instanceof Float) {
+                        return item.toString().replace('.', ','); // Replace period with comma
                     }
                     return item != null ? item.toString() : "";
                 }).collect(Collectors.toList());
@@ -1320,5 +1564,58 @@ public class DF {
 
         writer.write(sb.toString());
         writer.newLine();
+    }
+
+    public void averageCloseValues(float delta) {
+        int startColumnIndex = headers.indexOf("M");
+
+        // Ensure "M" column is found and there are enough columns to the right
+        if (startColumnIndex == -1 || startColumnIndex + 120 > columns.size()) {
+            throw new IllegalArgumentException("Could not locate the required columns.");
+        }
+        double epsilon = 1E-7; // A small tolerance value
+        // Iterate through each row
+        for (int i = 0; i < nrow; i++) {
+//            if (i == 65106) {
+//                System.out.println("here");
+//            }
+            Set<Float> uniqueValues = new HashSet<>();
+            Map<Float, Integer> valueOccurrences = new HashMap<>();
+
+            // Collect unique values and count their occurrences
+            for (int j = 0; j < 120; j++) {
+                ArrayList<Float> columnData = getColumnByIndex(startColumnIndex + j);
+                Float value = columnData.get(i);
+
+                if (value != null) {
+                    uniqueValues.add(value);
+                    valueOccurrences.put(value, valueOccurrences.getOrDefault(value, 0) + 1);
+                }
+            }
+
+            // If there are two unique values that differ by 0.0005, compute the weighted average
+            Float[] uniqueArray = uniqueValues.toArray(new Float[0]);
+            for (int j = 0; j < uniqueArray.length; j++) {
+                for (int k = j + 1; k < uniqueArray.length; k++) {
+                    double diff = Math.abs(uniqueArray[j] - uniqueArray[k]);
+
+                    if ((Math.abs(diff - delta) < epsilon)) {
+                        int count1 = valueOccurrences.get(uniqueArray[j]);
+                        int count2 = valueOccurrences.get(uniqueArray[k]);
+                        float avg = (uniqueArray[j] * count1 + uniqueArray[k] * count2) / (count1 + count2);
+
+                        // Replace occurrences of both values in the row with the weighted average
+                        for (int col = 0; col < 120; col++) {
+                            ArrayList<Float> columnData = getColumnByIndex(startColumnIndex + col);
+                            Float currentValue = columnData.get(i);
+
+                            if (currentValue != null && (currentValue.equals(uniqueArray[j]) || currentValue.equals(uniqueArray[k]))) {
+                                columnData.set(i, avg);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

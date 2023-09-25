@@ -249,20 +249,21 @@ public class Base extends DF {
     public Base(String path) throws Exception {
         String fileName = getFilenameWithoutExtension(path);
         String refFichier = "baseFic";
+        if (fileName.equals("Garantie Privée")) {
+            numPolice = "ICICEDV16";
+            refFichier = "base";
+        }
         if (fileName.equals("Advise")) {
             numPolice = "ICICDAV17";
         }
         if (fileName.equals("Guy Demarle")) {
             numPolice = "ICIGDEG14";
         }
-        if (fileName.equals("Garantie Privée")) {
-            numPolice = "ICICEDV16";
-            refFichier = "base";
-        }
         if (fileName.equals("Supporter")) {
             numPolice = "ICIEMDV17";
             refFichier = "base";
         }
+
         this.referentialRow = getReferentialRow(fileName);
 
         FileConfig config = FileConfig.getInstance();
@@ -290,6 +291,9 @@ public class Base extends DF {
         String[] headerRow = unifyColnames(allRows.get(0));
         for (int i = 0; i < columnNamesToRead.size(); i++) { // Iterate over the configuration list
             String expectedHeader = columnNamesToRead.get(i);
+//            if (expectedHeader.equals(DATE_SOUS)) {
+//                System.out.println("here");
+//            }
             int actualIndex = Arrays.asList(headerRow).indexOf(expectedHeader);
 
             if (actualIndex != -1) { // If the header exists in the actual data
@@ -309,9 +313,8 @@ public class Base extends DF {
             }
         }
 
-        this.addStatutFictifFic();
-        dataTraitementSin();
-    } //Sin_aux
+        dataTraitementSinFic();
+    } //SinFix aux
     public Base(String folder, String refCol, boolean toLower) throws IOException, ParseException {
         List<File> fileList = Arrays.asList(Objects.requireNonNull(new File(folder).listFiles()));
         if (fileList.isEmpty()) {
@@ -415,15 +418,24 @@ public class Base extends DF {
         if (refCol.equals("FIC France")) {
             cleanNumPoliceDBP();
         }
+//        printMatchingRowsFic("ICICDDP16-1","01/03/2016","01/02/2019");
+//        System.out.println("---------");
         dataTraitementFic();
+//        printMatchingRowsFic("ICICDDP16-1","01/03/2016","01/02/2019");
+//        if (refCol.equals("FIC France")) {
+//            System.out.println("here");
+//        }
     } //Fic
 
     private void dataTraitementSin() {
         this.cleanStatut();
+
         this.date_autofill();
         this.repairGapsDateSousSIN();
         this.addYearColumns();
+
         this.createPivotTables();
+
         this.populateUniqueStatuts();
         this.populateStatutDateRangeMap();
         this.coutMoyenEnCours = calculateCMencours();
@@ -431,16 +443,35 @@ public class Base extends DF {
         this.nEnCours = countAppearancesByYear("En cours");
         this.nEnCoursAccepte = countAppearancesByYear("En cours - accepté");
     }
-    private void dataTraitementFic() {
+    private void dataTraitementFic() throws ParseException {
+        addStatutFictifFic();
+
         date_autofill_agg();
         repairGapsDateSousFIC();
         addYearColumns();
-        addStatutFictifFic();
+
         populateUniqueNumPoliceValues();
 
         createPivotTablesFic();
 
         populateNumPoliceDateRangeMap();
+    }
+    private void dataTraitementSinFic() throws ParseException {
+        this.addStatutFictifFic();
+
+        this.date_autofill();
+        this.repairGapsDateSousSIN();
+        this.addYearColumns();
+
+        this.createPivotTables();
+        this.createPivotTablesFic();
+
+        this.populateUniqueStatuts();
+        this.populateStatutDateRangeMap();
+        this.coutMoyenEnCours = calculateCMencours();
+        this.coutMoyenEnCoursAccepte = calculateCMencoursAccepte();
+        this.nEnCours = countAppearancesByYear("En cours");
+        this.nEnCoursAccepte = countAppearancesByYear("En cours - accepté");
     }
     public void addYearColumns() {
         ArrayList<Date> dateSurvColumn = getColumn(DATE_SURV);
@@ -780,7 +811,13 @@ public class Base extends DF {
                 dateSurv = dateMinSous;
             }
         }
-        if (dateSous == null || mensu) {
+//        if (dateSous == null || mensu) {
+//            dateSous = dateSurv;
+//        }
+        if (dateSous == null) {
+            dateSous = dateMinSous;
+        }
+        if (mensu) {
             dateSous = dateSurv;
         }
         if (dateSous.after(dateMaxSous)) {
@@ -807,6 +844,10 @@ public class Base extends DF {
         Calendar cal = Calendar.getInstance();
         cal.setTime(date);
         cal.set(Calendar.DAY_OF_MONTH, 1);
+//        cal.set(Calendar.HOUR_OF_DAY, 0);
+//        cal.set(Calendar.MINUTE, 0);
+//        cal.set(Calendar.SECOND, 0);
+//        cal.set(Calendar.MILLISECOND, 0);
         date = cal.getTime();
 
         // Update the dates in the DF
@@ -916,7 +957,7 @@ public class Base extends DF {
         pivotTableAllStatutsTotal.replaceAll((dateSous, value) -> roundToTwoDecimals(value));
 
     }
-    public void createPivotTablesFic() {
+    public void createPivotTablesFic() throws ParseException {
         List<Double> montant_IPs = getColumn(MONTANT);
         List<String> statuts = getColumn(STATUT);
         List<String> num_polices = getColumn(POLICE);
@@ -924,8 +965,13 @@ public class Base extends DF {
         List<Date> date_survArray = getColumn(DATE_SURV);
         List<Integer> year_survArray = getColumn(YEAR_SURV);
 
+//        Date dateDebugSous = dateDefault.parse("01/03/2016");
+//        Date dateDebugSurv = dateDefault.parse("01/02/2019");
+//        String policeDebug = "ICICDDP16-1";
+        int counter = 0;
+        boolean sinfic = num_polices.get(0).equals("ICIEMDV17") || num_polices.get(0).equals("ICICEDV16");
         for (int i = 0; i < nrow; i++) {
-            String statut = statuts.get(i);
+            String statut = sinfic ? STATUT_FICTIF_FIC : statuts.get(i);
             String num_police = num_polices.get(i);
             Date date_sous = date_sousArray.get(i);
             Date date_surv = date_survArray.get(i);
@@ -938,7 +984,13 @@ public class Base extends DF {
                     .computeIfAbsent(statut, k -> new HashMap<>())
                     .computeIfAbsent(date_sous, k -> new HashMap<>())
                     .merge(date_surv, montant_IP, Double::sum);
-
+//            if (date_sous.equals(dateDebugSous) && date_surv.equals(dateDebugSurv) && policeDebug.equals(num_police)) {
+//                if (counter == 24) {
+//                    System.out.println("here");
+//                }
+//                System.out.println(pivotTableFic.get(num_police).get(statut).get(date_sous).get(date_surv) + " total " + counter);
+//                counter++;
+//            }
             // Update the yearly pivot table Fic for sum
             pivotTableYearlyFic
                     .computeIfAbsent(num_police, k -> new HashMap<>())
@@ -1191,5 +1243,54 @@ public class Base extends DF {
             }
         }
         saveMapToExcel(globalStatutCollect, refFolder + "statuts_à_revoir.xlsx");
+    }
+    public Object getCell(String cell, ColTypes type) {
+        if (cell == null) {
+            return switch (type) {
+                case DBL -> 0.0;  // Default value for Double
+                case FLT -> 0f;   // Default value for Float
+                case INT -> 0;    // Default value for Int
+                default -> null;
+            };
+        }
+        return formatCell(cell, type);
+    }
+    private Object formatCell(String cell, ColTypes type) {
+        try {
+            return switch (type) {
+                case STR -> cell;
+                case DAT -> {
+                    try {
+                        yield dateFormat.parse(cell);
+                    } catch (ParseException e) {
+                        yield null;  // Return null if the date is unparsable
+                    }
+                }
+                case DBL -> {
+                    try {
+                        yield Double.parseDouble(cell.replace(',', '.'));
+                    } catch (NumberFormatException e) {
+                        yield 0.0; // Return default for Double
+                    }
+                }
+                case FLT,FLTNULL -> {
+                    try {
+                        yield Float.parseFloat(cell.replace(',', '.'));
+                    } catch (NumberFormatException e) {
+                        yield 0f;  // Return default for Float
+                    }
+                }
+                case INT -> {
+                    try {
+                        yield Integer.parseInt(cell);
+                    } catch (NumberFormatException e) {
+                        yield 0;  // Return default for Int
+                    }
+                }
+            };
+        } catch (Exception e) {
+            // Handle any other potential errors and return null (or you can log the error here)
+            return null;
+        }
     }
 }

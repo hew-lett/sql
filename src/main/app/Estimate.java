@@ -2,6 +2,7 @@ package main.app;
 
 import com.univocity.parsers.csv.CsvParser;
 import com.univocity.parsers.csv.CsvParserSettings;
+import org.apache.poi.ss.formula.functions.Today;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -73,6 +74,7 @@ public class Estimate extends DF {
 
         for (int i = 0; i < columnNamesToRead.size(); i++) { // Iterate over the configuration list
             String expectedHeader = columnNamesToRead.get(i);
+
             int actualIndex = Arrays.asList(headerRow).indexOf(expectedHeader);
 
             if (actualIndex != -1) { // If the header exists in the actual data
@@ -96,8 +98,10 @@ public class Estimate extends DF {
         trimNullDatePeriodeRows_cleanHeader();
         transformDatePeriodeColumn(refFichier);
         generateMinMaxDateSousMap();
+//        printMatchingRows("ICIMKAH22","01/01/2023");
         mergeRegul();
         mergeDBP();
+        mergeDuplicates();
         sortTableByContractAndDate();
         findDateGapsFromLastAvailable();
         addComm();
@@ -258,7 +262,7 @@ public class Estimate extends DF {
                     origin = i - 1;
                 } else {
                     for (int j = 0; j < this.nrow; j++) {
-                        if (date.get(i).equals(date.get(j)) && contrat.get(i).equals(contrat.get(j))) {
+                        if (date.get(i).equals(date.get(j)) && contrat.get(i).equals(contrat.get(j)) && regul.get(j).equals("NON")) {
                             origin = j;
                             break;
                         }
@@ -270,6 +274,26 @@ public class Estimate extends DF {
                 mergeRows(rowsToDelete, i, origin);
             }
         }
+        deleteRows(rowsToDelete);
+    }
+    public void mergeDuplicates() {
+        ArrayList<String> contrat = getColumn("Contrat");
+        ArrayList<Date> date = getColumn("Date Periode");
+
+        Map<String, Integer> firstOccurrenceMap = new HashMap<>();
+        ArrayList<Integer> rowsToDelete = new ArrayList<>();
+
+        for (int i = 0; i < contrat.size(); i++) {
+            String key = contrat.get(i) + "-" + date.get(i).toString();
+
+            if (firstOccurrenceMap.containsKey(key)) {
+                int origin = firstOccurrenceMap.get(key);
+                mergeRows(rowsToDelete, i, origin);
+            } else {
+                firstOccurrenceMap.put(key, i);
+            }
+        }
+
         deleteRows(rowsToDelete);
     }
     public void mergeDBP() {
@@ -624,6 +648,7 @@ public class Estimate extends DF {
     }
 
     private void populatePivotMensuel(Map<Date, Map<Date, Double>> pivotTable, String contrat, ArrayList<Date> datePeriodeColumn, ArrayList<String> contratColumn, int columnIndex) {
+
         for (int i = 0; i < nrow; i++) {
             String currentContrat = contratColumn.get(i);
 
@@ -973,15 +998,13 @@ public class Estimate extends DF {
         // Step 1: Create a map to store the number of months for each year
         Map<Integer, Integer> monthsPerYear = new HashMap<>();
 
-        Date thisMonth = thisMonth();
-
         // Step 2: Iterate over all dates
         int totalMonthsTillNow = 0;
         for (Date date : allDates) {
             int year = getYearFromDate(date);
             monthsPerYear.put(year, monthsPerYear.getOrDefault(year, 0) + 1);
 
-            if (!date.after(thisMonth)) {
+            if (!date.after(TODAY_01)) {
                 totalMonthsTillNow++;
             }
         }
@@ -1024,15 +1047,6 @@ public class Estimate extends DF {
         Calendar cal = Calendar.getInstance();
         cal.setTime(date);
         return cal.get(Calendar.YEAR);
-    }
-    public Date thisMonth() {
-        Calendar cal = Calendar.getInstance();
-        cal.set(Calendar.DAY_OF_MONTH, 1);
-        cal.set(Calendar.HOUR_OF_DAY, 0);
-        cal.set(Calendar.MINUTE, 0);
-        cal.set(Calendar.SECOND, 0);
-        cal.set(Calendar.MILLISECOND, 0);
-       return cal.getTime();
     }
     public void findDateGaps() {
 
