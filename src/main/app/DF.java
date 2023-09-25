@@ -94,7 +94,7 @@ public class DF {
                 headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
 
                 ArrayList<Object> colData = new ArrayList<>();
-                ColTypes colType = (columnTypes == null) ? ColTypes.STR : columnTypes.get(i);
+                ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
 
                 for (int j = 1; j < allRows.size(); j++) {
                     String cell = allRows.get(j)[actualIndex];
@@ -153,7 +153,7 @@ public class DF {
                 headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
 
                 ArrayList<Object> colData = new ArrayList<>();
-                ColTypes colType = (columnTypes == null) ? ColTypes.STR : columnTypes.get(i);
+                ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
 
                 for (int j = 1; j <= sheet.getLastRowNum(); j++) {
                     Row currentRow = sheet.getRow(j);
@@ -183,6 +183,47 @@ public class DF {
         }
         trimNullFirstCol();
     }
+    public DF(String xlsxFilePath, String sheetName) throws IOException {
+        columns = new ArrayList<>();
+        headers = new ArrayList<>();
+
+        // Use Apache POI to open the workbook
+        InputStream is = Files.newInputStream(new File(xlsxFilePath).toPath());
+        Workbook workbook = new XSSFWorkbook(is);
+        Sheet sheet = workbook.getSheet(sheetName);
+        if (sheet == null) {
+            throw new IllegalArgumentException("Sheet " + sheetName + " not found in the XLSX file!");
+        }
+        nrow = sheet.getLastRowNum();
+
+        Row headerRowPOI = sheet.getRow(0);
+        if (headerRowPOI == null) {
+            throw new IllegalArgumentException("XLSX sheet is empty or missing header row!");
+        }
+
+        List<String> headerList = new ArrayList<>();
+        headerRowPOI.forEach(cell -> headerList.add(cell.toString().trim()));
+
+        for (int ih = 0; ih < headerList.size(); ih++) {
+            String header = headerList.get(ih);
+            headers.add(header);
+
+            ArrayList<Object> colData = new ArrayList<>();
+
+            for (int j = 1; j <= sheet.getLastRowNum(); j++) {
+                Row currentRow = sheet.getRow(j);
+                if (currentRow != null) {
+                    Cell cell = currentRow.getCell(ih);
+                    String cellValue = (cell == null) ? "" : cell.toString();
+                    colData.add(cellValue);
+                }
+            }
+            columns.add(new Column<>(colData, STR));
+        }
+
+        workbook.close();  // Don't forget to close the workbook to release resources
+        trimNullFirstCol();
+    } //fullstring excel
     public DF(String xlsxFilePath, String sheetName, String refFichier) throws IOException, ParseException {
         FileConfig config = FileConfig.getInstance();
         if (refFichier != null) {
@@ -219,7 +260,7 @@ public class DF {
                 headers.add(columnNamesAttributed != null ? columnNamesAttributed.get(i) : header);
 
                 ArrayList<Object> colData = new ArrayList<>();
-                ColTypes colType = (columnTypes == null) ? ColTypes.STR : columnTypes.get(i);
+                ColTypes colType = (columnTypes == null) ? STR : columnTypes.get(i);
 
                 for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
 //                    if (rowIndex == 374) {

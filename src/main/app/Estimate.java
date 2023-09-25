@@ -815,7 +815,7 @@ public class Estimate extends DF {
         ArrayList<Double> coutMoyenColumn = new ArrayList<>();
         for (int i = 0; i < nrow; i++) {
             String contratValue = contratColumn.get(i);
-            Double coutMoyenValue = coutMoyenMap.getOrDefault(contratValue, null);
+            Double coutMoyenValue = coutMoyenMap.getOrDefault(contratValue, 0.0);
             coutMoyenColumn.add(coutMoyenValue);
         }
         addColumn("Cout moyen " + label, coutMoyenColumn, ColTypes.DBL);
@@ -1338,6 +1338,10 @@ public class Estimate extends DF {
             paFirstIndex = subheaders.indexOf("Primes Acquises mensuel");
             sinUltimeIndex = headers.indexOf("Sinistre Ultime");
         }
+        ArrayList<Double> coutMoyen = getColumn("Cout moyen En Cours");
+        ArrayList<Double> coutMoyenAcc = getColumn("Cout moyen En Cours Accepté");
+        int nFirstIndex = subheaders.indexOf("Nombre En cours mensuel");
+        int nAccFirstIndex = subheaders.indexOf("Nombre En cours - accepté mensuel");
 
         headers.addAll(allDateHeaders);
 
@@ -1355,7 +1359,6 @@ public class Estimate extends DF {
 
         int comptaFirstIndex = subheaders.indexOf("Charge Comptable mensuelle");
         ArrayList<Double> spColumn = getColumn("S/P previ hors PB");
-        ArrayList<Double> provisionColumn = getColumn("Total Provision");
 
         ArrayList<Double> sinistreUltimeColumn = new ArrayList<>(Collections.nCopies(nrow, 0.0));
 
@@ -1363,9 +1366,14 @@ public class Estimate extends DF {
         for (int col = beginIndex; col < headers.size(); col++) {
             if (allDates.get(col-beginIndex).before(TODAY_01)) {
                 ArrayList<Double> comptaColumn = getColumnByIndex(comptaFirstIndex + offset);
+                ArrayList<Object> nColumn = getColumnByIndex(nFirstIndex + offset);
+                ArrayList<Object> nAccColumn = getColumnByIndex(nAccFirstIndex + offset);
                 for (int row = 0; row < nrow; row++) {
                     Double compta = comptaColumn.get(row);
-                    Double value = (compta == null ? 0.0 : compta) + provisionColumn.get(row);
+                    int n = nColumn.get(row) == null ? 0 : (int) nColumn.get(row);
+                    int nAcc = nAccColumn.get(row) == null ? 0 : (int) nAccColumn.get(row);
+                    double provision = coutMoyen.get(row) * n + coutMoyenAcc.get(row) * nAcc;
+                    Double value = (compta == null ? 0.0 : compta) + provision;
                     getColumnByIndex(col).set(row,value);
                     sinistreUltimeColumn.set(row, sinistreUltimeColumn.get(row) + value);
                 }

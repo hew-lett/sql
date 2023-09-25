@@ -271,7 +271,7 @@ public class Synthese extends DF {
         addDataFromSubheaderSummedINT(external, "Nombre En cours total", "Nombre Dossier En Cours", grouping1,grouping2);
         appendBlockSubheaderSummed(external, grouping1,grouping2);
 
-        calculatePrimeEmiseReelle(grouping1,grouping2);
+        calculatePrimeEmiseReelle();
 
         calculatePrimeRatio("Taux primes émise réelle", "Prime émise réelle");
         calculatePrimeRatio("Taux d'acquisition des primes", "Prime Acquise à date");
@@ -661,6 +661,7 @@ public class Synthese extends DF {
         double sumOfSums = 0.0;
 
         for (int i = 0, j = 0; i < firstLevel.size(); i++) {
+
             double currentValue = sourceData.get(indexes.get(j)) == null ? 0.0d : sourceData.get(indexes.get(j)); // Protect against index out of bounds
 
             // Check for the "Total" prefix and reset values as needed
@@ -780,8 +781,8 @@ public class Synthese extends DF {
         double sumOfSums = 0.0;
 
         for (int i = 0, j = 0; i < firstLevel.size(); i++) {
-            double currentValue1 = sourceData1.get(j) == null ? 0.0d : sourceData1.get(j); // Protect against index out of bounds
-            double currentValue2 = sourceData2.get(j) == null ? 0.0d : sourceData2.get(j); // Protect against index out of bounds
+            double currentValue1 = sourceData1.get(indexes.get(j)) == null ? 0.0d : sourceData1.get(indexes.get(j)); // Protect against index out of bounds
+            double currentValue2 = sourceData2.get(indexes.get(j)) == null ? 0.0d : sourceData2.get(indexes.get(j)); // Protect against index out of bounds
 
             double currentValue = currentValue1 + currentValue2;
 
@@ -816,34 +817,8 @@ public class Synthese extends DF {
         }
         this.addColumn("Ecart sinistres Technique - Comptable", ecartSinistresData, DBL);
     }
-    private void calculatePrimeEmiseReelle(String colToAggregare1,String colToAggregare2) {
-        ArrayList<Double> primeEmiseReelleData = new ArrayList<>();
-
-        List<String> firstLevel = this.getColumn(colToAggregare1);
-        List<String> secondLevel = this.getColumn(colToAggregare2);
-
-        double currentSum = 0.0;
-        double sumOfSums = 0.0;
-
-        for (int i = 0, j = 0; i < firstLevel.size(); i++) {
-            double currentValue = primeColumn.get(j);
-
-            if (firstLevel.get(i).startsWith("Total")) {
-                primeEmiseReelleData.add(currentSum);
-                sumOfSums += currentSum;
-                currentSum = 0.0; // reset current sum
-            } else if (secondLevel.get(i).startsWith("Total")) {
-                primeEmiseReelleData.add(sumOfSums);
-                currentSum = 0.0; // reset current sum
-                sumOfSums = 0.0;  // reset sum of sums
-            } else {
-                currentSum += currentValue;
-                primeEmiseReelleData.add(currentValue);
-                j++;
-            }
-        }
-
-        this.addColumn("Prime émise réelle", primeEmiseReelleData, DBL);
+    private void calculatePrimeEmiseReelle() {
+        this.addColumn("Prime émise réelle", primeColumn, DBL);
     }
     private void calculatePrimeRatio(String columnName, String numeratorColumn) {
         ArrayList<Double> numeratorData = getColumn(numeratorColumn);
@@ -891,6 +866,7 @@ public class Synthese extends DF {
         ArrayList<Double> soldeAqSin = new ArrayList<>();
 
         for (int i = 0; i < totalFic.size(); i++) {
+
             spFic.add(safeDivision(totalFic.get(i),primeColumn.get(i) + pb.get(i)));
             soldeFic.add(primeColumn.get(i) + pb.get(i) - totalFic.get(i));
 
@@ -1057,7 +1033,7 @@ public class Synthese extends DF {
             if (externIndex == -1) {
                 deltaColumn.add("-");
             } else {
-                double diff = thisColumn.get(i) - externColumn.get(externIndex);
+                double diff = roundToTwoDecimals(thisColumn.get(i) - externColumn.get(externIndex));
 
                 if (diff > 0) {
                     deltaColumn.add("+" + diff);

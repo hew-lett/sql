@@ -24,6 +24,7 @@ import static main.app.DF.ColTypes.DBL;
 import static main.app.Estimate.isComm;
 import static main.app.Synthese.roundToTwoDecimals;
 import static main.app.Synthese.syntAncien;
+import static main.app.DFViewer.*;
 
 public class App {
 
@@ -161,27 +162,46 @@ public class App {
 //        grilleTarif.averageCloseValues(1.0E-4f);
 //        grilleTarif.saveToCsvWithSuffix("new");
 
-        DF coefs = new DF(wd+"coef.xlsx","Sheet1","coef_audi");
-        coefs.fill0coef();
-        Estimate estimate = new Estimate(tdbFolder+"TDB Estimate.csv",';',"estimate12");
-        st.printElapsedTime();
-//        compareKeys(coefs,estimate);
-//        getCoefsAcquisition(true,estimate);
-        populateCoefAudi(coefs,estimate);
-        st.printElapsedTime("coefs");
-        createFDT(estimate);
-        st.printElapsedTime();
+//        DF coefs = new DF(wd+"coef.xlsx","Sheet1","coef_audi");
+//        coefs.fill0coef();
+//        Estimate estimate = new Estimate(tdbFolder+"TDB Estimate.csv",';',"estimate12");
+//        st.printElapsedTime();
+////        compareKeys(coefs,estimate);
+////        getCoefsAcquisition(true,estimate);
+//        populateCoefAudi(coefs,estimate);
+//        st.printElapsedTime("coefs");
+//        createFDT(estimate);
+//        st.printElapsedTime();
+//
+        createSynthese("TDB Estimate_FDT_avec ICI.csv","TDB Part 1 Assureur synthèse 202210 avec ICI.xlsx",true);
+//
+//        Synthese fdt = new Synthese(outputFolder + "TDB Estimate_FDT_avec ICI.csv");
+//        syntAncien = new Synthese(tdbFolder+"TDB Part 1 Assureur synthèse 202210 avec ICI.xlsx","Synthèse année mois");
+//        Synthese syntAncien1 = new Synthese(fdt,"Contrat", syntAncien,true);
+//
+//        Synthese syntAncien2 = new Synthese(tdbFolder + "TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois");
+//
+//        compareSynthese(syntAncien1,syntAncien2);
 
-//        createSynthese("TDB Estimate_FDT_avec ICI.csv","TDB Part 1 Assureur synthèse 202210 avec ICI.xlsx",true);
+        // Create the viewer
+        DFViewer viewer = new DFViewer();
 
-        Synthese fdt = new Synthese(outputFolder + "TDB Estimate_FDT_avec ICI.csv");
-        syntAncien = new Synthese(tdbFolder+"TDB Part 1 Assureur synthèse 202210 avec ICI.xlsx","Synthèse année mois");
-        Synthese syntAncien1 = new Synthese(fdt,"Contrat", syntAncien,true);
+        // Create Synthese objects
+        DF synt1 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Année-Mois");
+        renameDP(synt1);
+        DF synt2 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Police");
+        DF synt3 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Partenaire");
+        DF synt4 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Gestionnaire");
+//        viewer.addDF(grilleTarif, "grille",new DFFormattingTemplate.RedHeaderFormat());
+        viewer.addDF(synt1, "Synthèse Année-Mois",new DFFormattingTemplate.GreenThemeTemplate());
+        viewer.addDF(synt2, "Synthèse Police",new DFFormattingTemplate.GreenThemeTemplate());
+        viewer.addDF(synt3, "Synthèse Partenaire",new DFFormattingTemplate.GreenThemeTemplate());
+        viewer.addDF(synt4, "Synthèse Gestionnaire",new DFFormattingTemplate.GreenThemeTemplate());
 
-        Synthese syntAncien2 = new Synthese(tdbFolder + "TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx","Synthèse année mois");
+        // Add Synthese objects to the viewer
 
-        compareSynthese(syntAncien1,syntAncien2);
-
+        // Display the viewer
+        viewer.show();
 //        compareKeys(syntAncien1,syntAncien2,fdt,false);
 //        compareKeys(syntAncien2,syntAncien1,fdt,true);
 //        compareKeys(syntAncien1,fdt,false);
@@ -191,6 +211,12 @@ public class App {
 //
         st.printElapsedTime();
 
+    }
+    public static void renameDP(DF df) {
+        int ind = df.headers.indexOf("Date Periode");
+        if (ind != -1) {
+            df.headers.set(ind,"Date");
+        }
     }
     public static void createFDT(Estimate estimate) throws Exception {
         ArrayList<String> basesAux = new ArrayList<>(List.of("Advise.csv","Garantie Privée.csv","Guy Demarle.csv","Supporter.csv"));
