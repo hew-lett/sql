@@ -284,7 +284,8 @@ public class Synthese extends DF {
         addColumn("Prime à l'ultime", primeColumn, DBL);
         calculateSPComptableUltimateColumn();
 
-        mapToAncien = mapThisToExtern(syntAncien);
+        mapToAncien = mapThisToExtern(syntAncien,grouping2);
+        if (mapToAncien == null) return;
         compareColumns(syntAncien, "ADHESIONS COMPTABLE","Nombre Adhésions", "Variation adhesions comptable");
         comparePrimes(syntAncien,avecICI);
         compareColumns(syntAncien, "PRIME ACQUISE A DATE","Prime Acquise à date", "Variation primes acquises", false);
@@ -297,7 +298,6 @@ public class Synthese extends DF {
         compareColumns(syntAncien, "S/P technique provisionné acquis","S/P technique provisionné acquis", "Variation S/P technique provisionné acquis", true);
         compareColumns(syntAncien, "Sinistre Ultime","Sinistre Ultime", "Variation Sinistre Ultime", false);
         compareColumns(syntAncien, "S/P Comptable à l'ultime","S/P Comptable à l'ultime", "Variation S/P Comptable à l'ultime", true);
-
     }
 
     private void deleteComm() throws ParseException {
@@ -521,7 +521,7 @@ public class Synthese extends DF {
         while (i < getColumn("Année").size() - 1) { // Using size() - 1 as we'll compare with the next element
             if (!getColumn("Année").get(i).equals(getColumn("Année").get(i + 1)) || !getColumn("Contrat").get(i).equals(getColumn("Contrat").get(i + 1))) {
                 duplicateRowWithTwoEmptyColumns(i, "Année", "Date Periode", null, "Total ");
-                bu.add(i + 1, true); // Insert true at the correct position in bu
+                bu.add(i + 1, true); indexes.add(i + 1, 0); // Insert true at the correct position in bu
                 i++; // Increase to skip the row we just added
             }
             i++;
@@ -531,18 +531,22 @@ public class Synthese extends DF {
         while (i < getColumn("Contrat").size() - 1) {
             if (!getColumn("Contrat").get(i).equals(getColumn("Contrat").get(i + 1))) {
                 duplicateRowWithTwoEmptyColumns(i, "Contrat", "Date Periode", "Année", "Total ");
-                bu.add(i + 1, true); // Insert true at the correct position in bu
+                bu.add(i + 1, true); indexes.add(i + 1, 0); // Insert true at the correct position in bu
                 i++;
             }
             i++;
         }
+        duplicateRowWithTwoEmptyColumns(i, "Année", "Date Periode", null, "Total ");
+        i++;
+        duplicateRowWithTwoEmptyColumns(i, "Contrat", "Date Periode", "Année", "Total ");
+        bu.add(true); indexes.add(0); bu.add(true); indexes.add(0);
     }
     public void insertSummaryRowsDistrib() {
         int i = 0;
         while (i < getColumn("Année").size() - 1) {
             if (!getColumn("Année").get(i).equals(getColumn("Année").get(i + 1))) {
                 duplicateRowWithTwoEmptyColumns(i, "Année", "Date Periode", "Contrat", "Total ");
-                bu.add(i + 1, true);
+                bu.add(i + 1, true); indexes.add(i + 1, 0); indexes.add(i + 1, 0);
                 i++;
             }
             i++;
@@ -551,12 +555,16 @@ public class Synthese extends DF {
         i = 0;
         while (i < getColumn("Distributeur").size() - 1) {
             if (!getColumn("Distributeur").get(i).equals(getColumn("Distributeur").get(i + 1))) {
-                duplicateRowWithThreeEmptyColumns(i, "Distributeur", "Date Periode", "Année", "Contrat", "Total Distributeur ");
-                bu.add(i + 1, true);
+                duplicateRowWithThreeEmptyColumns(i, "Distributeur", "Date Periode", "Année", "Contrat", "Total ");
+                bu.add(i + 1, true); indexes.add(i + 1, 0);
                 i++;
             }
             i++;
         }
+        duplicateRowWithTwoEmptyColumns(i, "Année", "Date Periode", "Contrat", "Total ");
+        i++;
+        duplicateRowWithThreeEmptyColumns(i, "Distributeur", "Date Periode", "Année", "Contrat", "Total ");
+        bu.add(true); indexes.add(0); bu.add(true); indexes.add(0);
     }
     public void insertSummaryRowsByGestionnaire() {
         int i = 0;
@@ -564,7 +572,7 @@ public class Synthese extends DF {
         while (i < getColumn("Année").size() - 1) {
             if (!getColumn("Année").get(i).equals(getColumn("Année").get(i + 1))) {
                 duplicateRowWithThreeEmptyColumns(i, "Année", "Distributeur","Date Periode", "Contrat", "Total ");
-                bu.add(i + 1, true);
+                bu.add(i + 1, true); indexes.add(i + 1, 0);
                 i++;
             }
             i++;
@@ -575,11 +583,15 @@ public class Synthese extends DF {
         while (i < getColumn("Gestionnaire").size() - 1) {
             if (!getColumn("Gestionnaire").get(i).equals(getColumn("Gestionnaire").get(i + 1))) {
                 duplicateRowWithFourEmptyColumns(i, "Gestionnaire", "Distributeur", "Date Periode", "Année", "Contrat", "Total Gestionnaire ");
-                bu.add(i + 1, true);
+                bu.add(i + 1, true); indexes.add(i + 1, 0);
                 i++;
             }
             i++;
         }
+        duplicateRowWithThreeEmptyColumns(i, "Année", "Distributeur","Date Periode", "Contrat", "Total ");
+        i++;
+        duplicateRowWithFourEmptyColumns(i, "Gestionnaire", "Distributeur", "Date Periode", "Année", "Contrat", "Total Gestionnaire ");
+        bu.add(true); indexes.add(0); bu.add(true); indexes.add(0);
     }
     private void duplicateRowWithFourEmptyColumns(int rowIndex, String prefixColumn, String emptyColumn1, String emptyColumn2, String emptyColumn3, String emptyColumn4, String prefix) {
         for (int colIndex = 0; colIndex < columns.size(); colIndex++) {
@@ -617,7 +629,7 @@ public class Synthese extends DF {
     }
     private void duplicateRowWithThreeEmptyColumns(int rowIndex, String prefixColumn, String emptyColumn1, String emptyColumn2, String emptyColumn3, String prefix) {
         for (int colIndex = 0; colIndex < columns.size(); colIndex++) {
-            ArrayList<Object> columnData = (ArrayList<Object>) columns.get(colIndex).getData();
+            ArrayList<Object> columnData = getColumnByIndex(colIndex);
             if (headers.get(colIndex).equals(prefixColumn)) {
                 columnData.add(rowIndex + 1, prefix + columnData.get(rowIndex));
             } else if (headers.get(colIndex).equals(emptyColumn1) || headers.get(colIndex).equals(emptyColumn2) || headers.get(colIndex).equals(emptyColumn3)) {
@@ -931,22 +943,39 @@ public class Synthese extends DF {
         }
         this.addColumn("S/P Comptable à l'ultime", spComptableUltimateData, DBL);
     }
-    private ArrayList<Integer> mapThisToExtern(Synthese extern) {
+    private ArrayList<Integer> mapThisToExtern(Synthese extern, String grouping) {
         ArrayList<String> thisKeys = new ArrayList<>();
         ArrayList<String> externKeys = new ArrayList<>();
+        ArrayList<String> thisCol1 = null;
+        ArrayList<String> thisCol2 = null;
+        ArrayList<String> externCol1 = null;
+        ArrayList<String> externCol2 = null;
+        if (grouping.equals("Contrat")) {
+            thisCol1 = this.getColumn("Contrat");
+            thisCol2 = this.getColumn("Date Periode");
 
-        ArrayList<String> thisContrat = this.getColumn("Contrat");
-        ArrayList<String> thisDatePeriode = this.getColumn("Date Periode");
-
-        ArrayList<String> externContrat = extern.getColumn("CONTRAT");
-        ArrayList<String> externDate = extern.getColumn("date");
-
-        for (int i = 0; i < thisContrat.size(); i++) {
-            thisKeys.add(thisContrat.get(i) + thisDatePeriode.get(i));
+            externCol1 = extern.getColumn("CONTRAT");
+            externCol2 = extern.getColumn("date");
+        } else {
+            if (grouping.equals("Distributeur")) {
+                thisCol1 = this.getColumn("Distributeur");
+                externCol1 = extern.getColumn("DISTRIBUTEUR");
+            } else {
+                return null;
+                //thisCol1 = this.getColumn("Gestionnaire");
+                //externCol1 = extern.getColumn("Gestionnaire");
+            }
+            thisCol2 = this.getColumn("Année");
+            externCol2 = extern.getColumn("Années");
         }
 
-        for (int i = 0; i < externContrat.size(); i++) {
-            externKeys.add(externContrat.get(i) + externDate.get(i));
+
+        for (int i = 0; i < thisCol1.size(); i++) {
+            thisKeys.add(thisCol1.get(i) + thisCol2.get(i));
+        }
+
+        for (int i = 0; i < externCol1.size(); i++) {
+            externKeys.add(externCol1.get(i) + externCol2.get(i));
         }
 
         ArrayList<Integer> mapToExtern = new ArrayList<>();
@@ -970,17 +999,18 @@ public class Synthese extends DF {
             } else {
                 double diff = thisColumn.get(i) - externColumn.get(externIndex);
                 if (percentage) {
-                    diff *= 100;
+                    diff = roundToTwoDecimals(diff*100);
                     if (diff > 0) {
-                        deltaColumn.add("+" + roundToTwoDecimals(diff) + " pts");
+                        deltaColumn.add("+" + diff + " pts");
                     } else {
-                        deltaColumn.add(roundToTwoDecimals(diff) + " pts");
+                        deltaColumn.add(diff + " pts");
                     }
                 } else {
+                    diff = roundToTwoDecimals(diff);
                     if (diff > 0) {
-                        deltaColumn.add("+" + roundToTwoDecimals(diff));
+                        deltaColumn.add("+" + diff);
                     } else if (diff < 0) {
-                        deltaColumn.add(Double.toString(roundToTwoDecimals(diff)));
+                        deltaColumn.add(Double.toString(diff));
                     } else {
                         deltaColumn.add("0");
                     }

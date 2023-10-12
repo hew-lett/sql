@@ -28,9 +28,10 @@ import static main.app.DFViewer.*;
 
 public class App {
 
-//    public static final String wd = "C:/Users/ozhukov/Documents/wd/";
-    public static final String wd = "E:/202305/wd/";
+    public static final String wd = "C:/Users/ozhukov/Documents/wd/wd/";
+//    public static final String wd = "E:/202305/wd/";
     public static final String outputFolder = wd + "output/";
+    public static final String reportFolder = wd + "reports/";
     public static final String refFolder = wd + "refs/";
     public static final String tdbFolder = wd + "TDB/";
     public static final String basesFolder = wd + "bases/";
@@ -164,17 +165,16 @@ public class App {
 
 //        DF coefs = new DF(wd+"coef.xlsx","Sheet1","coef_audi");
 //        coefs.fill0coef();
-//        Estimate estimate = new Estimate(tdbFolder+"TDB Estimate.csv",';',"estimate12");
+//        Estimate estimate = new Estimate(tdbFolder+"TDB Estimate.csv",';',"estimate");
 //        st.printElapsedTime();
-////        compareKeys(coefs,estimate);
-////        getCoefsAcquisition(true,estimate);
-//        populateCoefAudi(coefs,estimate);
+//        getCoefsAcquisition(true,estimate);
+////        populateCoefAudi(coefs,estimate);
 //        st.printElapsedTime("coefs");
 //        createFDT(estimate);
 //        st.printElapsedTime();
-//
-        createSynthese("TDB Estimate_FDT_avec ICI.csv","TDB Part 1 Assureur synthèse 202210 avec ICI.xlsx",true);
-//
+
+        createSynthese("TDB Estimate_FDT_avec ICI.csv","TDB Part 1 Assureur synthèse 202212 avec ICI.xlsx",true);
+
 //        Synthese fdt = new Synthese(outputFolder + "TDB Estimate_FDT_avec ICI.csv");
 //        syntAncien = new Synthese(tdbFolder+"TDB Part 1 Assureur synthèse 202210 avec ICI.xlsx","Synthèse année mois");
 //        Synthese syntAncien1 = new Synthese(fdt,"Contrat", syntAncien,true);
@@ -183,25 +183,27 @@ public class App {
 //
 //        compareSynthese(syntAncien1,syntAncien2);
 
-        // Create the viewer
-        DFViewer viewer = new DFViewer();
+//        // Create the viewer
+//        DFViewer viewer = new DFViewer();
+//
+//        // Create Synthese objects
+//        DF synt1 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Année-Mois");
+//        renameDP(synt1);
+//        DF synt2 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Police");
+//        DF synt3 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Partenaire");
+//        DF synt4 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Gestionnaire");
+//
+//        // Add Synthese objects to the viewer
+//        viewer.addDF(synt1, "Synthèse Année-Mois",new DFFormattingTemplate.GreenThemeTemplate());
+//        viewer.addDF(synt2, "Synthèse Police",new DFFormattingTemplate.GreenThemeTemplate());
+//        viewer.addDF(synt3, "Synthèse Partenaire",new DFFormattingTemplate.GreenThemeTemplate());
+//        viewer.addDF(synt4, "Synthèse Gestionnaire",new DFFormattingTemplate.GreenThemeTemplate());
+//
+//
+//        // Display the viewer
+//        viewer.show();
 
-        // Create Synthese objects
-        DF synt1 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Année-Mois");
-        renameDP(synt1);
-        DF synt2 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Police");
-        DF synt3 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Partenaire");
-        DF synt4 = new DF(outputFolder + "Synthèse_202309.xlsx","Synthèse Gestionnaire");
-//        viewer.addDF(grilleTarif, "grille",new DFFormattingTemplate.RedHeaderFormat());
-        viewer.addDF(synt1, "Synthèse Année-Mois",new DFFormattingTemplate.GreenThemeTemplate());
-        viewer.addDF(synt2, "Synthèse Police",new DFFormattingTemplate.GreenThemeTemplate());
-        viewer.addDF(synt3, "Synthèse Partenaire",new DFFormattingTemplate.GreenThemeTemplate());
-        viewer.addDF(synt4, "Synthèse Gestionnaire",new DFFormattingTemplate.GreenThemeTemplate());
 
-        // Add Synthese objects to the viewer
-
-        // Display the viewer
-        viewer.show();
 //        compareKeys(syntAncien1,syntAncien2,fdt,false);
 //        compareKeys(syntAncien2,syntAncien1,fdt,true);
 //        compareKeys(syntAncien1,fdt,false);
@@ -283,7 +285,7 @@ public class App {
         estimate.saveFDT(true);
     }
     public static void createSynthese(String syntPath, String syntAncienPath, boolean avecICI) throws IOException, ParseException {
-        String output = outputFolder + "Synthèse_" + CURRENT_MONTH + ".xlsx";
+        String output = reportFolder + "Synthèse_" + CURRENT_MONTH + ".xlsx";
         Synthese fdt = new Synthese(outputFolder + syntPath);
         syntAncien = new Synthese(tdbFolder+syntAncienPath,"Synthèse année mois");
 
@@ -344,7 +346,8 @@ public class App {
                 "Total Sinistres Comptable",
                 "Total Sinistres Technique",
                 "Ecart sinistres Technique - Comptable",
-                "Nombre Dossier En Cours"
+                "Nombre Dossier En Cours",
+                "Total Provision Sinistre Connu"
         ));
         List<String> headersB = new ArrayList<>(Arrays.asList(
                 "ADHESIONS COMPTABLE",
@@ -354,32 +357,23 @@ public class App {
                 "TOTAL SINISTRES COMPTABLE",
                 "TOTAL SINISTRE TECHNIQUE",
                 "Ecart Sinistres Technique - Comptable",
-                "nb de dossier en cours"
+                "nb de dossier en cours",
+                "Provisions sur sinistres connus"
         ));
-//        List<String> headersA = new ArrayList<>(Arrays.asList(
-//
-//                "Participation aux Benefices"
-//
-//        ));
-//        List<String> headersB = new ArrayList<>(Arrays.asList(
-//
-//                "PARTICIPATION AUX BENEFICES"
-//
-//        ));
 
         Set<String> exclure = new HashSet<>();
-        exclure.add("ICICEDV16");
-        exclure.add("ICIGDEG14");
-        exclure.add("Total ICICEDV16");
-        exclure.add("Total ICIGDEG14");
-        exclure.add("FRMP02");
-        exclure.add("FRMP03");
-        exclure.add("Total FRMP02");
-        exclure.add("Total FRMP03");
-        exclure.add("ICIFNTA16");
-        exclure.add("Total ICIFNTA16");
-        exclure.add("ICIGPTB15");
-        exclure.add("Total ICIGPTB15");
+//        exclure.add("ICICEDV16");
+//        exclure.add("ICIGDEG14");
+//        exclure.add("Total ICICEDV16");
+//        exclure.add("Total ICIGDEG14");
+//        exclure.add("FRMP02");
+//        exclure.add("FRMP03");
+//        exclure.add("Total FRMP02");
+//        exclure.add("Total FRMP03");
+//        exclure.add("ICIFNTA16");
+//        exclure.add("Total ICIFNTA16");
+//        exclure.add("ICIGPTB15");
+//        exclure.add("Total ICIGPTB15");
         int nrowA = A.getColumnByIndex(0).size();
         int nrowB = B.getColumnByIndex(0).size();
 
@@ -393,14 +387,14 @@ public class App {
             map.put(keyB,j);
         }
         for (int i = 0; i < nrowA; i++) {
-            String contrat = (String) A.getColumn("Contrat").get(i);
-            if(exclure.contains(contrat)) {
-                continue;
-            }
-            if (contrat.startsWith("ICIGS")) continue;
-            if (contrat.startsWith("Total ICIGS")) continue;
-            if (contrat.startsWith("ICIMIP")) continue;
-            if (contrat.startsWith("Total ICIMIP")) continue;
+//            String contrat = (String) A.getColumn("Contrat").get(i);
+//            if(exclure.contains(contrat)) {
+//                continue;
+//            }
+//            if (contrat.startsWith("ICIGS")) continue;
+//            if (contrat.startsWith("Total ICIGS")) continue;
+//            if (contrat.startsWith("ICIMIP")) continue;
+//            if (contrat.startsWith("Total ICIMIP")) continue;
 
             String keyA = A.getColumn("Contrat").get(i) + "-" + A.getColumn("Date Periode").get(i) + A.getColumn("Année").get(i);
             Integer indexB = map.get(keyA);
@@ -416,9 +410,6 @@ public class App {
                         Double valueB = (Double) B.getColumn(headersB.get(headersA.indexOf(currentHeader))).get(indexB);
                         double diff = abs(roundToTwoDecimals(valueA-valueB));
                         if (currentHeader.equals("Prime Acquise à date")) {
-//                            if (keyA.equals("ICIBRMB18-02-20212021")) {
-//                                System.out.println("here");
-//                            }
                             if (diff > abs(valueB)/100) {
                                 System.out.println("problem in " + currentHeader + " key: " + keyA + " A: " + valueA + " B: " + valueB);
                             }

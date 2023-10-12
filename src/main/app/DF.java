@@ -224,6 +224,37 @@ public class DF {
         workbook.close();  // Don't forget to close the workbook to release resources
         trimNullFirstCol();
     } //fullstring excel
+
+    public DF(String csvFilePath, String delim, boolean csv) throws IOException, ParseException {
+        path = csvFilePath;
+        columns = new ArrayList<>();
+        headers = new ArrayList<>();
+
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setDelimiterDetectionEnabled(true);
+        CsvParser parser = new CsvParser(settings);
+
+        List<String[]> allRows = parser.parseAll(new FileReader(csvFilePath, encodingDefault));
+        nrow = allRows.size() - 1;
+
+        if (allRows.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is empty!");
+        }
+
+        String[] headerRow = allRows.get(0);
+
+        for (int i = 0; i < headerRow.length; i++) { // Iterate over the configuration list
+            headers.add(headerRow[i]);
+            ArrayList<String> colData = new ArrayList<>();
+
+            for (int j = 1; j < allRows.size(); j++) {
+                colData.add(allRows.get(j)[i]);
+            }
+            columns.add(new Column<>(colData, STR));
+        }
+        trimNullFirstCol();
+    }
+
     public DF(String xlsxFilePath, String sheetName, String refFichier) throws IOException, ParseException {
         FileConfig config = FileConfig.getInstance();
         if (refFichier != null) {
@@ -586,6 +617,9 @@ public class DF {
     }
     protected void setHeaders(ArrayList<String> headers) {
         this.headers = headers;
+    }
+    protected ArrayList<String> getHeaders() {
+        return this.headers;
     }
     protected <T> void addColumn(String header, ArrayList<T> columnData, ColTypes type) {
         columns.add(new Column<T>(columnData, type));
@@ -1587,6 +1621,42 @@ public class DF {
             }
         }
     }
+    protected void saveToCsv(String folder, String delim) throws IOException {
+        // Extract the directory of this.path and create the new folder inside it
+        Path originalPath = Paths.get(this.path);
+        Path originalDir = originalPath.getParent();
+        Path newFolder = originalDir.resolve(folder); // create new folder in the same directory
+
+        Files.createDirectories(newFolder); // Ensure the folder exists
+
+        // Construct the new path keeping the original filename
+        Path newPath = newFolder.resolve(originalPath.getFileName());
+
+        try (BufferedWriter writer = Files.newBufferedWriter(newPath, StandardCharsets.UTF_8)) {
+            // Write BOM for UTF-8
+            writer.write('\ufeff');
+
+            // If there are subheaders, write them
+            if (subheaders != null && !subheaders.isEmpty()) {
+                writer.write(subheaders.stream().map(sh -> sh != null ? sh : "").collect(Collectors.joining(delim)));
+                writer.newLine();
+            }
+
+            // Write headers
+            writer.write(String.join(delim, headers));
+            writer.newLine();
+
+            // Write data
+            for (int i = 0; i < nrow; i++) {
+                List<String> row = getRow(i).stream()
+                        .map(item -> item != null ? item.toString() : "")
+                        .collect(Collectors.toList());
+
+                writer.write(String.join(delim, row));
+                writer.newLine();
+            }
+        }
+    }
     private void writeLine(BufferedWriter writer, List<?> values) throws IOException {
         StringBuilder sb = new StringBuilder();
 
@@ -1659,4 +1729,28 @@ public class DF {
             }
         }
     }
+    public void cutRowsBeforeFormat() {
+        // Find the index of the row that starts with "Format"
+        int formatRowIndex = -1;
+        for (int i = 0; i < nrow; i++) {
+            ArrayList<Object> row = getRow(i);
+            if (!row.isEmpty() && row.get(0).toString().startsWith("Format")) {
+                formatRowIndex = i+1;
+                break;
+            }
+        }
+
+        // If a "Format" row is found
+        if (formatRowIndex != -1) {
+            // Remove all rows before it
+            for (int colIndex = 0; colIndex < columns.size(); colIndex++) {
+                ArrayList<Object> columnData = getColumnByIndex(colIndex);
+                ArrayList<Object> newColumnData = new ArrayList<>(columnData.subList(formatRowIndex, columnData.size()));
+                columns.set(colIndex, new Column<>(newColumnData, columns.get(colIndex).getType()));
+            }
+            // Update nrow
+            nrow = nrow - formatRowIndex;
+        }
+    }
+
 }
